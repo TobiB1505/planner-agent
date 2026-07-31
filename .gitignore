@@ -1,0 +1,17 @@
+venv/
+.env
+data/
+__pycache__/
+*.pyc
+.streamlit/
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+
+# Lokale Laufzeit-/Systemdateien
+.dienstplan-api.log
+.DS_Store
+templates/

@@ -1,0 +1,403 @@
+"use client";
+
+import PageHeader from "@/components/PageHeader";
+import FileDropzone from "@/components/FileDropzone";
+import PlanReviewHeader from "@/components/PlanReviewHeader";
+import ReadingProgress from "@/components/ReadingProgress";
+import SavedPlanList from "@/components/SavedPlanList";
+import WeekPicker from "@/components/WeekPicker";
+import {
+  deleteRehearsalPlan,
+  getRehearsalPlan,
+  getRehearsalPlans,
+  importRehearsalPlan,
+  saveRehearsalPlan,
+  type RehearsalEntry,
+  type RehearsalPlanData,
+  type RehearsalPlanSummary,
+} from "@/lib/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+function formatDate(iso: string): string {
+  return new Intl.DateTimeFormat("de-DE", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(new Date(`${iso}T12:00:00`));
+}
+
+function shiftIsoDate(iso: string, days: number): string {
+  const value = new Date(`${iso}T12:00:00`);
+  value.setDate(value.getDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+export default function RehearsalPlanPage() {
+  const [plans, setPlans] = useState<RehearsalPlanSummary[]>([]);
+  const [file, setFile] = useState<File | null>(null);
+  const [plan, setPlan] = useState<RehearsalPlanData | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [processingSource, setProcessingSource] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(true);
+  const [message, setMessage] = useState<{
+    kind: "success" | "error" | "info";
+    text: string;
+  } | null>(null);
+
+  const refreshPlans = useCallback(async () => {
+    setPlans(await getRehearsalPlans());
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      refreshPlans().catch((error) =>
+        setMessage({ kind: "error", text: error.message }),
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [refreshPlans]);
+
+  const recognition = useMemo(() => {
+    const bindings = plan?.rehearsals.flatMap((row) => row.people ?? []) ?? [];
+    const recognized = new Set(
+      bindings.map((person) => person.person_name).filter(Boolean),
+    );
+    const unresolved = new Set(
+      bindings
+        .filter((person) => !person.person_name)
+        .map((person) => person.raw_name),
+    );
+    return { recognized: recognized.size, unresolved: [...unresolved] };
+  }, [plan]);
+
+  async function analyze() {
+    if (!file) {
+      setMessage({ kind: "error", text: "Bitte zuerst eine PDF auswählen." });
+      return;
+    }
+    setBusy(true);
+    setProcessingSource(true);
+    setMessage({ kind: "info", text: "Probenplan wird mit Gemini ausgelesen …" });
+    try {
+      const result = await importRehearsalPlan(file);
+      setPlan(result);
+      setSetupOpen(false);
+      setMessage({
+        kind: "success",
+        text: `${result.rehearsals.length} Proben ${result.extraction_method === "gemini" ? "mit Gemini " : ""}erkannt. Bitte kurz prüfen und anschließend aktivieren.`,
+      });
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Auswertung fehlgeschlagen.",
+      });
+    } finally {
+      setBusy(false);
+      setProcessingSource(false);
+    }
+  }
+
+  function updateRow(index: number, patch: Partial<RehearsalEntry>) {
+    setPlan((current) =>
+      current
+        ? {
+            ...current,
+            rehearsals: current.rehearsals.map((row, rowIndex) =>
+              rowIndex === index ? { ...row, ...patch } : row,
+            ),
+          }
+        : current,
+    );
+  }
+
+  function changeWeekStart(nextStart: string) {
+    setPlan((current) => {
+      if (!current || !nextStart) return current;
+      const previous = new Date(`${current.start_date}T12:00:00`);
+      const next = new Date(`${nextStart}T12:00:00`);
+      const delta = Math.round((next.getTime() - previous.getTime()) / 86400000);
+      return {
+        ...current,
+        start_date: nextStart,
+        end_date: shiftIsoDate(current.end_date, delta),
+        rehearsals: current.rehearsals.map((row) => ({
+          ...row,
+          date: shiftIsoDate(row.date, delta),
+        })),
+      };
+    });
+  }
+
+  async function save() {
+    if (!plan) return;
+    setBusy(true);
+    try {
+      const result = await saveRehearsalPlan(plan);
+      await refreshPlans();
+      const stored = await getRehearsalPlan(result.rehearsal_plan_id);
+      setPlan(stored);
+      setMessage({
+        kind: "success",
+        text: "Probenplan aktiviert. Die Dienstplan-Erstellung berücksichtigt ihn für diese Woche automatisch.",
+      });
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Speichern fehlgeschlagen.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadPlan(id: number) {
+    setBusy(true);
+    try {
+      setPlan(await getRehearsalPlan(id));
+      setSetupOpen(false);
+      setMessage({ kind: "success", text: "Gespeicherter Probenplan geladen." });
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Laden fehlgeschlagen.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removePlan(id: number) {
+    if (!window.confirm("Diesen Probenplan wirklich löschen?")) return;
+    setBusy(true);
+    try {
+      await deleteRehearsalPlan(id);
+      if (plan?.id === id) setPlan(null);
+      setSetupOpen(true);
+      await refreshPlans();
+      setMessage({ kind: "success", text: "Probenplan wurde gelöscht." });
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Löschen fehlgeschlagen.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-[1900px]">
+      <PageHeader
+        title="Probenplan"
+        subtitle="PDF einlesen und Proben automatisch als Zeitblockaden in der Dienstplanung berücksichtigen"
+      />
+
+      <section className={`plan-source-workspace ${!setupOpen && plan ? "is-collapsed" : ""}`}>
+        <div className="source-workflow-head">
+          <div>
+            <span className="planner-week-eyebrow">Verfügbarkeit vorbereiten</span>
+            <strong>PDF einlesen und erkannte Proben prüfen</strong>
+          </div>
+          <div className="source-head-actions">
+            <div className="source-mini-steps" aria-label="Importfortschritt">
+              <span className={file || plan ? "is-complete" : "is-active"}>{file || plan ? "✓" : "1"} Quelle</span>
+              <span className={plan ? "is-complete" : file ? "is-active" : ""}>{plan ? "✓" : "2"} Prüfen</span>
+              <span className={plan?.id ? "is-complete" : plan ? "is-active" : ""}>{plan?.id ? "✓" : "3"} Aktivieren</span>
+            </div>
+            {plan && (
+              <button className="source-toggle" onClick={() => setSetupOpen((current) => !current)}>
+                {setupOpen ? "Import ausblenden" : "Quelle wechseln"}
+              </button>
+            )}
+          </div>
+        </div>
+        {setupOpen ? <div className="plan-source-grid">
+          <div className="source-card">
+            <div className="source-card-head">
+              <div>
+                <strong>Probenplan einlesen</strong>
+                <small>Gemini erkennt Zeiten, Teilnehmer und T&C</small>
+              </div>
+            </div>
+            <div className="source-card-body source-card-body-stack">
+              <FileDropzone
+                file={file}
+                onFileChange={(nextFile) => {
+                  setFile(nextFile);
+                  setPlan(null);
+                  setSetupOpen(true);
+                }}
+                accept=".pdf,application/pdf"
+                title="Probenplan hier ablegen"
+                description="PDF hineinziehen oder auf diesen Bereich klicken"
+                formatLabel="PDF · Gemini-Auswertung"
+                busy={processingSource}
+                busyLabel="Probenplan wird mit Gemini ausgelesen …"
+              />
+              <button className="btn btn-primary" disabled={busy || !file} onClick={analyze}>
+                PDF auslesen
+              </button>
+            </div>
+          </div>
+
+          <div className="source-card">
+            <div className="source-card-head">
+              <div>
+                <strong>Wochenbibliothek</strong>
+                <small>Bereits aktivierten Probenplan öffnen</small>
+              </div>
+            </div>
+            <div className="source-card-body source-card-body-stack">
+              <div className="saved-plan-section">
+                <span className="field-label">Gespeicherte Probenpläne</span>
+                <SavedPlanList
+                  items={plans.map((item) => ({
+                    id: item.id,
+                    startDate: item.start_date,
+                    endDate: item.end_date,
+                    title: item.label,
+                    detail: item.source_filename || "Probenplan",
+                    meta: `${item.rehearsal_count} erkannte Proben`,
+                  }))}
+                  selectedId={plan?.id ?? null}
+                  onSelect={(id) => void loadPlan(id)}
+                  emptyText="Noch keine Probenpläne gespeichert"
+                />
+              </div>
+            </div>
+          </div>
+        </div> : plan && (
+          <div className="source-collapsed-summary">
+            <span className="source-collapsed-check">✓</span>
+            <div>
+              <strong>{plan.source_filename || "Probenplan geöffnet"}</strong>
+              <span>{formatDate(plan.start_date)} – {formatDate(plan.end_date)} · {plan.rehearsals.length} Proben</span>
+            </div>
+            <span className={plan.id ? "is-active" : ""}>{plan.id ? "Aktiv" : "In Prüfung"}</span>
+          </div>
+        )}
+      </section>
+
+      {busy && !processingSource && (
+        <ReadingProgress
+          label={message?.text ?? "Probenplan wird ausgelesen …"}
+          detail="Seiten, Tabellen, Uhrzeiten und Mitarbeiter werden zusammengeführt"
+        />
+      )}
+
+      {message && (!busy || message.kind !== "info") && (
+        <div className={`status status-${message.kind}`}>{message.text}</div>
+      )}
+
+      {plan && (
+        <>
+          <PlanReviewHeader
+            eyebrow="Proben und Verfügbarkeiten"
+            title={plan.source_filename || "Probenplan der Woche"}
+            description="Erkannte Zeiten und Teilnehmer kurz prüfen. Überschneidungen werden danach automatisch in der Dienstplanung berücksichtigt."
+            active={Boolean(plan.id)}
+            metrics={[
+              `${plan.rehearsals.length} Proben`,
+              `${recognition.recognized} aktive MA erkannt`,
+              `${formatDate(plan.start_date)} – ${formatDate(plan.end_date)}`,
+            ]}
+            weekPicker={
+              <WeekPicker
+                value={plan.start_date}
+                onChange={changeWeekStart}
+                label="Planwoche"
+              />
+            }
+            primaryLabel={plan.id ? "Änderungen speichern" : "Prüfen & aktivieren"}
+            onPrimary={save}
+            busy={busy}
+            secondaryHref="/plan-editor"
+            menuItems={plan.id ? [
+              {
+                label: "Probenplan löschen",
+                onClick: () => void removePlan(plan.id!),
+                danger: true,
+              },
+            ] : []}
+          >
+            {recognition.unresolved.length > 0 && (
+              <div className="plan-review-warning">
+                <strong>Nicht im aktiven Mitarbeiterpool:</strong>
+                <span>{recognition.unresolved.join(", ")}</span>
+              </div>
+            )}
+            {plan.warnings.length > 0 && (
+              <div className="plan-review-warning">
+                {plan.warnings.map((warning) => <div key={warning}>Hinweis: {warning}</div>)}
+              </div>
+            )}
+          </PlanReviewHeader>
+
+          <section className="panel mt-4 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="rehearsal-table min-w-[1320px]">
+                <thead>
+                  <tr>
+                    <th>Tag</th>
+                    <th>Zeit</th>
+                    <th>Ort</th>
+                    <th>Probe / Inhalt</th>
+                    <th>Show</th>
+                    <th>Teilnehmer</th>
+                    <th>Tanzchoreograf</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {plan.rehearsals.map((row, index) => (
+                    <tr key={`${row.date}-${row.start_time}-${index}`}>
+                      <td>
+                        <input type="date" value={row.date} onChange={(event) => updateRow(index, { date: event.target.value })} />
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-1">
+                          <input type="time" value={row.start_time} onChange={(event) => updateRow(index, { start_time: event.target.value })} />
+                          <span>–</span>
+                          <input type="time" value={row.end_time} onChange={(event) => updateRow(index, { end_time: event.target.value, end_inferred: false })} />
+                        </div>
+                      </td>
+                      <td>
+                        <input value={row.location ?? ""} onChange={(event) => updateRow(index, { location: event.target.value })} />
+                      </td>
+                      <td>
+                        <input value={row.activity ?? ""} onChange={(event) => updateRow(index, { activity: event.target.value })} />
+                      </td>
+                      <td>
+                        <input value={row.show_code ?? ""} onChange={(event) => updateRow(index, { show_code: event.target.value })} />
+                      </td>
+                      <td>
+                        <textarea value={row.participants_raw ?? ""} onChange={(event) => updateRow(index, { participants_raw: event.target.value })} />
+                      </td>
+                      <td>
+                        <input value={row.choreographer_raw ?? ""} onChange={(event) => updateRow(index, { choreographer_raw: event.target.value })} />
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-icon"
+                          title="Zeile entfernen"
+                          onClick={() =>
+                            setPlan((current) => current
+                              ? { ...current, rehearsals: current.rehearsals.filter((_, rowIndex) => rowIndex !== index) }
+                              : current
+                            )
+                          }
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
