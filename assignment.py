@@ -12,6 +12,15 @@ import planning_rules
 import rehearsal_plan
 import stats
 
+# Gewicht der Aufgaben-Affinität aus dem MA-Gedächtnis. Bewusst kleiner als jeder
+# Fairness-Term in `fairness_load` (24 = ein Dienst mehr diese Woche, 90 = dieselbe
+# Kategorie diese Woche), damit Erfahrung nur Gleichstände bricht und die Rotation
+# niemals aushebelt.
+AFFINITY_WEIGHT = 20
+# Aufschlag für ein manuelles "Selten einplanen". Stärker als die statistische
+# Affinität, aber unter 90 - die Person bleibt einplanbar, wenn sonst niemand frei ist.
+TASK_REMOVED_PENALTY = 60
+
 
 def _parse_date(s: str) -> date:
     return datetime.strptime(s, "%Y-%m-%d").date()
@@ -206,11 +215,15 @@ def generate_week_draft(
             )
         ]
     )
-    # Wer laut MA-Gedächtnis an dem Abend in der Show/Party steht. Weiche Regel:
-    # sperrt niemanden, verschlechtert nur die Reihenfolge bei Abenddiensten.
-    on_stage = memory.on_stage_by_date(
+    # Alle Signale aus dem MA-Gedächtnis in einem Durchlauf: Bühnenbesetzung je Abend,
+    # Aufgaben-Affinität und die manuellen "kann er trotzdem"/"selten einplanen"-Korrekturen.
+    # Alles weich - es wird nie jemand gesperrt, nur die Reihenfolge verschoben.
+    signals = memory.planning_signals(
         conn, new_start.isoformat(), week_end.isoformat(), template_code
     )
+    on_stage = signals["on_stage_by_date"]
+    affinity_by_person_category = signals["affinity"]
+    task_removed = signals["task_removed"]
     rehearsal_by_person_day: dict[tuple[str, str], list[tuple[int, int]]] = {}
     for rehearsal in db.get_rehearsal_intervals(
         conn, new_start.isoformat(), week_end.isoformat()
@@ -228,6 +241,14 @@ def generate_week_draft(
         cat: [p for p in people if p in active_people]
         for cat, people in stats.category_candidates(conn).items()
     }
+    # Kaltstart-Hebel: `stats.category_candidates` kennt nur, wer eine Aufgabe schon
+    # einmal gemacht hat - neue MA (z.B. Dylana ohne Historie) kämen sonst nie vor.
+    # Ein "Kann er trotzdem" im Gedächtnis holt sie in den Kandidatenpool.
+    for cat, names in signals["task_added"].items():
+        pool = candidates_by_category.setdefault(cat, [])
+        for name in names:
+            if name in active_people and name not in pool:
+                pool.append(name)
     # Echte Zeitkonflikte werden blockiert; nicht zeitgleiche Dienste bleiben möglich.
     busy_by_day_time: dict[tuple[str, str], set[str]] = {}
     weekly_load: dict[str, int] = {name: 0 for name in active_people}
@@ -334,11 +355,26 @@ def generate_week_draft(
 
         def fairness_load(person: str) -> float:
             previous = previous_workload.get(person, {})
+            # Affinität ist bewusst kleiner gewichtet als jeder Fairness-Term:
+            # 20 < 24 (ein Dienst mehr diese Woche) < 90 (dieselbe Kategorie diese Woche).
+            # Sie kann also nie Fairness überstimmen, sondern bricht nur Gleichstände.
+            # Wichtig: die Affinität ist über die ganze Woche konstant, während
+            # weekly_category_load beim ersten Einsatz sofort um 90 und weekly_load um 24
+            # wächst. Wer eine Aufgabe "immer macht", gewinnt damit den ERSTEN Slot der
+            # Woche - nicht die ganze Woche.
+            affinity = affinity_by_person_category.get((person, norm_cat), 0.0)
+            manual_penalty = (
+                TASK_REMOVED_PENALTY
+                if person in task_removed.get(norm_cat, ())
+                else 0
+            )
             return (
                 weekly_category_load.get((person, norm_cat), 0) * 90
                 + weekly_load.get(person, 0) * 24
                 + float(previous.get("overload", 0)) * 20
                 + float(previous.get("weighted_load", 0)) * 3
+                - AFFINITY_WEIGHT * affinity
+                + manual_penalty
             )
 
         candidates.sort(

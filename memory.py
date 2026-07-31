@@ -520,18 +520,9 @@ def _dates_between(start_iso: str, end_iso: str) -> list[str]:
     return [(start + timedelta(days=i)).isoformat() for i in range((end - start).days + 1)]
 
 
-def on_stage_by_date(
-    conn,
-    start_iso: str,
-    end_iso: str,
-    template_code: str | None = None,
-) -> dict[str, list[str]]:
-    """{datum: [MA-Namen]} - wer laut Gedächtnis an dem Abend auf der Bühne steht."""
-    schedule = show_schedule(conn, start_iso, end_iso, template_code)
-    if not schedule:
-        return {}
+def _on_stage_from_memory(schedule: dict[str, dict], entries: list[dict]) -> dict[str, list[str]]:
     cast_by_show: dict[str, set[str]] = defaultdict(set)
-    for person in build_memory(conn)["people"]:
+    for person in entries:
         if not person["active"]:
             continue
         for show in person["shows"]:
@@ -545,6 +536,58 @@ def on_stage_by_date(
         if names:
             result[iso] = sorted(names)
     return result
+
+
+def on_stage_by_date(
+    conn,
+    start_iso: str,
+    end_iso: str,
+    template_code: str | None = None,
+) -> dict[str, list[str]]:
+    """{datum: [MA-Namen]} - wer laut Gedächtnis an dem Abend auf der Bühne steht."""
+    schedule = show_schedule(conn, start_iso, end_iso, template_code)
+    if not schedule:
+        return {}
+    return _on_stage_from_memory(schedule, build_memory(conn)["people"])
+
+
+def planning_signals(
+    conn,
+    start_iso: str,
+    end_iso: str,
+    template_code: str | None = None,
+) -> dict:
+    """Alle Gedächtnis-Signale für die Plangenerierung - mit EINEM build_memory-Durchlauf.
+
+    -> {"on_stage_by_date": {datum: [Namen]},
+        "affinity": {(Name, Kategorie): float in [-1,+1]},
+        "task_added":   {Kategorie: [Namen]},   # manuell zugetraut (Kaltstart-Hebel)
+        "task_removed": {Kategorie: [Namen]}}   # manuell "selten einplanen"
+    """
+    entries = build_memory(conn)["people"]
+    schedule = show_schedule(conn, start_iso, end_iso, template_code)
+
+    affinity: dict[tuple[str, str], float] = {}
+    task_added: dict[str, list[str]] = defaultdict(list)
+    task_removed: dict[str, list[str]] = defaultdict(list)
+    for person in entries:
+        if not person["active"]:
+            continue
+        name = person["person"]
+        for task in person["tasks"]:
+            category = task["category"]
+            affinity[(name, category)] = float(task.get("affinity") or 0.0)
+            if task["state"] == "added":
+                task_added[category].append(name)
+            elif task["state"] == "removed":
+                task_removed[category].append(name)
+
+    return {
+        "on_stage_by_date": _on_stage_from_memory(schedule, entries) if schedule else {},
+        "affinity": affinity,
+        "task_added": dict(task_added),
+        "task_removed": dict(task_removed),
+    }
 
 
 def _free_quota() -> int:

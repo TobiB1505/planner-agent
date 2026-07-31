@@ -109,6 +109,36 @@ def active_planning_rules() -> list[dict]:
             "tone": "info",
         },
         {
+            "id": "memory_free",
+            "title": "Frei-Muster aus dem MA-Gedächtnis",
+            "description": (
+                "Aus der Historie wird erkannt, an welchen Wochentagen ein MA meistens "
+                "frei hat. Der Vorschlag muss immer bestätigt werden und überschreibt "
+                "nie eigene Einträge. Ohne klares Muster kommt kein Vorschlag."
+            ),
+            "tone": "info",
+        },
+        {
+            "id": "memory_show",
+            "title": "Show-Besetzung am Abend",
+            "description": (
+                "Wer laut Gedächtnis in der Show oder Party des Abends steht, wird für "
+                "Abenddienste niedriger priorisiert - eine weiche Regel, keine Sperre. "
+                "Gilt auch für Wochen, deren Probenplan noch nicht importiert ist."
+            ),
+            "tone": "warning",
+        },
+        {
+            "id": "memory_tasks",
+            "title": "Aufgaben-Profil",
+            "description": (
+                "Wer eine Aufgabe erfahrungsgemäß oft übernimmt, wird bei sonst gleicher "
+                "Belastung leicht bevorzugt. Fairness und Rotation bleiben immer stärker "
+                "gewichtet. Im Gedächtnis lässt sich das pro MA übersteuern."
+            ),
+            "tone": "info",
+        },
+        {
             "id": "departments",
             "title": "Abteilungslogik",
             "description": (
