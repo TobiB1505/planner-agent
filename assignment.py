@@ -283,6 +283,14 @@ def generate_week_draft(
         required = 4 if special_bvb else 1
         prepared_template_rows.extend(dict(representative) for _ in range(required))
 
+    # Die Tagesverantwortung wird zuerst vergeben: sie entscheidet, wer den Tag führt,
+    # und OPS/WP orientiert sich anschliessend daran. Ohne diese Vorab-Runde stünde
+    # sie noch nicht fest, weil die Vorlagenzeilen alphabetisch kommen (OPS vor Tages-).
+    prepared_template_rows.sort(
+        key=lambda row: stats.normalize_category(row["category"]) != "Tagesverantwortung"
+    )
+    day_lead: dict[str, str] = {}
+
     draft = []
     for row in prepared_template_rows:
         offset = (_parse_date(row["date"]) - template_start).days
@@ -334,13 +342,23 @@ def generate_week_draft(
         ]
 
         def stage_penalty(person: str) -> int:
-            """1, wenn die Person an diesem Abend auf der Bühne steht. Nur Abenddienste."""
-            if (
-                service_slot is None
-                or service_slot[0] < planning_rules.EVENING_CUTOFF_MINUTES
-            ):
+            """1, wenn die Person durch die Show an diesem Tag verhindert ist.
+
+            Zwei Fälle, beide weich: der Abenddienst während der Show selbst und
+            die mittägliche Showprobe (13:15-15:00), die z.B. mit KP2 oder dem
+            An-/Abreise-Dienst kollidiert.
+            """
+            if service_slot is None or person not in on_stage.get(new_date_str, []):
                 return 0
-            return 1 if person in on_stage.get(new_date_str, []) else 0
+            if service_slot[0] >= planning_rules.EVENING_CUTOFF_MINUTES:
+                return 1
+            return 1 if planning_rules.overlaps_show_rehearsal(service_slot) else 0
+
+        def lead_bonus(person: str) -> int:
+            """OPS/WP bevorzugt die Person, die den Tag ohnehin verantwortet."""
+            if norm_cat != "OPS + WP":
+                return 0
+            return 0 if day_lead.get(new_date_str) == person else 1
 
         def rehearsal_load(person: str) -> int:
             return max(
@@ -388,6 +406,7 @@ def generate_week_draft(
                 )["recommended"],
                 rehearsal_load(p),
                 stage_penalty(p),
+                lead_bonus(p),
                 fairness_load(p),
                 last_active_lookup.get((p, norm_cat)) or "0000-00-00",
                 p.casefold(),
@@ -396,6 +415,8 @@ def generate_week_draft(
         suggested = candidates[0] if candidates else None
 
         if suggested:
+            if norm_cat == "Tagesverantwortung":
+                day_lead[new_date_str] = suggested
             last_active_lookup[(suggested, norm_cat)] = new_date_str
             busy_by_day_time.setdefault(busy_key, set()).add(suggested)
             weekly_load[suggested] = weekly_load.get(suggested, 0) + 1

@@ -20,6 +20,10 @@ EIGHT_HOUR_CONTRACT_PEOPLE = {"Brigitte", "Manu"}
 _EIGHT_HOUR_CONTRACT_CASEFOLDED = {name.casefold() for name in EIGHT_HOUR_CONTRACT_PEOPLE}
 EXTRADIENSTE_PERSON_CATEGORIES = {"TT & Kicker wischen", "Süße Momente", "An + Abreise-Dienst"}
 EVENING_CUTOFF_MINUTES = 17 * 60
+
+# An Showtagen ist mittags von 13:15 bis 15:00 Uhr Showprobe. Wer in der Show steht,
+# kann in diesem Fenster keine Extradienste oder Kochdienste übernehmen (weiche Regel).
+SHOW_REHEARSAL_WINDOW = (13 * 60 + 15, 15 * 60)
 TIME_RANGE_RE = re.compile(
     r"(?<!\d)(\d{1,2})[:.](\d{2})\s*(?:-|–|bis)\s*(\d{1,2})[:.](\d{2})(?!\d)",
     re.IGNORECASE,
@@ -139,11 +143,31 @@ def active_planning_rules() -> list[dict]:
             "tone": "info",
         },
         {
+            "id": "show_rehearsal_midday",
+            "title": "Showprobe mittags an Showtagen",
+            "description": (
+                "An Showtagen ist von 13:15 bis 15:00 Uhr Showprobe. Wer in der Show "
+                "steht, wird für Dienste in diesem Fenster - etwa An-/Abreise oder den "
+                "Mittags-Kochdienst - niedriger priorisiert. Weiche Regel, Ausnahmen "
+                "bleiben möglich."
+            ),
+            "tone": "warning",
+        },
+        {
+            "id": "ops_lead",
+            "title": "OPS/WP und Tagesverantwortung",
+            "description": (
+                "OPS/WP übernimmt bevorzugt ein Manager, und dort wiederum bevorzugt "
+                "die Person mit der Tagesverantwortung. Es ist keine Sperre - andere "
+                "MA können OPS/WP übernehmen, wenn kein Manager frei ist."
+            ),
+            "tone": "info",
+        },
+        {
             "id": "departments",
             "title": "Abteilungslogik",
             "description": (
-                "S&L wird beim Aperitif bevorzugt, KP3 vermeidet S&L und "
-                "OPS/WP priorisiert Manager."
+                "S&L wird beim Aperitif bevorzugt und KP3 vermeidet S&L."
             ),
             "tone": "info",
         },
@@ -324,12 +348,19 @@ def person_decision(
             ),
         }
     if rule_id == "ops_managers":
-        allowed = "MANAGER" in tags
+        # Weiche Regel: Manager werden bevorzugt, andere MA sind aber zulässig.
+        # Zusätzlich wird bei der Reihenfolge bevorzugt, wer am selben Tag die
+        # Tagesverantwortung hat - das braucht Tageskontext und passiert deshalb
+        # nicht hier, sondern in assignment.py bzw. recommendations.ts.
+        recommended = "MANAGER" in tags
         return {
             "rule_id": rule_id,
-            "allowed": allowed,
-            "recommended": allowed,
-            "message": "OPS/WP wird ausschließlich einem Manager zugewiesen.",
+            "allowed": True,
+            "recommended": recommended,
+            "message": (
+                "OPS/WP übernimmt bevorzugt ein Manager - meist die Person mit der "
+                "Tagesverantwortung. Andere MA sind möglich, wenn kein Manager frei ist."
+            ),
         }
     return {
         "rule_id": None,
@@ -447,6 +478,11 @@ def rehearsal_interval(start_time: str, end_time: str) -> tuple[int, int]:
     if end <= start:
         end += 24 * 60
     return start, end
+
+
+def overlaps_show_rehearsal(service: tuple[int, int] | None) -> bool:
+    """Kollidiert der Dienst mit der mittäglichen Showprobe (13:15-15:00)?"""
+    return service is not None and intervals_overlap(service, SHOW_REHEARSAL_WINDOW)
 
 
 def rehearsal_conflict_level(
