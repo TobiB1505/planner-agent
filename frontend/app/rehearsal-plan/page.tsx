@@ -11,6 +11,7 @@ import {
   getRehearsalPlan,
   getRehearsalPlans,
   importRehearsalPlan,
+  uploadRehearsalPlanSheets,
   saveRehearsalPlan,
   type RehearsalEntry,
   type RehearsalPlanData,
@@ -35,6 +36,8 @@ function shiftIsoDate(iso: string, days: number): string {
 export default function RehearsalPlanPage() {
   const [plans, setPlans] = useState<RehearsalPlanSummary[]>([]);
   const [file, setFile] = useState<File | null>(null);
+  const [sheets, setSheets] = useState<string[]>([]);
+  const [sheet, setSheet] = useState("");
   const [plan, setPlan] = useState<RehearsalPlanData | null>(null);
   const [busy, setBusy] = useState(false);
   const [processingSource, setProcessingSource] = useState(false);
@@ -70,21 +73,64 @@ export default function RehearsalPlanPage() {
     return { recognized: recognized.size, unresolved: [...unresolved] };
   }, [plan]);
 
+  const isExcel = Boolean(file && file.name.toLocaleLowerCase().endsWith(".xlsx"));
+
+  /** Bei Excel zuerst die Wochenblätter holen, damit die Woche gewählt werden kann. */
+  async function chooseFile(nextFile: File | null) {
+    setFile(nextFile);
+    setPlan(null);
+    setSetupOpen(true);
+    setSheets([]);
+    setSheet("");
+    if (!nextFile || !nextFile.name.toLocaleLowerCase().endsWith(".xlsx")) return;
+    setBusy(true);
+    try {
+      const result = await uploadRehearsalPlanSheets(nextFile);
+      setSheets(result.sheets);
+      setSheet(result.sheets.at(-1) ?? "");
+      setMessage({
+        kind: "info",
+        text: "Excel gelesen. Bitte die gewünschte Probenwoche auswählen.",
+      });
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Excel konnte nicht gelesen werden.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function analyze() {
     if (!file) {
-      setMessage({ kind: "error", text: "Bitte zuerst eine PDF auswählen." });
+      setMessage({ kind: "error", text: "Bitte zuerst eine Datei auswählen." });
+      return;
+    }
+    if (isExcel && !sheet) {
+      setMessage({ kind: "error", text: "Bitte zuerst eine Probenwoche auswählen." });
       return;
     }
     setBusy(true);
     setProcessingSource(true);
-    setMessage({ kind: "info", text: "Probenplan wird mit Gemini ausgelesen …" });
+    setMessage({
+      kind: "info",
+      text: isExcel
+        ? "Probenwoche wird aus der Excel-Datei gelesen …"
+        : "Probenplan wird mit Gemini ausgelesen …",
+    });
     try {
-      const result = await importRehearsalPlan(file);
+      const result = await importRehearsalPlan(file, isExcel ? sheet : undefined);
       setPlan(result);
       setSetupOpen(false);
+      const quelle = result.extraction_method === "gemini"
+        ? "mit Gemini "
+        : result.extraction_method === "excel"
+          ? "aus der Excel-Datei "
+          : "";
       setMessage({
         kind: "success",
-        text: `${result.rehearsals.length} Proben ${result.extraction_method === "gemini" ? "mit Gemini " : ""}erkannt. Bitte kurz prüfen und anschließend aktivieren.`,
+        text: `${result.rehearsals.length} Proben ${quelle}erkannt. Bitte kurz prüfen und anschließend aktivieren.`,
       });
     } catch (error) {
       setMessage({
@@ -222,20 +268,34 @@ export default function RehearsalPlanPage() {
             <div className="source-card-body source-card-body-stack">
               <FileDropzone
                 file={file}
-                onFileChange={(nextFile) => {
-                  setFile(nextFile);
-                  setPlan(null);
-                  setSetupOpen(true);
-                }}
-                accept=".pdf,application/pdf"
+                onFileChange={chooseFile}
+                accept=".pdf,application/pdf,.xlsx"
                 title="Probenplan hier ablegen"
-                description="PDF hineinziehen oder auf diesen Bereich klicken"
-                formatLabel="PDF · Gemini-Auswertung"
+                description="PDF oder Excel hineinziehen oder auf diesen Bereich klicken"
+                formatLabel="PDF · Gemini · oder Excel"
                 busy={processingSource}
-                busyLabel="Probenplan wird mit Gemini ausgelesen …"
+                busyLabel={isExcel
+                  ? "Probenwoche wird aus der Excel-Datei gelesen …"
+                  : "Probenplan wird mit Gemini ausgelesen …"}
               />
-              <button className="btn btn-primary" disabled={busy || !file} onClick={analyze}>
-                PDF auslesen
+              {sheets.length > 0 && (
+                <label className="field">
+                  <span className="field-label">Probenwoche</span>
+                  <select
+                    className="control"
+                    value={sheet}
+                    onChange={(event) => setSheet(event.target.value)}
+                  >
+                    {sheets.map((name) => <option key={name}>{name}</option>)}
+                  </select>
+                </label>
+              )}
+              <button
+                className="btn btn-primary"
+                disabled={busy || !file || (isExcel && !sheet)}
+                onClick={analyze}
+              >
+                {isExcel ? "Excel auslesen" : "PDF auslesen"}
               </button>
             </div>
           </div>

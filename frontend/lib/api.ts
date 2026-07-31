@@ -310,9 +310,10 @@ export interface RehearsalPlanData {
   start_date: string;
   end_date: string;
   source_filename?: string | null;
+  sheet_name?: string | null;
   rehearsals: RehearsalEntry[];
   warnings: string[];
-  extraction_method?: "gemini" | "local";
+  extraction_method?: "gemini" | "local" | "excel";
 }
 
 export interface RehearsalPlanSummary {
@@ -516,10 +517,20 @@ export async function exportArtistPlan(id: number): Promise<Blob> {
 }
 
 // ---------- Probenplan ----------
-export async function importRehearsalPlan(file: File): Promise<RehearsalPlanData> {
+export async function uploadRehearsalPlanSheets(file: File): Promise<{ sheets: string[] }> {
   const form = new FormData();
   form.append("file", file);
-  return request<RehearsalPlanData>("/rehearsal-plans/import", {
+  return request("/rehearsal-plans/upload/sheets", { method: "POST", body: form });
+}
+
+export async function importRehearsalPlan(
+  file: File,
+  sheetName?: string,
+): Promise<RehearsalPlanData> {
+  const form = new FormData();
+  form.append("file", file);
+  const query = sheetName ? `?sheet_name=${encodeURIComponent(sheetName)}` : "";
+  return request<RehearsalPlanData>(`/rehearsal-plans/import${query}`, {
     method: "POST",
     body: form,
   });

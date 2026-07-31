@@ -481,16 +481,40 @@ def artist_plan_export(artist_plan_id: int):
 
 # ---------- Probenplan ----------
 
+@app.post("/api/rehearsal-plans/upload/sheets")
+async def rehearsal_plan_sheets(file: UploadFile = File(...)):
+    """Wochenblätter einer Probenplan-Excel auflisten (Vorlage/Diagramme fliegen raus)."""
+    content = await file.read()
+    try:
+        sheets = rehearsal_plan.list_sheets(io.BytesIO(content))
+    except Exception as exc:
+        raise HTTPException(500, f"Konnte Excel-Datei nicht lesen: {exc}") from exc
+    if not sheets:
+        raise HTTPException(400, "Die Datei enthält kein erkennbares Wochenblatt.")
+    return {"sheets": sheets}
+
+
 @app.post("/api/rehearsal-plans/import")
-async def rehearsal_plan_import(file: UploadFile = File(...)):
-    if not (file.filename or "").casefold().endswith(".pdf"):
-        raise HTTPException(400, "Bitte eine Probenplan-PDF auswählen.")
+async def rehearsal_plan_import(
+    file: UploadFile = File(...),
+    sheet_name: Optional[str] = None,
+):
+    filename = (file.filename or "").casefold()
+    if not filename.endswith((".pdf", ".xlsx")):
+        raise HTTPException(400, "Bitte eine Probenplan-PDF oder -Excel auswählen.")
     content = await file.read()
     conn = get_conn()
     active_people = [
         row["name"] for row in db.get_all_people(conn, active_only=True)
     ]
     try:
+        if filename.endswith(".xlsx"):
+            return rehearsal_plan.extract_xlsx(
+                io.BytesIO(content),
+                active_people,
+                sheet_name=sheet_name,
+                source_filename=file.filename,
+            )
         if os.environ.get("GEMINI_API_KEY"):
             try:
                 return rehearsal_plan.extract_pdf_with_gemini(

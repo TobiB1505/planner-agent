@@ -8,6 +8,7 @@ import unicodedata
 from datetime import date, datetime, timedelta
 
 import fitz
+import openpyxl
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
@@ -402,6 +403,152 @@ def extract_pdf_with_gemini(
         "rehearsals": normalized,
         "warnings": warnings,
         "extraction_method": "gemini",
+    }
+
+
+# --- Excel-Import -----------------------------------------------------------
+
+# Wochenblätter heißen "03.08-09.08", "29.06 - 05.07" oder "09.02-15.02.2026".
+SHEET_RANGE_RE = re.compile(
+    r"(\d{1,2})[.,](\d{1,2})\s*-\s*(\d{1,2})[.,](\d{1,2})(?:[.,](\d{4}))?"
+)
+WEEKDAY_INDEX = {"mo": 0, "di": 1, "mi": 2, "do": 3, "fr": 4, "sa": 5, "so": 6}
+WEEKDAY_RE = re.compile(r"^\s*(mo|di|mi|do|fr|sa|so)\b", re.IGNORECASE)
+# Kopfzeile eines Tagesblocks: Zeit | Wo | Was | Wer | Show | T&C
+HEADER_TOKENS = {"zeit", "wo", "was", "wer", "show"}
+
+
+def list_sheets(source) -> list[str]:
+    """Nur echte Wochenblätter - "Vorlage", "Diagramm1", "FDK" usw. fliegen raus."""
+    wb = openpyxl.load_workbook(source, data_only=True, read_only=True)
+    try:
+        return [name for name in wb.sheetnames if SHEET_RANGE_RE.search(name)]
+    finally:
+        wb.close()
+
+
+def sheet_week_start(sheet_name: str, reference: date | None = None) -> date | None:
+    """Wochenstart aus dem Blattnamen. Ohne Jahresangabe wird das Jahr gewählt,
+    dessen Datum dem Referenztag (heute) am nächsten liegt."""
+    match = SHEET_RANGE_RE.search(sheet_name or "")
+    if not match:
+        return None
+    day, month = int(match.group(1)), int(match.group(2))
+    if match.group(5):
+        try:
+            return date(int(match.group(5)), month, day)
+        except ValueError:
+            return None
+    today = reference or date.today()
+    candidates = []
+    for year in (today.year - 1, today.year, today.year + 1):
+        try:
+            candidates.append(date(year, month, day))
+        except ValueError:
+            continue
+    return min(candidates, key=lambda d: abs((d - today).days)) if candidates else None
+
+
+def extract_xlsx(
+    source,
+    active_people: list[str],
+    sheet_name: str | None = None,
+    source_filename: str | None = None,
+) -> dict:
+    """Liest ein Wochenblatt des Probenplans aus Excel.
+
+    Die Datumszeilen im Blatt ("Di. 04.09") sind in echten Dateien oft aus einer
+    anderen Woche kopiert und tragen den falschen Monat. Verlässlich ist nur der
+    Wochentag - das Datum kommt deshalb aus dem Blattnamen plus Wochentag-Versatz.
+    Abweichungen werden als Warnung gemeldet, statt sie stillschweigend zu übernehmen.
+    """
+    wb = openpyxl.load_workbook(source, data_only=True)
+    try:
+        if sheet_name is None:
+            sheets = [n for n in wb.sheetnames if SHEET_RANGE_RE.search(n)]
+            if not sheets:
+                raise ValueError("Die Datei enthält kein erkennbares Wochenblatt.")
+            sheet_name = sheets[-1]
+        if sheet_name not in wb.sheetnames:
+            raise ValueError(f"Blatt '{sheet_name}' fehlt in der Datei.")
+        ws = wb[sheet_name]
+
+        week_start = sheet_week_start(sheet_name)
+        if week_start is None:
+            raise ValueError(
+                f"Aus dem Blattnamen '{sheet_name}' liess sich kein Wochenstart lesen."
+            )
+
+        rows: list[dict] = []
+        warnings: list[str] = []
+        mismatches: set[str] = set()
+        current: date | None = None
+
+        for row in ws.iter_rows(min_row=1, max_col=6, values_only=True):
+            cells = [_clean_text(value) for value in row] + [""] * 6
+            first = cells[0]
+
+            weekday = WEEKDAY_RE.match(first)
+            if weekday and not _times(first):
+                index = WEEKDAY_INDEX[weekday.group(1).casefold()]
+                current = week_start + timedelta(days=index)
+                printed = _parse_date(first, week_start.year)
+                if printed and printed != current:
+                    mismatches.add(f"{first} -> {current.strftime('%d.%m.')}")
+                continue
+
+            if first.casefold() in HEADER_TOKENS or cells[1].casefold() == "wo":
+                continue
+            if current is None:
+                continue
+
+            times = _times(first)
+            if times is None:
+                continue
+            start_time, end_time, inferred = times
+            activity = cells[2] or cells[1]
+            if not activity:
+                continue
+
+            rows.append({
+                "date": current.isoformat(),
+                "start_time": start_time,
+                "end_time": end_time,
+                "location": cells[1],
+                "activity": activity,
+                "show_code": cells[4],
+                "participants_raw": cells[3],
+                "choreographer_raw": cells[5],
+                "end_inferred": inferred,
+            })
+            if inferred:
+                warnings.append(
+                    f"{current.strftime('%d.%m.')}: Ende für „{activity}“ "
+                    "wurde mit 60 Minuten angesetzt."
+                )
+    finally:
+        wb.close()
+
+    if not rows:
+        raise ValueError(f"Im Blatt '{sheet_name}' wurden keine Probenzeilen erkannt.")
+
+    if mismatches:
+        warnings.insert(0, (
+            "Im Blatt stehen abweichende Datumsangaben (vermutlich aus einer anderen "
+            "Woche kopiert). Verwendet wurde der Wochentag aus dem Blattnamen: "
+            + ", ".join(sorted(mismatches))
+        ))
+
+    normalized = normalize_rehearsals(rows, active_people)
+    dates = [datetime.strptime(row["date"], "%Y-%m-%d").date() for row in normalized]
+    return {
+        "start_date": min(dates).isoformat(),
+        "end_date": max(dates).isoformat(),
+        "source_filename": source_filename,
+        "sheet_name": sheet_name,
+        "rehearsals": normalized,
+        "warnings": warnings,
+        "extraction_method": "excel",
     }
 
 

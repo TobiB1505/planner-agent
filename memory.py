@@ -45,6 +45,8 @@ SHOWS: dict[str, dict] = {
     "TGS": {"label": "The Greatest Show", "kind": "show",
             "names": ["the greatest show", "greatest show"]},
     "WI": {"label": "What If", "kind": "show", "names": ["what if"]},
+    "VE": {"label": "Viva Espana", "kind": "show",
+           "names": ["viva espana", "viva españa"]},
     "FYS": {"label": "Paradise on Fire", "kind": "party",
             "names": ["paradise on fire", "fire your soul"]},
     "BN": {"label": "Black Night", "kind": "party", "names": ["black night"]},
