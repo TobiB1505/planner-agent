@@ -235,14 +235,14 @@ export default function RehearsalPlanPage() {
     <div className="mx-auto max-w-[1900px]">
       <PageHeader
         title="Probenplan"
-        subtitle="PDF einlesen und Proben automatisch als Zeitblockaden in der Dienstplanung berücksichtigen"
+        subtitle="Probenplan als PDF oder Excel einlesen – die Proben werden automatisch als Zeitblockaden in der Dienstplanung berücksichtigt"
       />
 
       <section className={`plan-source-workspace ${!setupOpen && plan ? "is-collapsed" : ""}`}>
         <div className="source-workflow-head">
           <div>
             <span className="planner-week-eyebrow">Verfügbarkeit vorbereiten</span>
-            <strong>PDF einlesen und erkannte Proben prüfen</strong>
+            <strong>Probenplan einlesen und erkannte Proben prüfen</strong>
           </div>
           <div className="source-head-actions">
             <div className="source-mini-steps" aria-label="Importfortschritt">
@@ -262,7 +262,11 @@ export default function RehearsalPlanPage() {
             <div className="source-card-head">
               <div>
                 <strong>Probenplan einlesen</strong>
-                <small>Gemini erkennt Zeiten, Teilnehmer und T&C</small>
+                <small>
+                  {isExcel
+                    ? "Excel wird direkt gelesen – Zeiten, Teilnehmer und T&C"
+                    : "Excel wird direkt gelesen, PDF automatisch mit Gemini ausgewertet"}
+                </small>
               </div>
             </div>
             <div className="source-card-body source-card-body-stack">
@@ -272,7 +276,7 @@ export default function RehearsalPlanPage() {
                 accept=".pdf,application/pdf,.xlsx"
                 title="Probenplan hier ablegen"
                 description="PDF oder Excel hineinziehen oder auf diesen Bereich klicken"
-                formatLabel="PDF · Gemini · oder Excel"
+                formatLabel="PDF .pdf · Excel .xlsx"
                 busy={processingSource}
                 busyLabel={isExcel
                   ? "Probenwoche wird aus der Excel-Datei gelesen …"
@@ -295,7 +299,7 @@ export default function RehearsalPlanPage() {
                 disabled={busy || !file || (isExcel && !sheet)}
                 onClick={analyze}
               >
-                {isExcel ? "Excel auslesen" : "PDF auslesen"}
+                {!file ? "Probenplan auslesen" : isExcel ? "Excel auslesen" : "PDF auslesen"}
               </button>
             </div>
           </div>

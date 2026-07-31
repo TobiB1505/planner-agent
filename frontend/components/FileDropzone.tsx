@@ -36,7 +36,7 @@ export default function FileDropzone({
 
   function selectFile(nextFile: File | null) {
     if (nextFile && !acceptsFile(nextFile)) {
-      setError(`Bitte eine passende ${formatLabel.split("·")[0].trim()}-Datei auswählen.`);
+      setError(`Dieses Dateiformat passt nicht. Erlaubt sind: ${formatLabel}.`);
       return;
     }
     setError("");
