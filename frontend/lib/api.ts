@@ -646,4 +646,22 @@ export interface SystemDiagnostics {
 }
 
 export const getSystemDiagnostics = () => get<SystemDiagnostics>("/system/diagnostics");
+
+/** Alter Weg: das Backend startet sich über /api/system/restart selbst neu
+ * (execv). Funktioniert nur, solange das Backend noch antwortet. */
 export const restartBackend = () => post<{ status: string }>("/system/restart");
+
+/**
+ * Robuster Weg: von Next.js selbst beantwortet (nicht vom Backend), daher
+ * funktioniert er auch, wenn das Backend abgestürzt oder nie gestartet ist -
+ * Next.js startet in dem Fall direkt einen neuen Backend-Prozess. Das ist
+ * der Weg, den die /system-Seite tatsächlich verwendet.
+ */
+export async function ensureBackendRestarted(): Promise<{ ok: boolean; message: string }> {
+  const res = await fetch("/control/backend/restart", { method: "POST" });
+  const body = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
+  if (!res.ok) {
+    throw new ApiError(res.status, body.message || `Neustart fehlgeschlagen (${res.status})`);
+  }
+  return { ok: body.ok ?? true, message: body.message ?? "" };
+}

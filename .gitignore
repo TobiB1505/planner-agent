@@ -34,3 +34,6 @@ local_data/archives/dienstplanarchiv/*
 # Lokale Uploads/Exporte - reine Laufzeitdaten.
 local_data/uploads/
 local_data/exports/
+
+# Log des Next.js-Backend-Supervisors (frontend/lib/backend-supervisor.ts).
+local_data/.backend-supervisor.log

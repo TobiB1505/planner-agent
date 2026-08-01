@@ -3,9 +3,9 @@
 import PageHeader from "@/components/PageHeader";
 import {
   ApiError,
+  ensureBackendRestarted,
   getSystemDiagnostics,
   healthCheck,
-  restartBackend,
   type SystemDiagnostics,
 } from "@/lib/api";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -90,22 +90,31 @@ export default function SystemPage() {
   }, []);
 
   async function handleRestart() {
-    if (!window.confirm("Backend jetzt neu starten? Die Verbindung ist dabei kurz unterbrochen.")) {
+    if (!window.confirm("Backend jetzt (neu) starten? Die Verbindung ist dabei kurz unterbrochen.")) {
       return;
     }
     setRestarting(true);
     setMessage({ kind: "info", text: "Neustart wird ausgelöst …" });
     try {
-      await restartBackend();
-    } catch {
-      // Die Anfrage selbst kann durch den Neustart abbrechen - das ist
-      // erwartet, kein Fehler. Wir verlassen uns aufs anschliessende Polling.
+      // Läuft über Next.js selbst (nicht über das Backend) - funktioniert
+      // deshalb auch, wenn das Backend gerade abgestürzt oder gar nicht
+      // gestartet ist: in dem Fall startet Next.js direkt einen neuen
+      // Backend-Prozess, statt (zwecklos) eine Anfrage an den toten Server
+      // zu schicken.
+      await ensureBackendRestarted();
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: error instanceof ApiError ? error.message : "Neustart konnte nicht ausgelöst werden.",
+      });
+      setRestarting(false);
+      return;
     }
     setHealth("down");
 
-    // Kurz warten, bis der alte Worker-Prozess herunterfährt, dann in
-    // kurzen Abständen prüfen, bis der neue wieder antwortet - keine feste
-    // lange Wartezeit.
+    // Kurz warten, bis der alte Prozess herunterfährt bzw. der neue
+    // hochfährt, dann in kurzen Abständen prüfen - keine feste lange
+    // Wartezeit.
     await new Promise((resolve) => setTimeout(resolve, 800));
     for (let attempt = 0; attempt < 30; attempt += 1) {
       const up = await checkHealth();
