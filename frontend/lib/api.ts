@@ -10,24 +10,42 @@ export class ApiError extends Error {
   }
 }
 
+const BACKEND_UNREACHABLE_MESSAGE =
+  "Das lokale Backend ist nicht erreichbar. Bitte starte den Planner-Agent erneut.";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: {
-      ...(init?.body && !(init.body instanceof FormData)
-        ? { "Content-Type": "application/json" }
-        : {}),
-      ...init?.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, {
+      ...init,
+      headers: {
+        ...(init?.body && !(init.body instanceof FormData)
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...init?.headers,
+      },
+    });
+  } catch {
+    // fetch() wirft nur, wenn die Anfrage den Server gar nicht erst erreicht
+    // (z.B. Next.js-Dev-Server selbst nicht erreichbar) - kein Stacktrace im UI.
+    throw new ApiError(0, BACKEND_UNREACHABLE_MESSAGE);
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     let message = text;
+    let hasDetail = false;
     try {
       const parsed = JSON.parse(text);
       message = parsed.detail ?? text;
+      hasDetail = typeof parsed.detail === "string";
     } catch {
       // keep raw text
+    }
+    // Ein FastAPI-Fehler liefert immer JSON mit "detail". Ohne das ist ein
+    // 5xx kein fachlicher Fehler, sondern der next.config.ts-Rewrite konnte
+    // das Backend selbst nicht erreichen (z.B. noch nicht gestartet).
+    if (!hasDetail && res.status >= 500) {
+      throw new ApiError(res.status, BACKEND_UNREACHABLE_MESSAGE);
     }
     throw new ApiError(res.status, message || `Anfrage fehlgeschlagen (${res.status})`);
   }
@@ -188,7 +206,6 @@ export interface PlanGenerateResult {
   assignment_rules: Record<string, AssignmentRule>;
   template_week_id: number;
   template_code: string | null;
-  xlsx_template_path: string | null;
   xlsx_sheet: string | null;
   artist_plan: {
     id: number;
@@ -242,7 +259,6 @@ export interface PlanTemplate {
   program: string;
   description: string;
   parity: number;
-  path: string;
   sheet: string;
 }
 
@@ -566,16 +582,12 @@ export const savePlan = (payload: PlanSavePayload) =>
   post<{ week_plan_id: number; warnings: string[] }>("/plan/save", payload);
 
 // ---------- Excel-Vorlage ----------
-export const getXlsxSheets = (path: string) =>
-  get<{ sheets: string[] }>(`/xlsx/sheets?path=${encodeURIComponent(path)}`);
-
 export function xlsxGenerateUrl(): string {
   return "/api/xlsx/generate";
 }
 
 export async function xlsxGenerate(payload: {
-  template_path: string;
-  sheet_name: string;
+  template_code: string;
   start_date: string;
   day_labels: string[];
   rows: Record<string, string | null>[];
@@ -594,4 +606,5 @@ export const getSetting = (key: string) => get<{ value: string | null }>(`/setti
 export const setSetting = (key: string, value: string) =>
   put<{ ok: boolean }>(`/settings/${key}`, { value });
 
-export const healthCheck = () => get<{ status: string }>("/health");
+export const healthCheck = () =>
+  get<{ status: string; database?: string; database_path?: string }>("/health");

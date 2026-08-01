@@ -7,9 +7,9 @@ from datetime import date, datetime, timedelta
 
 import openpyxl
 
-import grid
-import planning_rules
-import template_spec
+from . import grid
+from . import planning_rules
+from . import template_spec
 
 
 def _normalize_label(s: str) -> str:

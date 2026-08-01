@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "data" / "dienstplaene.db"
+from .config.paths import DATABASE_PATH, ensure_runtime_directories
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS people (
@@ -136,8 +135,8 @@ def _migrate(conn):
 
 
 def get_conn():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    ensure_runtime_directories()
+    conn = sqlite3.connect(str(DATABASE_PATH))
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     _migrate(conn)

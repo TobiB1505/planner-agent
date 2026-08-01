@@ -165,7 +165,6 @@ export default function PlanEditorPage() {
   const [assignmentRules, setAssignmentRules] = useState<Record<string, AssignmentRule>>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
-  const [xlsxPath, setXlsxPath] = useState("");
   const [xlsxSheet, setXlsxSheet] = useState("");
   const [rehearsalIntervals, setRehearsalIntervals] = useState<RehearsalInterval[]>([]);
   const [showDates, setShowDates] = useState<string[]>([]);
@@ -229,7 +228,6 @@ export default function PlanEditorPage() {
         setPersonCategories(new Set(result.person_categories));
         setAssignmentRules(result.assignment_rules);
         setResolvedTemplateWeekId(result.template_week_id);
-        setXlsxPath(result.xlsx_template_path ?? "");
         setXlsxSheet(result.xlsx_sheet ?? "");
         setRehearsalIntervals(result.rehearsal_intervals ?? []);
         setShowDates(result.show_dates ?? []);
@@ -528,7 +526,6 @@ export default function PlanEditorPage() {
       setPersonCategories(new Set(result.person_categories));
       setAssignmentRules(result.assignment_rules);
       setResolvedTemplateWeekId(result.template_week_id);
-      setXlsxPath(result.xlsx_template_path ?? selectedTemplate?.path ?? "");
       setXlsxSheet(result.xlsx_sheet ?? selectedTemplate?.sheet ?? "");
       setRehearsalIntervals(result.rehearsal_intervals ?? []);
       setShowDates(result.show_dates ?? []);
@@ -604,8 +601,7 @@ export default function PlanEditorPage() {
     setBusy(true);
     try {
       const blob = await xlsxGenerate({
-        template_path: xlsxPath,
-        sheet_name: xlsxSheet,
+        template_code: templateCode,
         start_date: startDate,
         day_labels: dayLabels,
         rows,

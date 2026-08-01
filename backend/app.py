@@ -12,14 +12,14 @@ import streamlit as st
 from dotenv import load_dotenv
 from streamlit_option_menu import option_menu
 
-import assignment
-import db
-import grid
-import stats
-import theme
-import util
-import xlsx_template
-from extraction import extract_dienstplan
+from . import assignment
+from . import db
+from . import grid
+from . import stats
+from . import theme
+from . import util
+from . import xlsx_template
+from .extraction import extract_dienstplan
 
 load_dotenv()
 

@@ -4,6 +4,7 @@ data/
 __pycache__/
 *.pyc
 .streamlit/
+migration_backups/
 
 # Frontend
 frontend/node_modules/
@@ -14,4 +15,22 @@ frontend/next-env.d.ts
 # Lokale Laufzeit-/Systemdateien
 .dienstplan-api.log
 .DS_Store
-templates/
+
+# Alter, abgelöster Vorlagenordner am Repo-Root (Inhalt jetzt versioniert
+# unter backend/resources/templates/). Nur mit führendem Slash, damit diese
+# Regel NICHT auch backend/resources/templates/ trifft.
+/templates/
+
+# Lokale SQLite-Datenbank (Mitarbeiter-/Planungsdaten) - nie versionieren.
+local_data/database/*
+!local_data/database/.gitkeep
+
+# Lokales Dienstplanarchiv - historische Pläne bleiben nur auf dem Rechner.
+local_data/archives/*
+!local_data/archives/dienstplanarchiv/
+local_data/archives/dienstplanarchiv/*
+!local_data/archives/dienstplanarchiv/.gitkeep
+
+# Lokale Uploads/Exporte - reine Laufzeitdaten.
+local_data/uploads/
+local_data/exports/

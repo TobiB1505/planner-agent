@@ -5,12 +5,12 @@ import re
 from collections import Counter
 from datetime import date, datetime, timedelta
 
-import db
-import grid
-import memory
-import planning_rules
-import rehearsal_plan
-import stats
+from . import db
+from . import grid
+from . import memory
+from . import planning_rules
+from . import rehearsal_plan
+from . import stats
 
 # Gewicht der Aufgaben-Affinität aus dem MA-Gedächtnis. Bewusst kleiner als jeder
 # Fairness-Term in `fairness_load` (24 = ein Dienst mehr diese Woche, 90 = dieselbe

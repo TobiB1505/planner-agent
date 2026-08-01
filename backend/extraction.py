@@ -8,7 +8,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
-import template_spec
+from . import template_spec
 
 MODEL = "gemini-flash-latest"
 
