@@ -5,6 +5,7 @@ import PageHeader from "@/components/PageHeader";
 import PersonCellEditor from "@/components/PersonCellEditor";
 import PlanEditorSummary from "@/components/PlanEditorSummary";
 import PlanEditorToolbar from "@/components/PlanEditorToolbar";
+import PlanIssuesPanel from "@/components/PlanIssuesPanel";
 import PreparationStatusCard from "@/components/PreparationStatusCard";
 import SoftsportCellEditor from "@/components/SoftsportCellEditor";
 import WeekPicker from "@/components/WeekPicker";
@@ -29,6 +30,12 @@ import {
   xlsxGenerate,
 } from "@/lib/api";
 import { categoryColor, hexToRgba } from "@/lib/categoryColors";
+import {
+  buildCellIssueIndex,
+  cellIssueKey,
+  validatePlanSafe,
+  type PlanIssue,
+} from "@/lib/planValidation";
 import { recommendForCell, serviceIntervalLabel } from "@/lib/recommendations";
 import {
   AllCommunityModule,
@@ -60,7 +67,9 @@ type PendingAction =
   | { kind: "recalculate" }
   | { kind: "rebuild" }
   | { kind: "free-suggestion" }
-  | { kind: "week-change"; nextDate: string };
+  | { kind: "week-change"; nextDate: string }
+  | { kind: "save-with-conflicts" }
+  | { kind: "export-with-conflicts" };
 
 const ABSENCE_SECTIONS = new Set(["Urlaub/Krank", "Frei"]);
 
@@ -232,6 +241,14 @@ export default function PlanEditorPage() {
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
+  // ---------- Planprüfung (Sprint 3) ----------
+  const [issuesPanelOpen, setIssuesPanelOpen] = useState(false);
+  // Die Prüfung läuft ohnehin reaktiv (siehe validation-useMemo); dieser Zähler
+  // erzwingt bei Bedarf trotzdem einen echten Neu-Lauf (z.B. "Erneut prüfen"
+  // nach einem Prüf-Fehler, bei dem sich sonst nichts an den Eingaben ändert).
+  const [revalidateNonce, setRevalidateNonce] = useState(0);
+  const cellIssueIndexRef = useRef<Map<string, PlanIssue[]>>(new Map());
+
   // ---------- Undo/Redo (Aufgabe 3) ----------
   const gridApiRef = useRef<GridApi<PlanRow> | null>(null);
   const [gridHistory, setGridHistory] = useState({ canUndo: false, canRedo: false });
@@ -255,6 +272,73 @@ export default function PlanEditorPage() {
     setIsDirty(false);
     setChangeCount(0);
   }, []);
+
+  // Globale Planprüfung (Sprint 3). Läuft synchron über den aktuellen
+  // Wochenzustand - bei ~40 Zeilen/7 Tagen ausreichend schnell, keine
+  // Debounce/Web-Worker-Lösung nötig. `changeCount` steht zusätzlich zu `rows`
+  // in den Abhängigkeiten, weil AG-Grid-Zellbearbeitungen die Objekte in
+  // `rows` direkt mutieren (siehe onCellValueChanged) und die Array-Referenz
+  // selbst unverändert bleibt - ohne changeCount würde die Prüfung nach einer
+  // Zuweisung nicht neu laufen.
+  const validation = useMemo(
+    () =>
+      validatePlanSafe({
+        rows,
+        dayLabels,
+        weekDates,
+        people,
+        personCategories,
+        assignmentRules,
+        rehearsalIntervals,
+        onStageByDate,
+        onStageShowsByDate,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      rows,
+      changeCount,
+      dayLabels,
+      weekDates,
+      people,
+      personCategories,
+      assignmentRules,
+      rehearsalIntervals,
+      onStageByDate,
+      onStageShowsByDate,
+      revalidateNonce,
+    ],
+  );
+
+  const cellIssueIndex = useMemo(() => buildCellIssueIndex(validation.issues), [validation.issues]);
+
+  useEffect(() => {
+    cellIssueIndexRef.current = cellIssueIndex;
+    gridApiRef.current?.refreshCells({ force: true });
+  }, [cellIssueIndex]);
+
+  function navigateToIssue(issue: PlanIssue, options?: { openEditor?: boolean }) {
+    const ref = issue.primaryCell;
+    const api = gridApiRef.current;
+    if (!ref || !api) return;
+    const node = api.getRowNode(ref.rowId);
+    if (!node || node.rowIndex == null) {
+      setIssuesPanelOpen(false);
+      setMessage({
+        kind: "error",
+        text: "Diese Stelle gibt es im aktuellen Plan nicht mehr - die Planprüfung wird aktualisiert.",
+      });
+      return;
+    }
+    setIssuesPanelOpen(false);
+    api.ensureIndexVisible(node.rowIndex, "middle");
+    api.ensureColumnVisible(ref.columnId);
+    api.setFocusedCell(node.rowIndex, ref.columnId);
+    api.flashCells({ rowNodes: [node], columns: [ref.columnId], flashDuration: 1200, fadeDuration: 800 });
+    if (options?.openEditor) {
+      const rowIndex = node.rowIndex;
+      window.setTimeout(() => api.startEditingCell({ rowIndex, colKey: ref.columnId }), 80);
+    }
+  }
 
   useEffect(() => {
     const load = () => {
@@ -473,6 +557,7 @@ export default function PlanEditorPage() {
             component: SoftsportCellEditor,
             params: {
               people,
+              candidates: dynamicRecommendation?.candidates ?? [],
               recommendedPeople:
                 dynamicRecommendation?.recommendedPeople ?? rule?.recommended_people,
               blockedPeople:
@@ -520,6 +605,40 @@ export default function PlanEditorPage() {
         backgroundColor: hexToRgba(rowColor(params.data), 0.13),
         cursor: "text",
       }),
+      // Konfliktmarkierungen (Sprint 3): liest aus einem Ref statt aus einer
+      // columnDefs-Abhängigkeit, damit eine neue Planprüfung nicht die
+      // komplette Spaltenkonfiguration neu aufbaut - nur ein gezieltes
+      // refreshCells() nach der Prüfung (siehe cellIssueIndex-Effekt).
+      cellClassRules: {
+        "plan-cell-issue-error": (params) =>
+          Boolean(
+            params.data &&
+              params.data._row_type !== "group" &&
+              cellIssueIndexRef.current
+                .get(cellIssueKey(rowKey(params.data), label))
+                ?.some((issue) => issue.severity === "error"),
+          ),
+        "plan-cell-issue-warning": (params) => {
+          if (!params.data || params.data._row_type === "group") return false;
+          const list = cellIssueIndexRef.current.get(
+            cellIssueKey(rowKey(params.data), label),
+          );
+          return Boolean(
+            list &&
+              list.length > 0 &&
+              !list.some((issue) => issue.severity === "error"),
+          );
+        },
+      },
+      tooltipValueGetter: (params) => {
+        if (!params.data || params.data._row_type === "group") return undefined;
+        const list = cellIssueIndexRef.current.get(
+          cellIssueKey(rowKey(params.data), label),
+        );
+        if (!list || list.length === 0) return undefined;
+        const prefix = list.length > 1 ? `${list.length} Probleme: ` : "";
+        return prefix + list.map((issue) => issue.description).join(" | ");
+      },
     }));
     return [...fixed, ...days];
   }, [
@@ -664,7 +783,7 @@ export default function PlanEditorPage() {
     }
   }
 
-  async function save(): Promise<boolean> {
+  async function performSave(): Promise<boolean> {
     if (!rows.length) return false;
     if (!resolvedTemplateWeekId) {
       setMessage({ kind: "error", text: "Bitte den Plan zuerst neu erstellen." });
@@ -681,10 +800,22 @@ export default function PlanEditorPage() {
         day_labels: dayLabels,
         rows,
       });
+      // Ab dem ersten erfolgreichen Speichern ist dies ein bestehender
+      // Archivplan. Dadurch aktualisiert jeder weitere Klick exakt dieselbe
+      // Woche, statt einen zweiten Datensatz anzulegen.
+      setLoadedArchivedWeek(result.week);
+      setArchivedWeeks((current) => [
+        result.week,
+        ...current.filter(
+          (week) =>
+            week.id !== result.week.id &&
+            week.start_date !== result.week.start_date,
+        ),
+      ]);
       setMessage({
         kind: result.warnings.length ? "info" : "success",
         text: loadedArchivedWeek
-          ? `${loadedArchivedWeek.label} wurde mit deinen Änderungen aktualisiert.${
+          ? `${result.week.label} wurde mit deinen Änderungen aktualisiert.${
               result.warnings.length
                 ? ` Planungs-Hinweis: ${result.warnings.slice(0, 2).join(" · ")}`
                 : ""
@@ -711,7 +842,7 @@ export default function PlanEditorPage() {
     }
   }
 
-  async function exportExcel() {
+  async function performExport() {
     if (!xlsxSheet || !rows.length) return;
     setBusy(true);
     try {
@@ -734,6 +865,28 @@ export default function PlanEditorPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Speichern/Exportieren mit Konflikten (Sprint 3, Aufgabe 8): beide nutzen
+  // dieselbe validation.summary wie Toolbar und Konfliktpanel, keine separate
+  // Berechnung. Nur die primären Nutzeraktionen laufen über diese Gate-
+  // Funktionen - das interne "Erst speichern" innerhalb der Neuberechnen-/
+  // Neuaufbauen-Dialoge ruft weiterhin performSave() direkt auf, sonst gäbe
+  // es dort eine verwirrende doppelte Rückfrage.
+  async function save(): Promise<boolean> {
+    if (validation.summary.blockingIssues > 0) {
+      setPendingAction({ kind: "save-with-conflicts" });
+      return false;
+    }
+    return performSave();
+  }
+
+  async function exportExcel() {
+    if (validation.summary.blockingIssues > 0) {
+      setPendingAction({ kind: "export-with-conflicts" });
+      return;
+    }
+    await performExport();
   }
 
   function applyWeekChange(value: string) {
@@ -806,6 +959,9 @@ export default function PlanEditorPage() {
         { label: "Zuweisungen neu berechnen", onClick: () => setPendingAction({ kind: "recalculate" }), disabled: busy },
         { label: "Plan vollständig neu erstellen", onClick: () => setPendingAction({ kind: "rebuild" }), disabled: busy },
       ]}
+      validationSummary={validation.summary}
+      validationStatus={validation.failed ? "failed" : "idle"}
+      onOpenValidation={() => setIssuesPanelOpen(true)}
     />
   );
 
@@ -1154,7 +1310,7 @@ export default function PlanEditorPage() {
             </>
           }
           actions={buildActions(isDirty, "Neu berechnen", closeConfirmDialog, async () => {
-            const ok = await save();
+            const ok = await performSave();
             if (ok) generate(true);
           }, () => generate(true))}
           onDismiss={closeConfirmDialog}
@@ -1173,7 +1329,7 @@ export default function PlanEditorPage() {
             </>
           }
           actions={buildActions(isDirty, "Neu erstellen", closeConfirmDialog, async () => {
-            const ok = await save();
+            const ok = await performSave();
             if (ok) generate(false);
           }, () => generate(false), "danger")}
           onDismiss={closeConfirmDialog}
@@ -1228,7 +1384,7 @@ export default function PlanEditorPage() {
               onClick: async () => {
                 const next = pendingAction.nextDate;
                 closeConfirmDialog();
-                const ok = await save();
+                const ok = await performSave();
                 if (ok) applyWeekChange(next);
               },
             },
@@ -1236,6 +1392,85 @@ export default function PlanEditorPage() {
           onDismiss={closeConfirmDialog}
         />
       )}
+
+      {pendingAction?.kind === "save-with-conflicts" && (
+        <ConfirmDialog
+          open
+          title="Dienstplan mit Konflikten speichern?"
+          description={
+            <>
+              <p>Der Plan enthält:</p>
+              <ul>
+                {validation.summary.errors > 0 && (
+                  <li>
+                    {validation.summary.errors} {validation.summary.errors === 1 ? "kritischen Konflikt" : "kritische Konflikte"}
+                  </li>
+                )}
+                {validation.summary.understaffed > 0 && (
+                  <li>
+                    {validation.summary.understaffed} {validation.summary.understaffed === 1 ? "unbesetzten Pflichtdienst" : "unbesetzte Pflichtdienste"}
+                  </li>
+                )}
+              </ul>
+              <p>Der Plan kann trotzdem gespeichert werden.</p>
+            </>
+          }
+          actions={[
+            { label: "Abbrechen", onClick: closeConfirmDialog, variant: "default" },
+            {
+              label: "Planprüfung öffnen",
+              variant: "default",
+              onClick: () => { closeConfirmDialog(); setIssuesPanelOpen(true); },
+            },
+            {
+              label: "Trotzdem speichern",
+              variant: "primary",
+              autoFocus: true,
+              onClick: () => { closeConfirmDialog(); void performSave(); },
+            },
+          ]}
+          onDismiss={closeConfirmDialog}
+        />
+      )}
+
+      {pendingAction?.kind === "export-with-conflicts" && (
+        <ConfirmDialog
+          open
+          title="Dienstplan mit Konflikten exportieren?"
+          description={
+            <p>
+              Der Export enthält {validation.summary.errors}{" "}
+              {validation.summary.errors === 1 ? "kritischen Konflikt" : "kritische Konflikte"}.
+            </p>
+          }
+          actions={[
+            { label: "Abbrechen", onClick: closeConfirmDialog, variant: "default" },
+            {
+              label: "Planprüfung öffnen",
+              variant: "default",
+              onClick: () => { closeConfirmDialog(); setIssuesPanelOpen(true); },
+            },
+            {
+              label: "Trotzdem exportieren",
+              variant: "primary",
+              autoFocus: true,
+              onClick: () => { closeConfirmDialog(); void performExport(); },
+            },
+          ]}
+          onDismiss={closeConfirmDialog}
+        />
+      )}
+
+      <PlanIssuesPanel
+        open={issuesPanelOpen}
+        issues={validation.issues}
+        summary={validation.summary}
+        failed={validation.failed}
+        onClose={() => setIssuesPanelOpen(false)}
+        onNavigate={(issue) => navigateToIssue(issue)}
+        onEdit={(issue) => navigateToIssue(issue, { openEditor: true })}
+        onRefresh={() => setRevalidateNonce((current) => current + 1)}
+      />
     </div>
   );
 }

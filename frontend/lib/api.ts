@@ -273,6 +273,12 @@ export interface PlanSavePayload {
   rows: Record<string, string | null>[];
 }
 
+export interface PlanSaveResult {
+  week_plan_id: number;
+  warnings: string[];
+  week: WeekSummary;
+}
+
 export interface ArtistPlanRow {
   field_key: string;
   label: string;
@@ -581,7 +587,7 @@ export const getArchivedPlan = (startDate: string) =>
   get<ArchivedPlanResult>(`/plan/existing?start_date=${encodeURIComponent(startDate)}`);
 
 export const savePlan = (payload: PlanSavePayload) =>
-  post<{ week_plan_id: number; warnings: string[] }>("/plan/save", payload);
+  post<PlanSaveResult>("/plan/save", payload);
 
 // ---------- Excel-Vorlage ----------
 export function xlsxGenerateUrl(): string {
