@@ -9,7 +9,9 @@ import math
 import os
 import shutil
 import sqlite3
+import sys
 import tempfile
+import threading
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -1423,16 +1425,28 @@ def system_diagnostics():
 
 @app.post("/api/system/restart")
 def system_restart():
-    """Löst einen Neustart des Backend-Worker-Prozesses aus.
+    """Startet den Backend-Prozess vollständig neu - unabhängig davon, wie
+    er gestartet wurde (Startskript, manuell, mit oder ohne Reload-Modus).
 
-    Kein eigener Prozess-Ersatz (os.execv o.ä.) - das wäre bei einem laufenden
-    uvicorn-Reload-Setup fehleranfällig (doppelt gebundene Ports, verwaiste
-    Reloader-Prozesse). Stattdessen wird lediglich die mtime dieser Datei
-    aktualisiert - der uvicorn-Reloader, den backend/run_local.py bereits mit
-    reload=True startet, beobachtet genau das und ersetzt den Worker-Prozess
-    darauf hin selbst sauber. Funktioniert deshalb nur, wenn das Backend über
-    `python -m backend.run_local` (bzw. die Startskripte) läuft.
+    Frühere Version verliess sich auf uvicorns --reload-Dateiwächter (mtime
+    von api.py anfassen) - das funktioniert nur, wenn reload=True gesetzt
+    ist, was seit dieser Version aber bewusst NICHT mehr der Standard ist
+    (siehe backend/run_local.py). Für einen normalen Nutzer, der die
+    Anwendung nur über das Startskript startet, passierte beim Klick auf
+    "Backend neu starten" dadurch schlicht nichts.
+
+    Stattdessen ersetzt os.execv() den laufenden Prozess durch eine frische
+    Instanz von "python -m backend.run_local" - denselben Interpreter,
+    dasselbe Arbeitsverzeichnis, dieselbe Umgebung. Der Listening-Socket
+    schliesst sich dabei automatisch (Python-Dateideskriptoren sind seit
+    PEP 446 standardmässig nicht vererbbar über exec hinweg), sodass der
+    neue Prozess den Port direkt neu binden kann - kein doppelt gebundener
+    Port, kein verwaister Prozess.
     """
-    api_file = Path(__file__)
-    os.utime(api_file, None)
+
+    def _restart() -> None:
+        time.sleep(0.3)  # HTTP-Antwort erst zustellen lassen
+        os.execv(sys.executable, [sys.executable, "-m", "backend.run_local"])
+
+    threading.Thread(target=_restart, daemon=True).start()
     return {"status": "restarting"}
