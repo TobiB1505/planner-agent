@@ -6813,9 +6813,11 @@ button {
 .plan-editor-summary-details > .field {
   flex: 1 1 260px;
   min-width: 380px;
+  padding-top: 17px;
 }
 
 .plan-editor-summary-details > .planner-week-picker {
+  padding-top: 17px;
   flex: 0 0 auto;
   min-width: 220px;
 }

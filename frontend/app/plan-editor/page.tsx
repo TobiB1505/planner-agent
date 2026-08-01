@@ -776,7 +776,7 @@ export default function PlanEditorPage() {
       <PreparationStatusCard
         ready={Boolean(artistPlanForWeek)}
         readyLabel={artistPlanForWeek?.sheet_name || artistPlanForWeek?.source_filename || "Künstlerplan"}
-        readyDetail={`${artistPlanForWeek?.filled_entries ?? 0} ausgefüllte Programmeinträge`}
+        readyDetail={`${artistPlanForWeek?.filled_entries ?? 0} Programmeinträge`}
         emptyIcon="K"
         emptyTitle="Künstlerplan hochladen"
         emptyDescription="Excel-Datei auswählen, Woche prüfen und für den Dienstplan aktivieren."
@@ -786,7 +786,7 @@ export default function PlanEditorPage() {
       <PreparationStatusCard
         ready={Boolean(rehearsalPlanForWeek)}
         readyLabel={rehearsalPlanForWeek?.source_filename || "Probenplan"}
-        readyDetail={`${rehearsalPlanForWeek?.rehearsal_count ?? 0} erkannte Proben`}
+        readyDetail={`${rehearsalPlanForWeek?.rehearsal_count ?? 0} Proben`}
         emptyIcon="P"
         emptyTitle="Probenplan hochladen"
         emptyDescription="PDF lokal auswerten, erkannte Zeiten prüfen und für diese Woche aktivieren."
@@ -943,7 +943,7 @@ export default function PlanEditorPage() {
           <PreparationStatusCard
             ready={Boolean(artistPlanForWeek)}
             readyLabel={artistPlanForWeek?.sheet_name || artistPlanForWeek?.source_filename || "Künstlerplan"}
-            readyDetail={`${artistPlanForWeek?.filled_entries ?? 0} ausgefüllte Programmeinträge`}
+            readyDetail={`${artistPlanForWeek?.filled_entries ?? 0} Programmeinträge`}
             emptyIcon="K"
             emptyTitle="Künstlerplan hochladen"
             emptyDescription="Excel-Datei auswählen, Woche prüfen und für den Dienstplan aktivieren."
@@ -971,7 +971,7 @@ export default function PlanEditorPage() {
           <PreparationStatusCard
             ready={Boolean(rehearsalPlanForWeek)}
             readyLabel={rehearsalPlanForWeek?.source_filename || "Probenplan"}
-            readyDetail={`${rehearsalPlanForWeek?.rehearsal_count ?? 0} erkannte Proben`}
+            readyDetail={`${rehearsalPlanForWeek?.rehearsal_count ?? 0} Proben`}
             emptyIcon="P"
             emptyTitle="Probenplan hochladen"
             emptyDescription="PDF lokal auswerten, erkannte Zeiten prüfen und für diese Woche aktivieren."
