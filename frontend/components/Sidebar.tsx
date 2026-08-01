@@ -16,6 +16,7 @@ const MANAGEMENT_NAV_ITEMS = [
   { href: "/gedaechtnis", label: "MA-Gedächtnis", icon: MemoryIcon },
   { href: "/planning-logic", label: "Planungslogik", icon: LogicIcon },
   { href: "/archiv", label: "Archiv", icon: ArchiveIcon },
+  { href: "/system", label: "System", icon: SystemIcon },
 ];
 
 export default function Sidebar() {
@@ -190,6 +191,15 @@ function MemoryIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
       <path d="M9.5 4.5a3 3 0 0 0-3 3 2.8 2.8 0 0 0-1.5 5 2.8 2.8 0 0 0 1.7 5.1 2.8 2.8 0 0 0 5.3-1.3V6.9a2.4 2.4 0 0 0-2.5-2.4Z" />
       <path d="M14.5 4.5a3 3 0 0 1 3 3 2.8 2.8 0 0 1 1.5 5 2.8 2.8 0 0 1-1.7 5.1 2.8 2.8 0 0 1-5.3-1.3V6.9a2.4 2.4 0 0 1 2.5-2.4Z" />
+    </svg>
+  );
+}
+
+function SystemIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3v2.5M12 18.5V21M21 12h-2.5M5.5 12H3M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8M18.4 18.4l-1.8-1.8M7.4 7.4 5.6 5.6" />
     </svg>
   );
 }
