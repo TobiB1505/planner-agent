@@ -564,9 +564,6 @@ export const savePlan = (payload: PlanSavePayload) =>
   post<{ week_plan_id: number; warnings: string[] }>("/plan/save", payload);
 
 // ---------- Excel-Vorlage ----------
-export const getXlsxSheets = (path: string) =>
-  get<{ sheets: string[] }>(`/xlsx/sheets?path=${encodeURIComponent(path)}`);
-
 export function xlsxGenerateUrl(): string {
   return "/api/xlsx/generate";
 }

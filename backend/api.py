@@ -1252,12 +1252,6 @@ def _resolve_or_create(conn, name: str) -> int:
 
 # ---------- Excel-Vorlage ----------
 
-@app.get("/api/xlsx/sheets")
-def xlsx_sheets(path: str):
-    if not os.path.exists(path):
-        raise HTTPException(404, "Datei nicht gefunden.")
-    return {"sheets": xlsx_template.list_week_sheets(path)}
-
 
 class XlsxGenerateRequest(BaseModel):
     # Das Frontend schickt nur noch den Vorlagen-Code ("A"/"B"), nie einen
