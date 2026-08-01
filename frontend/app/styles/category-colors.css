@@ -1,0 +1,23 @@
+/* Kategorie-Farben aus der echten Excel-Vorlage (theme.py) */
+:root {
+  --cat-urlaub-krank: #fef4c8;
+  --cat-frei: #fef4c8;
+  --cat-kochdienste: #ffff00;
+  --cat-sportprogramm: #00b0f0;
+  --cat-tt-kicker: #ffc000;
+  --cat-suesse-momente: #ffc000;
+  --cat-leds: #ff33cc;
+  --cat-saunaaufguss: #a3dbbc;
+  --cat-aperitif: #ebde8d;
+  --cat-aufbau: #c9973a;
+  --cat-abbau: #a17a3a;
+  --cat-extradienste: #3a8ee8;
+  --cat-ops-wp: #7a5ce8;
+  --cat-moderation: #d13a6e;
+  --cat-ausschlafen: #6b6b6b;
+  --cat-tagesverantwortung: #3ac9b0;
+  --cat-anabreise: #5c7ae8;
+  --cat-nachmittag-extras: #8e5ce8;
+  --cat-barfrei: #e8b23a;
+}
+

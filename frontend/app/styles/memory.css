@@ -1,0 +1,356 @@
+/* ---------- MA-Gedächtnis ---------- */
+
+.status-warning {
+  border-color: rgba(222, 151, 53, 0.22);
+  background: rgba(222, 151, 53, 0.13);
+  color: #d38a32;
+}
+
+.memory-page {
+  margin: 0 auto;
+  max-width: 1500px;
+}
+
+.memory-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.memory-eyebrow {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 760;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.memory-layout {
+  display: grid;
+  margin-top: 14px;
+  grid-template-columns: minmax(300px, 0.8fr) minmax(430px, 1.2fr);
+  min-height: 420px;
+}
+
+.memory-list {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 6px;
+  border-right: 1px solid var(--border);
+  padding: 14px;
+}
+
+.memory-list-tools {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.memory-person-card {
+  display: grid;
+  grid-template-columns: 35px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.memory-person-card:hover {
+  background: var(--accent-soft);
+}
+
+.memory-person-card.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.memory-person-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.memory-person-copy > strong {
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.memory-person-copy > small {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.memory-person-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 190px;
+}
+
+.memory-detail {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.memory-detail-head h2 {
+  margin: 2px 0 1px;
+  font-size: 19px;
+  font-weight: 780;
+}
+
+.memory-detail-head p {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.memory-card {
+  padding: 13px 15px;
+}
+
+.memory-card-head {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.memory-card-head h3 {
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.memory-card-head small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.memory-show-list {
+  display: grid;
+  gap: 6px;
+}
+
+.memory-show {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 8px 10px;
+}
+
+.memory-show.is-active-signal {
+  border-color: rgba(108, 123, 255, 0.35);
+  background: var(--accent-soft);
+}
+
+.memory-show-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.memory-show-copy > strong {
+  font-size: 12.5px;
+  font-weight: 720;
+}
+
+.memory-show-copy > small {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.memory-show-tags,
+.memory-show-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.memory-show-actions .btn {
+  padding: 4px 8px;
+  font-size: 10.5px;
+}
+
+.memory-confidence-bestätigt {
+  border-color: rgba(45, 169, 112, 0.25);
+  background: rgba(45, 169, 112, 0.13);
+  color: #2da970;
+}
+
+.memory-confidence-niedrig {
+  color: var(--muted);
+}
+
+.memory-add-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.memory-add-row .control {
+  flex: 1;
+}
+
+.memory-removed {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.memory-removed > summary {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.memory-removed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 12px;
+}
+
+.memory-removed-row small {
+  color: var(--muted);
+}
+
+.memory-removed-row .btn {
+  padding: 3px 8px;
+  font-size: 10.5px;
+}
+
+.memory-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+  margin: 10px 0;
+}
+
+.memory-weekday {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  padding: 7px 3px;
+}
+
+.memory-weekday:hover {
+  border-color: var(--accent);
+}
+
+.memory-weekday.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.memory-weekday-label {
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.memory-weekday-track {
+  display: flex;
+  width: 7px;
+  height: 34px;
+  align-items: flex-end;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.memory-weekday-fill {
+  width: 100%;
+  border-radius: 4px;
+  background: currentColor;
+  opacity: 0.65;
+}
+
+.memory-weekday-count {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.memory-task-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-top: 1px solid var(--border);
+  padding: 7px 0;
+  font-size: 12px;
+}
+
+.memory-task-row .dashboard-department-track {
+  flex: 1 1 40px;
+  min-width: 34px;
+}
+
+.memory-task-row:first-of-type {
+  border-top: none;
+}
+
+.memory-task-name {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-task-count,
+.memory-task-last {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.memory-task-row .btn {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  font-size: 10.5px;
+}
+
+/* Auf schmalen Detailspalten fällt zuerst das Datum weg, nicht der Button. */
+@media (max-width: 1320px) {
+  .memory-task-last {
+    display: none;
+  }
+}
+
+.memory-footnote {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+  .memory-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .memory-list {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+

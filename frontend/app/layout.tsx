@@ -1,6 +1,18 @@
 import type { Metadata, Viewport } from "next";
 import Sidebar from "@/components/Sidebar";
 import "./globals.css";
+import "./styles/foundation.css";
+import "./styles/sidebar.css";
+import "./styles/shared-components.css";
+import "./styles/planning-workflow.css";
+import "./styles/dashboard.css";
+import "./styles/category-colors.css";
+import "./styles/archive.css";
+import "./styles/team.css";
+import "./styles/planning-logic.css";
+import "./styles/memory.css";
+import "./styles/system.css";
+import "./styles/plan-editor.css";
 
 export const metadata: Metadata = {
   title: {
