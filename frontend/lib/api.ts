@@ -11,7 +11,7 @@ export class ApiError extends Error {
 }
 
 const BACKEND_UNREACHABLE_MESSAGE =
-  "Das lokale Backend ist nicht erreichbar. Bitte starte den Planner-Agent erneut.";
+  "Das lokale Backend ist nicht erreichbar. Bitte starte den Planner-Agent über das Startskript.";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
