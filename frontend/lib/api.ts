@@ -188,7 +188,6 @@ export interface PlanGenerateResult {
   assignment_rules: Record<string, AssignmentRule>;
   template_week_id: number;
   template_code: string | null;
-  xlsx_template_path: string | null;
   xlsx_sheet: string | null;
   artist_plan: {
     id: number;
@@ -242,7 +241,6 @@ export interface PlanTemplate {
   program: string;
   description: string;
   parity: number;
-  path: string;
   sheet: string;
 }
 
@@ -574,8 +572,7 @@ export function xlsxGenerateUrl(): string {
 }
 
 export async function xlsxGenerate(payload: {
-  template_path: string;
-  sheet_name: string;
+  template_code: string;
   start_date: string;
   day_labels: string[];
   rows: Record<string, string | null>[];

@@ -11,26 +11,7 @@ from pathlib import Path
 import openpyxl
 
 from . import db
-
-# Temporary compatibility path until central path configuration is introduced.
-# plan_templates.py now lives in backend/, but the project templates/ folder
-# stays at the repo root and is not moved by this step.
-PROJECT_DIR = Path(__file__).resolve().parent.parent
-TEMPLATE_DIR = PROJECT_DIR / "templates"
-
-# Tobis Rechner-Standard: nur verwendet, solange in `settings` kein eigener
-# Pfad hinterlegt ist (siehe `build_template`). Erster Start / unveränderte
-# Installationen verhalten sich dadurch weiterhin exakt wie zuvor.
-DEFAULT_SOURCE_PATHS: dict[str, Path] = {
-    "A": Path(
-        "/Users/tobibayer/Desktop/Dienstplan-Archiv/"
-        "DienstplanNEU_KW01_NewYork_2026.xlsx"
-    ),
-    "B": Path(
-        "/Users/tobibayer/Desktop/Dienstplan-Archiv/"
-        "DienstplanNEU_KW02_Espania_2026.xlsx"
-    ),
-}
+from .config.paths import TEMPLATE_DIR, WEEK_A_TEMPLATE_PATH, WEEK_B_TEMPLATE_PATH
 
 TEMPLATES: dict[str, dict] = {
     "A": {
@@ -40,7 +21,7 @@ TEMPLATES: dict[str, dict] = {
         "description": "New-York-Programm mit Taste of New York und Royals of Rock.",
         "parity": 1,
         "source_sheet": "KW31_27.07.-02.08",
-        "path": TEMPLATE_DIR / "Woche_A_NewYork.xlsx",
+        "path": WEEK_A_TEMPLATE_PATH,
         "sheet": "Woche A - New York",
     },
     "B": {
@@ -50,15 +31,25 @@ TEMPLATES: dict[str, dict] = {
         "description": "Espania-Programm mit What If, Viva Espana und Greatest Show.",
         "parity": 0,
         "source_sheet": "KW32_03.08.-09.08. ",
-        "path": TEMPLATE_DIR / "Woche_B_Espania.xlsx",
+        "path": WEEK_B_TEMPLATE_PATH,
         "sheet": "Woche B - Espania",
     },
 }
 
 
 def _source_path(conn, code: str) -> Path:
-    default = DEFAULT_SOURCE_PATHS[code]
-    value = db.get_setting(conn, f"template_{code.lower()}_source_path", default=str(default))
+    # Kein fest eingebauter Desktop-Pfad mehr: die Rohquelle mit allen 17
+    # Wochenblättern ist Tobis persönliche Arbeitsdatei, kein Programm-
+    # Ressource. Wird nur gebraucht, wenn die Projektkopie unter
+    # WEEK_A/B_TEMPLATE_PATH fehlt oder überschrieben werden soll (selten -
+    # normalerweise existieren die Projektkopien bereits, siehe build_template).
+    value = db.get_setting(conn, f"template_{code.lower()}_source_path", default=None)
+    if not value:
+        raise FileNotFoundError(
+            f"Keine Rohquelle für Grundvorlage {code} hinterlegt. Setze die "
+            f"Einstellung 'template_{code.lower()}_source_path' auf den Pfad "
+            "der Original-Excel-Datei (siehe PUT /api/settings/{key})."
+        )
     return Path(value)
 
 
@@ -100,6 +91,8 @@ def get_template(conn, code: str) -> dict:
 
 def public_templates(conn) -> list[dict]:
     ensure_templates(conn)
+    # Absichtlich kein lokaler Dateipfad hier: das Frontend bekommt nur den
+    # Vorlagen-Code (siehe TEMPLATE_MAP in api.py) und löst ihn serverseitig auf.
     return [
         {
             "code": spec["code"],
@@ -107,7 +100,6 @@ def public_templates(conn) -> list[dict]:
             "program": spec["program"],
             "description": spec["description"],
             "parity": spec["parity"],
-            "path": str(spec["path"]),
             "sheet": spec["sheet"],
         }
         for spec in TEMPLATES.values()

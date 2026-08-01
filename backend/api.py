@@ -22,6 +22,7 @@ from starlette.background import BackgroundTask
 
 from . import assignment
 from . import artist_plan
+from .config import paths as config_paths
 from . import db
 from . import grid
 from . import memory
@@ -451,21 +452,17 @@ def artist_plan_export(artist_plan_id: int):
     row = db.get_artist_plan(conn, artist_plan_id)
     if row is None:
         raise HTTPException(404, "Künstlerplan wurde nicht gefunden.")
-    glob_dir = db.get_setting(
-        conn,
-        "artist_plan_template_glob_dir",
-        default="/Users/tobibayer/Desktop/Dienstplan-Archiv",
-    )
-    candidates = list(Path(glob_dir).glob("*nstlerplan_Vorlage_2026.xlsx"))
-    if not candidates:
-        raise HTTPException(404, "Die Künstlerplan-Excel-Vorlage wurde nicht gefunden.")
+    try:
+        config_paths.require_template(config_paths.ARTIST_TEMPLATE_PATH)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
     fd, output_path = tempfile.mkstemp(suffix=".xlsx")
     os.close(fd)
     try:
         artist_plan.export_artist_plan(
             conn,
             row,
-            str(candidates[0]),
+            str(config_paths.ARTIST_TEMPLATE_PATH),
             output_path,
         )
     except Exception as exc:
@@ -907,7 +904,6 @@ def plan_existing(start_date: str):
         "assignment_rules": assignment_rules,
         "template_week_id": week["id"],
         "template_code": template_code,
-        "xlsx_template_path": str(selected_template["path"]),
         "xlsx_sheet": selected_template["sheet"],
         "artist_plan": (
             {
@@ -1028,7 +1024,6 @@ def plan_generate(payload: PlanGenerateRequest):
         "assignment_rules": assignment_rules,
         "template_week_id": rotation_week_id,
         "template_code": selected_template["code"] if selected_template else None,
-        "xlsx_template_path": str(selected_template["path"]) if selected_template else None,
         "xlsx_sheet": selected_template["sheet"] if selected_template else None,
         "artist_plan": (
             {
@@ -1265,8 +1260,11 @@ def xlsx_sheets(path: str):
 
 
 class XlsxGenerateRequest(BaseModel):
-    template_path: str
-    sheet_name: str
+    # Das Frontend schickt nur noch den Vorlagen-Code ("A"/"B"), nie einen
+    # lokalen Dateipfad. Der tatsächliche Pfad wird ausschliesslich
+    # serverseitig über plan_templates.get_template()/TEMPLATES aufgelöst
+    # (übernimmt hier die Rolle der TEMPLATE_MAP: Code -> echter Pfad).
+    template_code: str
     start_date: str
     day_labels: list[str]
     rows: list[dict[str, Any]]
@@ -1274,8 +1272,11 @@ class XlsxGenerateRequest(BaseModel):
 
 @app.post("/api/xlsx/generate")
 def xlsx_generate(payload: XlsxGenerateRequest):
-    if not os.path.exists(payload.template_path):
-        raise HTTPException(404, "Vorlagen-Datei nicht gefunden.")
+    conn = get_conn()
+    try:
+        spec = plan_templates.get_template(conn, payload.template_code)
+    except (KeyError, FileNotFoundError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
     day_iso_by_label = {lbl: iso for lbl, iso in zip(payload.day_labels, _week_dates(payload.start_date))}
     grid_df = _grid_df_from_rows(payload.rows)
     assignments_list, absences_list = grid.parse_grid(grid_df, day_iso_by_label)
@@ -1285,7 +1286,7 @@ def xlsx_generate(payload: XlsxGenerateRequest):
     os.close(fd)
     try:
         xlsx_template.generate_week_xlsx(
-            payload.template_path, payload.sheet_name, new_start, assignments_list, absences_list, out_path
+            str(spec["path"]), spec["sheet"], new_start, assignments_list, absences_list, out_path
         )
     except Exception as exc:
         os.unlink(out_path)
