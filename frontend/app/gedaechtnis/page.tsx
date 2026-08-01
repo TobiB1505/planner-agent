@@ -69,7 +69,7 @@ export default function GedaechtnisPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const people = data?.people ?? [];
+  const people = useMemo(() => data?.people ?? [], [data]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("de");

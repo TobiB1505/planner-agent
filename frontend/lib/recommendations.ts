@@ -11,22 +11,22 @@ export type RecommendationRow = Record<string, string | null> & {
   _category: string;
 };
 
-const RELIEF_CATEGORIES = new Set(["Ausschlafen", "Barfrei"]);
+export const RELIEF_CATEGORIES = new Set(["Ausschlafen", "Barfrei"]);
 
 // Ab hier gilt jemand als "stark ausgelastet" für die entsprechende Warnung. Die
 // zugrunde liegenden Zähler (dayTotal/weeklyTotal/categoryTotal) sind echte, aus
 // dem aktuellen Wochenraster berechnete Werte - nur die Schwellen hier sind eine
 // bewusste, dokumentierte Designentscheidung dieses Sprints, keine vorgegebene
 // Fachregel.
-const HIGH_DAILY_LOAD_THRESHOLD = 2;
-const HIGH_WEEKLY_LOAD_FACTOR = 1.5;
-const REPEATED_TASK_THRESHOLD = 3;
+export const HIGH_DAILY_LOAD_THRESHOLD = 2;
+export const HIGH_WEEKLY_LOAD_FACTOR = 1.5;
+export const REPEATED_TASK_THRESHOLD = 3;
 
-function categoryOf(row: RecommendationRow): string {
+export function categoryOf(row: RecommendationRow): string {
   return row._category || row.Abschnitt;
 }
 
-function namesFromCell(value: string | null | undefined): string[] {
+export function namesFromCell(value: string | null | undefined): string[] {
   if (!value) return [];
   const names = value
     .split(/\n+/)
@@ -53,7 +53,7 @@ function mentionedPeople(
   });
 }
 
-function timeKey(category: string, slot: string): string {
+export function timeKey(category: string, slot: string): string {
   const match = slot.match(/(^|[^\d])(\d{1,2})[:.](\d{2})(?!\d)/);
   return match
     ? `${Number(match[2]).toString().padStart(2, "0")}:${match[3]}`
@@ -91,7 +91,7 @@ export function serviceInterval(category: string, slot: string): TimeInterval | 
   return defaults[category] ?? null;
 }
 
-function storedInterval(startTime: string, endTime: string): TimeInterval {
+export function storedInterval(startTime: string, endTime: string): TimeInterval {
   const [startHour, startMinute] = startTime.replace(".", ":").split(":");
   const [endHour, endMinute] = endTime.replace(".", ":").split(":");
   const start = clockMinutes(startHour, startMinute);
@@ -100,7 +100,7 @@ function storedInterval(startTime: string, endTime: string): TimeInterval {
   return [start, end];
 }
 
-function overlap(first: TimeInterval, second: TimeInterval): boolean {
+export function overlap(first: TimeInterval, second: TimeInterval): boolean {
   const firstVariants: TimeInterval[] = [first, [first[0] + 1440, first[1] + 1440]];
   const secondVariants: TimeInterval[] = [second, [second[0] + 1440, second[1] + 1440]];
   return firstVariants.some(([startA, endA]) =>
@@ -108,7 +108,7 @@ function overlap(first: TimeInterval, second: TimeInterval): boolean {
   );
 }
 
-function gapMinutes(first: TimeInterval, second: TimeInterval): number {
+export function gapMinutes(first: TimeInterval, second: TimeInterval): number {
   if (overlap(first, second)) return 0;
   const gaps: number[] = [];
   for (const [startA, endA] of [first, [first[0] + 1440, first[1] + 1440]] as TimeInterval[]) {
@@ -124,7 +124,7 @@ function increment(map: Map<string, number>, name: string) {
   map.set(name, (map.get(name) ?? 0) + 1);
 }
 
-function clockLabel(raw: string): string {
+export function clockLabel(raw: string): string {
   return raw.slice(0, 5);
 }
 
@@ -583,11 +583,13 @@ export function recommendForCell({
   // "Empfohlen" ist bewusst auf Kandidaten ohne jede Warnung beschränkt - eine
   // Person mit Proben-Nähe- oder Show-Hinweis landet immer in der Warngruppe,
   // selbst wenn sie sonst ganz oben im Ranking stünde (siehe Aufgabe 3).
-  const cleanAllowed = allowed.filter((name) => warningReasons(name).length === 0);
+  const cleanRecommended = recommendedCandidates.filter(
+    (name) => warningReasons(name).length === 0,
+  );
   const recommendedForStatus = new Set(
     (isReliefTarget
-      ? [...cleanAllowed].sort((a, b) => reliefNeed(b) - reliefNeed(a) || a.localeCompare(b, "de"))
-      : [...cleanAllowed].sort((a, b) => serviceLoad(a) - serviceLoad(b) || a.localeCompare(b, "de"))
+      ? [...cleanRecommended].sort((a, b) => reliefNeed(b) - reliefNeed(a) || a.localeCompare(b, "de"))
+      : [...cleanRecommended].sort((a, b) => serviceLoad(a) - serviceLoad(b) || a.localeCompare(b, "de"))
     ).slice(0, 5),
   );
 

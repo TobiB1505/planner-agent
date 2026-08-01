@@ -1,5 +1,7 @@
 "use client";
 
+import PlanValidationSummary, { type ValidationStatus } from "@/components/PlanValidationSummary";
+import type { PlanValidationSummary as ValidationSummaryData } from "@/lib/planValidation";
 import { useEffect, useRef, useState } from "react";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
@@ -29,6 +31,9 @@ export default function PlanEditorToolbar({
   exportLabel = "Excel exportieren",
   busy,
   tools,
+  validationSummary,
+  validationStatus,
+  onOpenValidation,
 }: {
   weekLabel: string;
   rowCount: number;
@@ -48,6 +53,9 @@ export default function PlanEditorToolbar({
   exportLabel?: string;
   busy: boolean;
   tools: PlanToolbarTool[];
+  validationSummary: ValidationSummaryData;
+  validationStatus: ValidationStatus;
+  onOpenValidation: () => void;
 }) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -114,6 +122,7 @@ export default function PlanEditorToolbar({
           <span className="plan-editor-save-error">{saveError}</span>
         )}
         <span className="plan-editor-toolbar-count">{rowCount} Planzeilen</span>
+        <PlanValidationSummary summary={validationSummary} status={validationStatus} onOpen={onOpenValidation} />
       </div>
 
       <div className="plan-editor-toolbar-actions">

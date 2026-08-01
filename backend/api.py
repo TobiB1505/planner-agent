@@ -1238,14 +1238,27 @@ def plan_save(payload: PlanSaveRequest):
     assignments_list, absences_list = grid.parse_grid(grid_df, day_iso_by_label)
     warnings = _assignment_warnings(conn, assignments_list, payload.start_date)
 
-    if payload.existing_week_id is not None:
+    existing_week_id = payload.existing_week_id
+    if existing_week_id is None:
+        # Speichern ist pro Planwoche idempotent: Sollte das Frontend nach dem
+        # ersten erfolgreichen Speichern noch keinen Archivstatus kennen (z.B.
+        # bei einem sehr schnellen zweiten Klick oder nach einem Teil-Reload),
+        # darf dadurch kein zweiter Dienstplan für dasselbe Startdatum entstehen.
+        existing_for_start = conn.execute(
+            "SELECT id FROM week_plans WHERE start_date = ? ORDER BY id DESC LIMIT 1",
+            (payload.start_date,),
+        ).fetchone()
+        if existing_for_start is not None:
+            existing_week_id = existing_for_start["id"]
+
+    if existing_week_id is not None:
         existing = conn.execute(
             "SELECT id, start_date FROM week_plans WHERE id = ?",
-            (payload.existing_week_id,),
+            (existing_week_id,),
         ).fetchone()
         if existing is None or existing["start_date"] != payload.start_date:
             raise HTTPException(404, "Der zu bearbeitende Archivplan wurde nicht gefunden.")
-        week_plan_id = payload.existing_week_id
+        week_plan_id = existing_week_id
         conn.execute("DELETE FROM assignments WHERE week_plan_id = ?", (week_plan_id,))
         conn.execute("DELETE FROM absences WHERE week_plan_id = ?", (week_plan_id,))
         conn.execute(
@@ -1265,7 +1278,30 @@ def plan_save(payload: PlanSaveRequest):
         person_id = _resolve_or_create(conn, a["person"])
         db.insert_absence(conn, week_plan_id, a["date"], person_id, a["type"])
     conn.commit()
-    return {"week_plan_id": week_plan_id, "warnings": warnings}
+    week_row = conn.execute(
+        """SELECT wp.*,
+                  (SELECT COUNT(*) FROM assignments a WHERE a.week_plan_id = wp.id) AS assignment_count,
+                  (SELECT COUNT(*) FROM absences ab WHERE ab.week_plan_id = wp.id) AS absence_count
+           FROM week_plans wp WHERE wp.id = ?""",
+        (week_plan_id,),
+    ).fetchone()
+    kw = week_row["kw"] or datetime.strptime(
+        week_row["start_date"], "%Y-%m-%d"
+    ).date().isocalendar()[1]
+    return {
+        "week_plan_id": week_plan_id,
+        "warnings": warnings,
+        "week": {
+            "id": week_plan_id,
+            "kw": kw,
+            "start_date": week_row["start_date"],
+            "end_date": week_row["end_date"],
+            "source": week_row["source_pdf"],
+            "label": f"KW{kw} · {util.fmt_date_range(week_row['start_date'], week_row['end_date'])}",
+            "assignment_count": week_row["assignment_count"],
+            "absence_count": week_row["absence_count"],
+        },
+    }
 
 
 def _resolve_or_create(conn, name: str) -> int:
