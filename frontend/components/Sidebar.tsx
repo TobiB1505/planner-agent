@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import PwaInstallButton from "./pwa-install-button";
 
 const PRIMARY_NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: DashboardIcon },
@@ -108,6 +109,12 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      {!collapsed && (
+        <div className="sidebar-pwa">
+          <PwaInstallButton />
+        </div>
+      )}
 
       <div className="sidebar-footer" aria-hidden="true">
         <span className="sidebar-footer-dot" />

@@ -32,7 +32,8 @@ Gemini-API-Keys für die KI-gestützte PDF-Extraktion, siehe unten).
 10. [Tests](#10-tests)
 11. [Fehlerbehebung](#11-fehlerbehebung)
 12. [Datensicherung](#12-datensicherung)
-13. [Späteres Deployment](#13-sp%C3%A4teres-deployment)
+13. [Planner-Agent als App installieren](#13-planner-agent-als-app-installieren)
+14. [Späteres Deployment](#14-sp%C3%A4teres-deployment)
 
 ## 1. Projektstruktur
 
@@ -152,6 +153,28 @@ vorab, ob die Ports 3000/8000 schon belegt sind, und öffnen Backend und
 Frontend jeweils in einem eigenen Fenster (unter Linux als Hintergrund-
 prozesse in diesem einen Fenster, da es dort kein einheitliches "neues
 Terminal öffnen" gibt).
+
+**Zwei Nutzungsszenarien:**
+
+*Erste Nutzung:* Startskript ausführen → Planner-Agent öffnet sich im
+Browser unter `http://localhost:3000` → dort optional "Planner-Agent
+installieren" auswählen (siehe [Abschnitt 13](#13-planner-agent-als-app-installieren)).
+
+*Spätere Nutzung, falls installiert:* Startskript ausführen (Backend +
+Frontend müssen weiterhin laufen) → installierte Planner-Agent-App aus dem
+Startmenü bzw. Programme-Ordner öffnen.
+
+**Wichtig:** Die installierte App startet das lokale Python-Backend **nicht**
+automatisch mit - sie ist ein eigenes Fenster für dieselbe lokale Next.js-
+Seite, kein eigenständiger Prozess. Ohne laufendes Startskript zeigt auch die
+installierte App nur die Meldung, dass das Backend nicht erreichbar ist.
+
+Die Startskripte öffnen aktuell automatisch den normalen Browser (nicht die
+installierte App). Das lässt sich bei Bedarf später leicht abschalten (in
+`start_macos.command`/`start_linux.sh` die `open`/`xdg-open`-Zeile entfernen,
+in `start_windows.ps1` die `Start-Process "http://localhost:3000"`-Zeile) -
+in dieser Phase bewusst nicht verändert, um das bestehende Verhalten nicht
+anzutasten.
 
 **Manuell (z.B. zum Debuggen):**
 
@@ -333,7 +356,79 @@ Diese Ordner werden **nicht** von Git erfasst - eine Sicherung muss separat
 erfolgen (z.B. regelmäßige Kopie auf ein externes Laufwerk oder einen
 Cloud-Speicher außerhalb des Projekts).
 
-## 13. Späteres Deployment
+## 13. Planner-Agent als App installieren
+
+Das Frontend ist eine installierbare Progressive Web App (PWA): einmal
+installiert, bekommt Planner-Agent ein eigenes App-Icon, erscheint im
+Startmenü bzw. Programme-Ordner und öffnet sich in einem eigenen Fenster
+ohne Adressleiste. Das ändert nichts an der Architektur - es ist weiterhin
+dieselbe lokale Next.js-Seite, nur in einem eigenen Fenster statt einem
+Browser-Tab.
+
+**Wichtiger Hinweis:** Die installierte PWA ersetzt **nicht** das lokale
+FastAPI-Backend. Vor der Nutzung müssen Backend und Frontend weiterhin über
+das Startskript gestartet werden - die App selbst startet keinen Python-
+Prozess.
+
+### Windows mit Edge oder Chrome
+
+1. Planner-Agent über `start_windows.ps1` starten.
+2. `http://localhost:3000` öffnen (öffnet sich normalerweise automatisch).
+3. Installationssymbol in der Adressleiste verwenden, oder den
+   "Planner-Agent installieren"-Button unten in der Seitenleiste.
+4. Planner-Agent installieren.
+5. Danach über Startmenü oder eine angelegte Desktop-Verknüpfung öffnen.
+
+### macOS mit Chrome
+
+1. Planner-Agent über `start_macos.command` starten.
+2. Planner-Agent in Chrome öffnen.
+3. Installationssymbol in der Adressleiste bzw. Chrome-Menü → "Planner-Agent
+   installieren" verwenden.
+4. Danach über den Programme-Ordner bzw. das Dock öffnen.
+
+### macOS mit Safari
+
+Safari kennt kein `beforeinstallprompt` - hier zeigt der Sidebar-Bereich
+stattdessen einen kurzen Hinweis auf den browsereigenen Weg:
+
+1. Planner-Agent über `start_macos.command` starten, in Safari öffnen.
+2. Ablage-Menü bzw. Teilen-Symbol → "Zum Dock hinzufügen" wählen.
+3. Danach über das Dock öffnen.
+
+### Deinstallation
+
+- **Windows:** Einstellungen → Apps, oder Rechtsklick auf die installierte
+  App im Startmenü → Deinstallieren.
+- **macOS (Chrome):** `chrome://apps` öffnen, Rechtsklick auf Planner-Agent
+  → Entfernen. Alternativ im App-Fenster über das Drei-Punkte-Menü.
+- **macOS (Safari):** App im Launchpad/Programme-Ordner per Rechtsklick
+  entfernen.
+
+Die Deinstallation entfernt nur die Verknüpfung/das App-Fenster, nicht die
+lokalen Daten unter `local_data/` - die bleiben unverändert erhalten.
+
+### Technischer Hintergrund
+
+**HTTPS/Sicherer Kontext:** PWAs verlangen normalerweise HTTPS. Browser
+behandeln `localhost` (und `127.0.0.1`) dabei standardmäßig als sicheren
+Kontext, PWA-Installation funktioniert also lokal auch über `http://`. Eine
+später öffentlich erreichbare Version müsste über echtes HTTPS ausgeliefert
+werden - der lokale Start bleibt in dieser Phase bewusst unverändert bei
+`http://localhost:3000`, ein selbstsigniertes Zertifikat wäre hier nur
+zusätzlicher Aufwand ohne Nutzen.
+
+**Kein Service Worker:** Diese Phase installiert bewusst **keinen** Service
+Worker. Installierbarkeit (Icon, Startmenü-Eintrag, eigenes Fenster ohne
+Adressleiste) hängt in aktuellen Chromium-Browsern nur vom Manifest ab, nicht
+mehr zwingend von einem Service Worker. Ein Service Worker würde vor allem
+Offline-Funktionalität ermöglichen - das ist hier bewusst nicht gewollt: die
+App zeigt echte, aktuelle Mitarbeiter- und Dienstplandaten aus der lokalen
+SQLite-Datenbank über das Backend, nie einen zwischengespeicherten alten
+Stand. Ohne Service Worker ist das automatisch korrekt, ohne eine Cache-
+Strategie sorgfältig gegen genau dieses Risiko absichern zu müssen.
+
+## 14. Späteres Deployment
 
 Die Struktur ist bewusst so aufgebaut, dass ein späteres Deployment
 vorbereitet ist (zentrale Pfadverwaltung, saubere Trennung von Code und
