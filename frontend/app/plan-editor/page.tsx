@@ -1,7 +1,11 @@
 "use client";
 
+import ConfirmDialog, { type ConfirmDialogAction } from "@/components/ConfirmDialog";
 import PageHeader from "@/components/PageHeader";
 import PersonCellEditor from "@/components/PersonCellEditor";
+import PlanEditorSummary from "@/components/PlanEditorSummary";
+import PlanEditorToolbar from "@/components/PlanEditorToolbar";
+import PreparationStatusCard from "@/components/PreparationStatusCard";
 import SoftsportCellEditor from "@/components/SoftsportCellEditor";
 import WeekPicker from "@/components/WeekPicker";
 import {
@@ -32,10 +36,11 @@ import {
   themeQuartz,
   type CellValueChangedEvent,
   type ColDef,
+  type GridApi,
+  type GridReadyEvent,
   type ICellRendererParams,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -48,6 +53,14 @@ type PlanRow = Record<string, string | null> & {
   _group_label: string | null;
   _group_color: string | null;
 };
+
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+type PendingAction =
+  | { kind: "recalculate" }
+  | { kind: "rebuild" }
+  | { kind: "free-suggestion" }
+  | { kind: "week-change"; nextDate: string };
 
 const ABSENCE_SECTIONS = new Set(["Urlaub/Krank", "Frei"]);
 
@@ -91,6 +104,11 @@ function isoWeek(iso: string): number {
 
 function templateCodeForDate(iso: string): "A" | "B" {
   return isoWeek(iso) % 2 === 1 ? "A" : "B";
+}
+
+function formatDateRange(startIso: string, endIso: string): string {
+  const formatter = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return `${formatter.format(new Date(`${startIso}T12:00:00`))}–${formatter.format(new Date(`${endIso}T12:00:00`))}`;
 }
 
 function splitNames(value: string): string[] {
@@ -181,6 +199,38 @@ export default function PlanEditorPage() {
   const [exported, setExported] = useState(false);
   const loadedArchiveKeyRef = useRef<string | null>(null);
 
+  // ---------- Änderungsstatus (Aufgabe 3) ----------
+  const [isDirty, setIsDirty] = useState(false);
+  const [changeCount, setChangeCount] = useState(0);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveError, setSaveError] = useState("");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+
+  // ---------- Undo/Redo (Aufgabe 3) ----------
+  const gridApiRef = useRef<GridApi<PlanRow> | null>(null);
+  const [gridHistory, setGridHistory] = useState({ canUndo: false, canRedo: false });
+
+  const refreshGridHistory = useCallback(() => {
+    const api = gridApiRef.current;
+    if (!api) return;
+    setGridHistory({
+      canUndo: api.getCurrentUndoSize() > 0,
+      canRedo: api.getCurrentRedoSize() > 0,
+    });
+  }, []);
+
+  const markDirty = useCallback((count = 1) => {
+    setIsDirty(true);
+    setChangeCount((current) => current + count);
+    setSaveState("idle");
+  }, []);
+
+  const clearDirty = useCallback(() => {
+    setIsDirty(false);
+    setChangeCount(0);
+  }, []);
+
   useEffect(() => {
     const load = () => {
       Promise.all([
@@ -240,10 +290,10 @@ export default function PlanEditorPage() {
         setLoadedArchivedWeek(result.existing_week);
         setExported(true);
         setActiveStep(3);
-        setMessage({
-          kind: "success",
-          text: `${result.existing_week.label} ist bereits vollständig archiviert und wurde zum Bearbeiten geöffnet.`,
-        });
+        // Frisch geladener Plan ist die neue Vergleichsbasis - keine Änderung.
+        clearDirty();
+        setSaveState("idle");
+        setLastSavedAt(null);
       })
       .catch((error) => {
         if (!active) return;
@@ -258,8 +308,21 @@ export default function PlanEditorPage() {
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [archivedWeeks, startDate]);
 
+  // ---------- Schutz vor Datenverlust: Browser-Tab schließen/neu laden ----------
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!isDirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
+  const hasExistingPlan = Boolean(loadedArchivedWeek);
   const selectedTemplate = templates.find((template) => template.code === templateCode);
   const artistPlanForWeek = artistPlans.find((plan) => plan.start_date === startDate);
   const rehearsalPlanForWeek = rehearsalPlans.find((plan) => plan.start_date === startDate);
@@ -477,6 +540,7 @@ export default function PlanEditorPage() {
       const manual = result.needs_manual.length
         ? ` · ${result.needs_manual.length} MA ohne erkennbares Muster: ${result.needs_manual.join(", ")} – bitte manuell setzen.`
         : "";
+      if (added) markDirty(added);
       setMessage({
         kind: added ? "success" : "info",
         text: added
@@ -534,6 +598,10 @@ export default function PlanEditorPage() {
       setPreviousWeekWorkload(result.previous_week_workload ?? {});
       setExported(false);
       setActiveStep(3);
+      markDirty(1);
+      // Ein voll ersetzter Datensatz kappt AG Grids Undo/Redo-Verlauf - die
+      // Anzeige muss das widerspiegeln, statt fälschlich "verfügbar" zu zeigen.
+      setGridHistory({ canUndo: false, canRedo: false });
       setMessage({
         kind: "success",
         text: recalculate
@@ -559,13 +627,14 @@ export default function PlanEditorPage() {
     }
   }
 
-  async function save() {
-    if (!rows.length) return;
+  async function save(): Promise<boolean> {
+    if (!rows.length) return false;
     if (!resolvedTemplateWeekId) {
       setMessage({ kind: "error", text: "Bitte den Plan zuerst neu erstellen." });
-      return;
+      return false;
     }
     setBusy(true);
+    setSaveState("saving");
     try {
       const result = await savePlan({
         start_date: startDate,
@@ -589,8 +658,17 @@ export default function PlanEditorPage() {
                 : ""
             }`,
       });
+      clearDirty();
+      setSaveState("saved");
+      setSaveError("");
+      setLastSavedAt(new Date());
+      return true;
     } catch (error) {
-      setMessage({ kind: "error", text: error instanceof Error ? error.message : "Speichern fehlgeschlagen." });
+      const text = error instanceof Error ? error.message : "Speichern fehlgeschlagen.";
+      setMessage({ kind: "error", text });
+      setSaveState("error");
+      setSaveError(text);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -621,66 +699,236 @@ export default function PlanEditorPage() {
     }
   }
 
-  return (
-    <div className="mx-auto max-w-[1900px]">
-      <PageHeader
-        title="Dienstplan erstellen"
-        subtitle="In vier klaren Schritten vom Wochenprogramm bis zur fertigen Excel-Datei"
+  function applyWeekChange(value: string) {
+    setStartDate(value);
+    if (value) setTemplateCode(templateCodeForDate(value));
+    setRows([]);
+    setDayLabels([]);
+    setWeekDates([]);
+    setRehearsalIntervals([]);
+    setShowDates([]);
+    setOnStageByDate({});
+    setDekoPeople([]);
+    setPreviousWeekWorkload({});
+    setLoadedArchivedWeek(null);
+    loadedArchiveKeyRef.current = null;
+    setExported(false);
+    setActiveStep(1);
+    clearDirty();
+    setSaveState("idle");
+    setSaveError("");
+    setLastSavedAt(null);
+    setGridHistory({ canUndo: false, canRedo: false });
+  }
+
+  function requestWeekChange(value: string) {
+    if (isDirty) {
+      setPendingAction({ kind: "week-change", nextDate: value });
+    } else {
+      applyWeekChange(value);
+    }
+  }
+
+  function closeConfirmDialog() {
+    setPendingAction(null);
+  }
+
+  function handleUndo() {
+    gridApiRef.current?.undoCellEditing();
+    refreshGridHistory();
+  }
+
+  function handleRedo() {
+    gridApiRef.current?.redoCellEditing();
+    refreshGridHistory();
+  }
+
+  const weekLabel = `KW ${isoWeek(startDate)} · ${selectedTemplate?.name ?? `Woche ${templateCode}`}`;
+  const visibleRowCount = rows.filter((row) => row._row_type !== "group").length;
+
+  const toolbar = rows.length > 0 && (
+    <PlanEditorToolbar
+      weekLabel={weekLabel}
+      rowCount={visibleRowCount}
+      canUndo={gridHistory.canUndo}
+      canRedo={gridHistory.canRedo}
+      onUndo={handleUndo}
+      onRedo={handleRedo}
+      saveState={saveState}
+      isDirty={isDirty}
+      changeCount={changeCount}
+      lastSavedAt={lastSavedAt}
+      saveError={saveError}
+      onSave={save}
+      busy={busy}
+      onExport={exportExcel}
+      exportDisabled={!xlsxSheet}
+      tools={[
+        { label: "Frei-Tage vorschlagen", onClick: () => setPendingAction({ kind: "free-suggestion" }), disabled: busy },
+        { label: "Zuweisungen neu berechnen", onClick: () => setPendingAction({ kind: "recalculate" }), disabled: busy },
+        { label: "Plan vollständig neu erstellen", onClick: () => setPendingAction({ kind: "rebuild" }), disabled: busy },
+      ]}
+    />
+  );
+
+  const preparationDetails = (
+    <>
+      <PreparationStatusCard
+        ready={Boolean(artistPlanForWeek)}
+        readyLabel={artistPlanForWeek?.sheet_name || artistPlanForWeek?.source_filename || "Künstlerplan"}
+        readyDetail={`${artistPlanForWeek?.filled_entries ?? 0} Programmeinträge`}
+        emptyIcon="K"
+        emptyTitle="Künstlerplan hochladen"
+        emptyDescription="Excel-Datei auswählen, Woche prüfen und für den Dienstplan aktivieren."
+        href="/artist-plan"
+        openLabel="Künstlerplan öffnen"
       />
-
-      <section className="planner-week-context">
-        <div>
-          <span className="planner-week-eyebrow">Aktuelle Planung</span>
-          <strong>KW {isoWeek(startDate)} · {selectedTemplate?.name ?? `Woche ${templateCode}`}</strong>
-          <span>{selectedTemplate?.program ?? "Wochenprogramm"}</span>
+      <PreparationStatusCard
+        ready={Boolean(rehearsalPlanForWeek)}
+        readyLabel={rehearsalPlanForWeek?.source_filename || "Probenplan"}
+        readyDetail={`${rehearsalPlanForWeek?.rehearsal_count ?? 0} Proben`}
+        emptyIcon="P"
+        emptyTitle="Probenplan hochladen"
+        emptyDescription="PDF lokal auswerten, erkannte Zeiten prüfen und für diese Woche aktivieren."
+        href="/rehearsal-plan"
+        openLabel="Probenplan öffnen"
+      />
+      <div className="field field-grow min-w-[280px]">
+        <div className="template-choice-grid">
+          {templates.map((template) => (
+            <button
+              key={template.code}
+              type="button"
+              className={`template-choice ${templateCode === template.code ? "is-selected" : ""}`}
+              onClick={() => setTemplateCode(template.code)}
+            >
+              <span>{template.name}</span>
+              <strong>{template.program}</strong>
+              <small>{template.code === "A" ? "Ungerade Kalenderwochen" : "Gerade Kalenderwochen"}</small>
+            </button>
+          ))}
         </div>
-        <WeekPicker
-          className="planner-week-picker"
-          label="Planwoche beginnt am"
-          value={startDate}
-          onChange={(value) => {
-              setStartDate(value);
-              if (value) setTemplateCode(templateCodeForDate(value));
-              setRows([]);
-              setDayLabels([]);
-              setWeekDates([]);
-              setRehearsalIntervals([]);
-              setShowDates([]);
-              setOnStageByDate({});
-              setDekoPeople([]);
-              setPreviousWeekWorkload({});
-              setLoadedArchivedWeek(null);
-              loadedArchiveKeyRef.current = null;
-              setExported(false);
-              setActiveStep(1);
-          }}
-        />
-      </section>
+      </div>
+    </>
+  );
 
-      <nav className="planner-steps" aria-label="Schritte der Dienstplanerstellung">
-        {stepStates.map((step) => (
-          <button
-            key={step.number}
-            type="button"
-            className={`planner-step ${activeStep === step.number ? "is-active" : ""} ${step.complete ? "is-complete" : ""}`}
-            onClick={() => setActiveStep(step.number)}
-            aria-current={activeStep === step.number ? "step" : undefined}
-          >
-            <span className="planner-step-marker">
-              {step.complete ? "✓" : step.number}
-            </span>
-            <span className="planner-step-copy">
-              <small>{step.eyebrow}</small>
-              <strong>{step.title}</strong>
-              <span>{step.description}</span>
-            </span>
-          </button>
-        ))}
-      </nav>
+  const gridSection = rows.length > 0 && (
+    <>
+      <div className="planner-grid-meta">
+        <div>
+          Namen tippen und auswählen · Infozeilen direkt als Klartext bearbeiten
+        </div>
+        <span className="badge">{visibleRowCount} Planzeilen · 7 Tage</span>
+      </div>
+      <section className="panel overflow-hidden">
+        <div className="overflow-x-auto">
+          <div className={`plan-grid ${hasExistingPlan ? "h-[calc(100vh-260px)]" : "h-[calc(100vh-315px)]"} min-h-[560px]`}>
+            <AgGridReact<PlanRow>
+              theme={gridTheme}
+              rowData={rows}
+              columnDefs={columnDefs}
+              suppressFieldDotNotation
+              defaultColDef={{ sortable: false, resizable: true }}
+              isFullWidthRow={(params) => params.rowNode.data?._row_type === "group"}
+              fullWidthCellRenderer={GroupHeaderRenderer}
+              getRowHeight={(params) => params.data?._row_type === "group" ? 36 : undefined}
+              stopEditingWhenCellsLoseFocus
+              undoRedoCellEditing
+              undoRedoCellEditingLimit={30}
+              onGridReady={(params: GridReadyEvent<PlanRow>) => {
+                gridApiRef.current = params.api;
+                refreshGridHistory();
+              }}
+              onCellValueChanged={(event: CellValueChangedEvent<PlanRow>) => {
+                if (event.data) setRows((current) => [...current]);
+                if (event.oldValue !== event.newValue) markDirty(1);
+                refreshGridHistory();
+              }}
+              getRowId={(params) => rowKey(params.data)}
+            />
+          </div>
+        </div>
+      </section>
+      <div className="plan-editor-bottom-actions">
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>
+          {saveState === "saving" && <span className="spinner" />}
+          Änderungen speichern
+        </button>
+        <button type="button" className="btn" disabled={busy || !xlsxSheet} onClick={exportExcel}>
+          Excel exportieren
+        </button>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="mx-auto max-w-[1900px] plan-editor-page">
+      {hasExistingPlan ? (
+        <PlanEditorSummary
+          kw={isoWeek(startDate)}
+          dateRange={formatDateRange(startDate, addDays(startDate, 6))}
+          programLabel={`${selectedTemplate?.name ?? `Woche ${templateCode}`} – ${selectedTemplate?.program ?? ""}`}
+          artistPlanReady={Boolean(artistPlanForWeek)}
+          rehearsalPlanReady={Boolean(rehearsalPlanForWeek)}
+          peopleCount={people.length}
+          statusLabel={isDirty ? "Ungespeicherte Änderungen" : "Gespeichert"}
+          weekPicker={
+            <WeekPicker
+              className="planner-week-picker plan-editor-summary-week-picker"
+              label="Andere Planwoche öffnen"
+              value={startDate}
+              onChange={requestWeekChange}
+            />
+          }
+          details={preparationDetails}
+        />
+      ) : (
+        <>
+          <PageHeader
+            title="Dienstplan erstellen"
+            subtitle="In vier klaren Schritten vom Wochenprogramm bis zur fertigen Excel-Datei"
+          />
+
+          <section className="planner-week-context">
+            <div>
+              <span className="planner-week-eyebrow">Aktuelle Planung</span>
+              <strong>KW {isoWeek(startDate)} · {selectedTemplate?.name ?? `Woche ${templateCode}`}</strong>
+              <span>{selectedTemplate?.program ?? "Wochenprogramm"}</span>
+            </div>
+            <WeekPicker
+              className="planner-week-picker"
+              label="Planwoche beginnt am"
+              value={startDate}
+              onChange={requestWeekChange}
+            />
+          </section>
+
+          <nav className="planner-steps" aria-label="Schritte der Dienstplanerstellung">
+            {stepStates.map((step) => (
+              <button
+                key={step.number}
+                type="button"
+                className={`planner-step ${activeStep === step.number ? "is-active" : ""} ${step.complete ? "is-complete" : ""}`}
+                onClick={() => setActiveStep(step.number)}
+                aria-current={activeStep === step.number ? "step" : undefined}
+              >
+                <span className="planner-step-marker">
+                  {step.complete ? "✓" : step.number}
+                </span>
+                <span className="planner-step-copy">
+                  <small>{step.eyebrow}</small>
+                  <strong>{step.title}</strong>
+                  <span>{step.description}</span>
+                </span>
+              </button>
+            ))}
+          </nav>
+        </>
+      )}
 
       {message && <div className={`status status-${message.kind}`}>{message.text}</div>}
 
-      {activeStep === 1 && (
+      {!hasExistingPlan && activeStep === 1 && (
         <section className="panel wizard-stage">
           <div className="wizard-stage-head">
             <span className="wizard-stage-number">01</span>
@@ -689,27 +937,16 @@ export default function PlanEditorPage() {
               <p>Shows, Partys, DJs, Chillout und Aperitif werden später automatisch in den Dienstplan übernommen.</p>
             </div>
           </div>
-          {artistPlanForWeek ? (
-            <div className="preparation-card is-complete">
-              <span className="preparation-check">✓</span>
-              <div className="preparation-copy">
-                <small>Bereit für diese Woche</small>
-                <strong>{artistPlanForWeek.sheet_name || artistPlanForWeek.source_filename || "Künstlerplan"}</strong>
-                <span>{artistPlanForWeek.filled_entries} ausgefüllte Programmeinträge</span>
-              </div>
-              <Link className="btn" href="/artist-plan">Prüfen oder ändern</Link>
-            </div>
-          ) : (
-            <div className="preparation-card">
-              <span className="preparation-icon">K</span>
-              <div className="preparation-copy">
-                <small>Noch nicht hinterlegt</small>
-                <strong>Künstlerplan hochladen</strong>
-                <span>Excel-Datei auswählen, Woche prüfen und für den Dienstplan aktivieren.</span>
-              </div>
-              <Link className="btn btn-primary" href="/artist-plan">Künstlerplan öffnen</Link>
-            </div>
-          )}
+          <PreparationStatusCard
+            ready={Boolean(artistPlanForWeek)}
+            readyLabel={artistPlanForWeek?.sheet_name || artistPlanForWeek?.source_filename || "Künstlerplan"}
+            readyDetail={`${artistPlanForWeek?.filled_entries ?? 0} Programmeinträge`}
+            emptyIcon="K"
+            emptyTitle="Künstlerplan hochladen"
+            emptyDescription="Excel-Datei auswählen, Woche prüfen und für den Dienstplan aktivieren."
+            href="/artist-plan"
+            openLabel="Künstlerplan öffnen"
+          />
           <div className="wizard-actions">
             <span>Der Schritt wird automatisch abgehakt, sobald der Plan für diese Woche gespeichert ist.</span>
             <button className="btn btn-primary" onClick={() => setActiveStep(2)}>
@@ -719,7 +956,7 @@ export default function PlanEditorPage() {
         </section>
       )}
 
-      {activeStep === 2 && (
+      {!hasExistingPlan && activeStep === 2 && (
         <section className="panel wizard-stage">
           <div className="wizard-stage-head">
             <span className="wizard-stage-number">02</span>
@@ -728,27 +965,16 @@ export default function PlanEditorPage() {
               <p>Teilnehmer und Tanzchoreografen werden während ihrer Probe automatisch für parallele Dienste gesperrt.</p>
             </div>
           </div>
-          {rehearsalPlanForWeek ? (
-            <div className="preparation-card is-complete">
-              <span className="preparation-check">✓</span>
-              <div className="preparation-copy">
-                <small>Zeitkonflikte werden berücksichtigt</small>
-                <strong>{rehearsalPlanForWeek.source_filename || "Probenplan"}</strong>
-                <span>{rehearsalPlanForWeek.rehearsal_count} erkannte Proben</span>
-              </div>
-              <Link className="btn" href="/rehearsal-plan">Prüfen oder ändern</Link>
-            </div>
-          ) : (
-            <div className="preparation-card">
-              <span className="preparation-icon">P</span>
-              <div className="preparation-copy">
-                <small>Noch nicht hinterlegt</small>
-                <strong>Probenplan hochladen</strong>
-                <span>PDF lokal auswerten, erkannte Zeiten prüfen und für diese Woche aktivieren.</span>
-              </div>
-              <Link className="btn btn-primary" href="/rehearsal-plan">Probenplan öffnen</Link>
-            </div>
-          )}
+          <PreparationStatusCard
+            ready={Boolean(rehearsalPlanForWeek)}
+            readyLabel={rehearsalPlanForWeek?.source_filename || "Probenplan"}
+            readyDetail={`${rehearsalPlanForWeek?.rehearsal_count ?? 0} Proben`}
+            emptyIcon="P"
+            emptyTitle="Probenplan hochladen"
+            emptyDescription="PDF lokal auswerten, erkannte Zeiten prüfen und für diese Woche aktivieren."
+            href="/rehearsal-plan"
+            openLabel="Probenplan öffnen"
+          />
           <div className="wizard-actions">
             <button className="btn" onClick={() => setActiveStep(1)}>Zurück</button>
             <button className="btn btn-primary" onClick={() => setActiveStep(3)}>
@@ -758,123 +984,61 @@ export default function PlanEditorPage() {
         </section>
       )}
 
-      {activeStep === 3 && (
+      {(hasExistingPlan || activeStep === 3) && (
         <>
-          <section className="panel wizard-stage">
-            <div className="wizard-stage-head compact">
-              <span className="wizard-stage-number">03</span>
-              <div>
-                <h2>Dienstplan erstellen und bearbeiten</h2>
-                <p>Grundwoche wählen, Vorschlag erzeugen und Zuweisungen direkt im Plan anpassen.</p>
-              </div>
-            </div>
-            {loadedArchivedWeek && (
-              <div className="planner-existing-plan">
-                <span className="planner-existing-plan-check" aria-hidden="true">✓</span>
+          {!hasExistingPlan && (
+            <section className="panel wizard-stage">
+              <div className="wizard-stage-head compact">
+                <span className="wizard-stage-number">03</span>
                 <div>
-                  <small>Fertiger Dienstplan erkannt</small>
-                  <strong>{loadedArchivedWeek.label}</strong>
-                  <span>
-                    {loadedArchivedWeek.assignment_count} Planeinträge ·{" "}
-                    {loadedArchivedWeek.absence_count} Abwesenheiten · Änderungen können
-                    direkt unten vorgenommen und wieder gespeichert werden.
-                  </span>
-                </div>
-                <span className="planner-existing-plan-state">Vollständig archiviert</span>
-              </div>
-            )}
-            <div className="planner-config">
-              <div className="field field-grow min-w-[360px]">
-                <span className="field-label">Programm-Rhythmus</span>
-                <div className="template-choice-grid">
-                  {templates.map((template) => (
-                    <button
-                      key={template.code}
-                      type="button"
-                      className={`template-choice ${templateCode === template.code ? "is-selected" : ""}`}
-                      onClick={() => setTemplateCode(template.code)}
-                    >
-                      <span>{template.name}</span>
-                      <strong>{template.program}</strong>
-                      <small>{template.code === "A" ? "Ungerade Kalenderwochen" : "Gerade Kalenderwochen"}</small>
-                    </button>
-                  ))}
+                  <h2>Dienstplan erstellen und bearbeiten</h2>
+                  <p>Grundwoche wählen, Vorschlag erzeugen und Zuweisungen direkt im Plan anpassen.</p>
                 </div>
               </div>
-              <div className="planner-config-actions">
-                <button className="btn btn-primary" disabled={busy} onClick={() => generate(false)}>
-                  {busy && <span className="spinner" />}
-                  {rows.length ? "Plan neu aufbauen" : "Dienstplan erstellen"}
-                </button>
-                {rows.length > 0 && (
-                  <>
-                    <button
-                      className="btn"
-                      disabled={busy}
-                      onClick={applyFreeSuggestion}
-                      title="Trägt die üblichen Frei-Tage ein. Eigene Einträge bleiben erhalten."
-                    >
-                      Frei-Vorschlag übernehmen
+              <div className="planner-config">
+                <div className="field field-grow min-w-[360px]">
+                  <span className="field-label">Programm-Rhythmus</span>
+                  <div className="template-choice-grid">
+                    {templates.map((template) => (
+                      <button
+                        key={template.code}
+                        type="button"
+                        className={`template-choice ${templateCode === template.code ? "is-selected" : ""}`}
+                        onClick={() => setTemplateCode(template.code)}
+                      >
+                        <span>{template.name}</span>
+                        <strong>{template.program}</strong>
+                        <small>{template.code === "A" ? "Ungerade Kalenderwochen" : "Gerade Kalenderwochen"}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {!rows.length && (
+                  <div className="planner-config-actions">
+                    <button className="btn btn-primary" disabled={busy} onClick={() => generate(false)}>
+                      {busy && <span className="spinner" />}
+                      Dienstplan erstellen
                     </button>
-                    <button className="btn" disabled={busy} onClick={() => generate(true)}>
-                      Zuweisungen neu berechnen
-                    </button>
-                    <button className="btn" disabled={busy} onClick={save}>Im Archiv speichern</button>
-                  </>
+                  </div>
                 )}
               </div>
-            </div>
-            <div className="planner-source-status">
-              <span className={artistPlanForWeek ? "is-ready" : ""}>
-                {artistPlanForWeek ? "✓" : "–"} Künstlerplan
-              </span>
-              <span className={rehearsalPlanForWeek ? "is-ready" : ""}>
-                {rehearsalPlanForWeek ? "✓" : "–"} Probenplan
-              </span>
-              <span>✓ Planungsregeln</span>
-              <span>✓ {people.length} aktive MA</span>
-              {loadedArchivedWeek && <span className="is-ready">✓ Fertiger Dienstplan</span>}
-            </div>
-          </section>
+              <div className="planner-source-status">
+                <span className={artistPlanForWeek ? "is-ready" : ""}>
+                  {artistPlanForWeek ? "✓" : "–"} Künstlerplan
+                </span>
+                <span className={rehearsalPlanForWeek ? "is-ready" : ""}>
+                  {rehearsalPlanForWeek ? "✓" : "–"} Probenplan
+                </span>
+                <span>✓ Planungsregeln</span>
+                <span>✓ {people.length} aktive MA</span>
+              </div>
+            </section>
+          )}
 
           {rows.length > 0 ? (
             <>
-              <div className="planner-grid-meta">
-                <div>
-                  Namen tippen und auswählen · Infozeilen direkt als Klartext bearbeiten
-                </div>
-                <span className="badge">
-                  {rows.filter((row) => row._row_type !== "group").length} Planzeilen · 7 Tage
-                </span>
-              </div>
-              <section className="panel overflow-hidden">
-                <div className="overflow-x-auto">
-                  <div className="plan-grid h-[calc(100vh-315px)] min-h-[560px]">
-                    <AgGridReact<PlanRow>
-                      theme={gridTheme}
-                      rowData={rows}
-                      columnDefs={columnDefs}
-                      suppressFieldDotNotation
-                      defaultColDef={{ sortable: false, resizable: true }}
-                      isFullWidthRow={(params) => params.rowNode.data?._row_type === "group"}
-                      fullWidthCellRenderer={GroupHeaderRenderer}
-                      getRowHeight={(params) => params.data?._row_type === "group" ? 36 : undefined}
-                      stopEditingWhenCellsLoseFocus
-                      undoRedoCellEditing
-                      undoRedoCellEditingLimit={30}
-                      onCellValueChanged={(event: CellValueChangedEvent<PlanRow>) => {
-                        if (event.data) setRows((current) => [...current]);
-                      }}
-                      getRowId={(params) => rowKey(params.data)}
-                    />
-                  </div>
-                </div>
-              </section>
-              <div className="planner-grid-actions">
-                <button className="btn btn-primary" onClick={() => setActiveStep(4)}>
-                  Export vorbereiten
-                </button>
-              </div>
+              {toolbar}
+              {gridSection}
             </>
           ) : (
             <section className="planner-empty-state">
@@ -886,7 +1050,7 @@ export default function PlanEditorPage() {
         </>
       )}
 
-      {activeStep === 4 && (
+      {!hasExistingPlan && activeStep === 4 && (
         <section className="panel wizard-stage">
           <div className="wizard-stage-head">
             <span className="wizard-stage-number">{exported ? "✓" : "04"}</span>
@@ -901,10 +1065,10 @@ export default function PlanEditorPage() {
                 <span className="export-choice-icon">A</span>
                 <div>
                   <small>Interne Sicherung</small>
-                  <strong>Im Archiv speichern</strong>
+                  <strong>Änderungen speichern</strong>
                   <p>Der aktuelle Stand bleibt im Dashboard und in den Auswertungen verfügbar.</p>
                 </div>
-                <button className="btn" disabled={busy} onClick={save}>Archivieren</button>
+                <button className="btn" disabled={busy} onClick={save}>Speichern</button>
               </div>
               <div className={`export-choice is-primary ${exported ? "is-complete" : ""}`}>
                 <span className="export-choice-icon">{exported ? "✓" : "X"}</span>
@@ -935,6 +1099,119 @@ export default function PlanEditorPage() {
           </div>
         </section>
       )}
+
+      {pendingAction?.kind === "recalculate" && (
+        <ConfirmDialog
+          open
+          title="Zuweisungen neu berechnen?"
+          description={
+            <>
+              <p>Automatisch erzeugte Zuweisungen werden neu berechnet. Manuell bearbeitete Informations- und Abwesenheitsfelder bleiben erhalten.</p>
+              {isDirty && <p>Du hast noch ungespeicherte Änderungen an diesem Plan.</p>}
+              <p>Einzelne Zellbearbeitungen lassen sich per Strg/Cmd+Z rückgängig machen, solange du die Seite nicht neu lädst. Die Neuberechnung selbst kann anschließend nicht automatisch rückgängig gemacht werden.</p>
+            </>
+          }
+          actions={buildActions(isDirty, "Neu berechnen", closeConfirmDialog, async () => {
+            const ok = await save();
+            if (ok) generate(true);
+          }, () => generate(true))}
+          onDismiss={closeConfirmDialog}
+        />
+      )}
+
+      {pendingAction?.kind === "rebuild" && (
+        <ConfirmDialog
+          open
+          title="Plan vollständig neu erstellen?"
+          description={
+            <>
+              <p>Der gesamte Dienstplan wird verworfen und komplett neu aufgebaut - das betrifft auch manuell bearbeitete Informations- und Abwesenheitsfelder.</p>
+              {isDirty && <p>Du hast noch ungespeicherte Änderungen an diesem Plan.</p>}
+              <p>Dieser Neuaufbau kann anschließend nicht automatisch rückgängig gemacht werden.</p>
+            </>
+          }
+          actions={buildActions(isDirty, "Neu erstellen", closeConfirmDialog, async () => {
+            const ok = await save();
+            if (ok) generate(false);
+          }, () => generate(false), "danger")}
+          onDismiss={closeConfirmDialog}
+        />
+      )}
+
+      {pendingAction?.kind === "free-suggestion" && (
+        <ConfirmDialog
+          open
+          title="Frei-Vorschlag übernehmen?"
+          description={
+            <p>Für Mitarbeiter ohne Eintrag werden die üblichen Frei-Tage ergänzt. Bestehende Frei-Einträge werden dabei nicht verändert oder entfernt.</p>
+          }
+          actions={[
+            { label: "Abbrechen", onClick: closeConfirmDialog, variant: "default" },
+            {
+              label: "Übernehmen",
+              variant: "primary",
+              autoFocus: true,
+              onClick: () => { closeConfirmDialog(); applyFreeSuggestion(); },
+            },
+          ]}
+          onDismiss={closeConfirmDialog}
+        />
+      )}
+
+      {pendingAction?.kind === "week-change" && (
+        <ConfirmDialog
+          open
+          title="Ungespeicherte Änderungen"
+          description={
+            <p>
+              Für die aktuelle Woche gibt es {changeCount} ungespeicherte {changeCount === 1 ? "Änderung" : "Änderungen"}.
+              Wenn du fortfährst, gehen diese verloren, sofern du sie nicht vorher speicherst.
+            </p>
+          }
+          actions={[
+            { label: "Abbrechen", onClick: closeConfirmDialog, variant: "default" },
+            {
+              label: "Änderungen verwerfen",
+              variant: "danger",
+              onClick: () => {
+                const next = pendingAction.nextDate;
+                closeConfirmDialog();
+                applyWeekChange(next);
+              },
+            },
+            {
+              label: "Änderungen speichern",
+              variant: "primary",
+              autoFocus: true,
+              onClick: async () => {
+                const next = pendingAction.nextDate;
+                closeConfirmDialog();
+                const ok = await save();
+                if (ok) applyWeekChange(next);
+              },
+            },
+          ]}
+          onDismiss={closeConfirmDialog}
+        />
+      )}
     </div>
   );
+}
+
+function buildActions(
+  isDirty: boolean,
+  confirmLabel: string,
+  onCancel: () => void,
+  onSaveFirst: () => void,
+  onConfirm: () => void,
+  confirmVariant: "primary" | "danger" = "primary",
+): ConfirmDialogAction[] {
+  const actions: ConfirmDialogAction[] = [
+    { label: "Abbrechen", onClick: onCancel, variant: "default" },
+  ];
+  if (isDirty) {
+    actions.push({ label: "Erst speichern", onClick: onSaveFirst, variant: "default" });
+  }
+  actions.push({ label: confirmLabel, onClick: onConfirm, variant: confirmVariant, autoFocus: !isDirty });
+  return actions;
 }
