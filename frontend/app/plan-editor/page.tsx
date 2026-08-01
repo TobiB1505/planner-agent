@@ -960,29 +960,61 @@ export default function PlanEditorPage() {
         day_labels: dayLabels,
         rows,
       });
+      const savedEndDate = addDays(startDate, 6);
+      const fallbackWeek: WeekSummary = {
+        id: result.week_plan_id,
+        kw: isoWeek(startDate),
+        start_date: startDate,
+        end_date: savedEndDate,
+        source: null,
+        label: `KW${isoWeek(startDate)} · ${formatDateRange(startDate, savedEndDate)}`,
+        assignment_count: 0,
+        absence_count: 0,
+      };
+      let savedWeek = result.week ?? fallbackWeek;
+      let refreshedWeeks: WeekSummary[] | null = null;
+
+      // Ältere, noch laufende Backend-Prozesse liefern nach dem Speichern nur
+      // week_plan_id. In diesem Fall laden wir die Archivübersicht nach und
+      // bleiben selbst dann funktionsfähig, wenn dieser zweite Abruf scheitert.
+      if (!result.week) {
+        try {
+          refreshedWeeks = await getWeeks();
+          savedWeek =
+            refreshedWeeks.find((week) => week.id === result.week_plan_id) ??
+            refreshedWeeks.find((week) => week.start_date === startDate) ??
+            fallbackWeek;
+        } catch {
+          // Der Plan selbst wurde bereits erfolgreich gespeichert. Die lokal
+          // erzeugte Zusammenfassung reicht bis zum nächsten Seitenabruf aus.
+        }
+      }
+      const saveWarnings = result.warnings ?? [];
       // Ab dem ersten erfolgreichen Speichern ist dies ein bestehender
       // Archivplan. Dadurch aktualisiert jeder weitere Klick exakt dieselbe
       // Woche, statt einen zweiten Datensatz anzulegen.
-      setLoadedArchivedWeek(result.week);
-      setArchivedWeeks((current) => [
-        result.week,
-        ...current.filter(
-          (week) =>
-            week.id !== result.week.id &&
-            week.start_date !== result.week.start_date,
-        ),
-      ]);
+      setLoadedArchivedWeek(savedWeek);
+      setArchivedWeeks((current) =>
+        refreshedWeeks ?? [
+          savedWeek,
+          ...current.filter(
+            (week) =>
+              week.id !== savedWeek.id &&
+              week.start_date !== savedWeek.start_date,
+          ),
+        ],
+      );
       setMessage({
-        kind: result.warnings.length ? "info" : "success",
+        kind: saveWarnings.length ? "info" : "success",
         text: loadedArchivedWeek
-          ? `${result.week.label} wurde mit deinen Änderungen aktualisiert.${
-              result.warnings.length
-                ? ` Planungs-Hinweis: ${result.warnings.slice(0, 2).join(" · ")}`
+          ? `${savedWeek.label} wurde mit deinen Änderungen aktualisiert.${
+              saveWarnings.length
+                ? ` Planungs-Hinweis: ${saveWarnings.slice(0, 2).join(" · ")}`
                 : ""
             }`
           : `Plan gespeichert (Archiv-Nr. ${result.week_plan_id}).${
-              result.warnings.length
-                ? ` Planungs-Hinweis: ${result.warnings.slice(0, 2).join(" · ")}`
+              saveWarnings.length
+                ? ` Planungs-Hinweis: ${saveWarnings.slice(0, 2).join(" · ")}`
                 : ""
             }`,
       });
