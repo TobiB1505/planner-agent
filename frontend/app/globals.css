@@ -6671,3 +6671,286 @@ button {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------- Dienstplan-Editor: Bearbeitungsmodus ---------- */
+
+.btn-danger-solid {
+  border-color: rgba(219, 75, 86, 0.35);
+  background: #db4b56;
+  color: #fff;
+}
+
+.btn-danger-solid:hover {
+  background: #c73f4a;
+  border-color: rgba(219, 75, 86, 0.5);
+}
+
+/* Bestätigungsdialog */
+
+.confirm-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 10, 20, 0.45);
+  padding: 20px;
+}
+
+.confirm-dialog {
+  width: 100%;
+  max-width: 460px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--background);
+  box-shadow: 0 24px 60px rgba(10, 10, 24, 0.28);
+  padding: 22px;
+}
+
+.confirm-dialog h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 780;
+}
+
+.confirm-dialog-description {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.confirm-dialog-description p {
+  margin: 0;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+/* Kompakter Bearbeitungsmodus-Header (Aufgabe 1) */
+
+.plan-editor-summary-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+}
+
+.plan-editor-summary-copy h1 {
+  margin: 0;
+  font-size: clamp(1.3rem, 1.6vw, 1.6rem);
+  font-weight: 780;
+  letter-spacing: -0.03em;
+}
+
+.plan-editor-summary-copy p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.plan-editor-summary-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.plan-editor-summary-checks .is-ready {
+  color: #2da970;
+}
+
+.plan-editor-summary-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.plan-editor-summary-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+  padding: 5px 11px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.plan-editor-summary-toggle:hover {
+  background: var(--accent-soft);
+}
+
+.plan-editor-summary-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  border-top: 1px solid var(--border);
+  padding: 16px 20px 20px;
+}
+
+.plan-editor-summary-details > .preparation-card {
+  flex: 1 1 260px;
+}
+
+.plan-editor-summary-details > .field {
+  flex: 1 1 260px;
+}
+
+.plan-editor-summary-details > .planner-week-picker {
+  flex: 0 0 auto;
+}
+
+/* Feste Werkzeugleiste (Aufgabe 4) */
+
+.plan-editor-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  backdrop-filter: blur(8px);
+  padding: 10px 14px;
+  box-shadow: 0 6px 18px rgba(10, 10, 24, 0.06);
+}
+
+.plan-editor-toolbar-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  min-width: 0;
+}
+
+.plan-editor-toolbar-week {
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.plan-editor-toolbar-undo {
+  display: flex;
+  gap: 4px;
+}
+
+.plan-editor-save-status {
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.plan-editor-save-status.is-dirty {
+  color: #c47c25;
+}
+
+.plan-editor-save-status.is-clean {
+  color: #2da970;
+}
+
+.plan-editor-save-status.is-error {
+  color: #db4b56;
+}
+
+.plan-editor-save-error {
+  color: #db4b56;
+  font-size: 11.5px;
+}
+
+.plan-editor-toolbar-count {
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.plan-editor-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-editor-tools-menu {
+  position: relative;
+}
+
+.plan-editor-tools-menu > div {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: 220px;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--background);
+  box-shadow: 0 14px 36px rgba(10, 10, 24, 0.18);
+  padding: 5px;
+}
+
+.plan-editor-tools-menu > div button {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--foreground);
+  padding: 9px 10px;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.plan-editor-tools-menu > div button:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.plan-editor-tools-menu > div button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.plan-editor-bottom-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+@media (max-width: 900px) {
+  .plan-editor-toolbar {
+    justify-content: flex-start;
+  }
+
+  .plan-editor-toolbar-actions {
+    width: 100%;
+  }
+
+  .plan-editor-toolbar-actions .btn {
+    flex: 1 1 auto;
+  }
+
+  .plan-editor-summary-checks {
+    margin-left: 0;
+  }
+}
