@@ -275,8 +275,8 @@ export interface PlanSavePayload {
 
 export interface PlanSaveResult {
   week_plan_id: number;
-  warnings: string[];
-  week: WeekSummary;
+  warnings?: string[];
+  week?: WeekSummary;
 }
 
 export interface ArtistPlanRow {
