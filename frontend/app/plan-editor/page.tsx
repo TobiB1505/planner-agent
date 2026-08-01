@@ -794,7 +794,6 @@ export default function PlanEditorPage() {
         openLabel="Probenplan öffnen"
       />
       <div className="field field-grow min-w-[280px]">
-        <span className="field-label">Programm-Rhythmus</span>
         <div className="template-choice-grid">
           {templates.map((template) => (
             <button
@@ -873,17 +872,15 @@ export default function PlanEditorPage() {
           rehearsalPlanReady={Boolean(rehearsalPlanForWeek)}
           peopleCount={people.length}
           statusLabel={isDirty ? "Ungespeicherte Änderungen" : "Gespeichert"}
-          details={
-            <>
-              {preparationDetails}
-              <WeekPicker
-                className="planner-week-picker"
-                label="Andere Planwoche öffnen"
-                value={startDate}
-                onChange={requestWeekChange}
-              />
-            </>
+          weekPicker={
+            <WeekPicker
+              className="planner-week-picker plan-editor-summary-week-picker"
+              label="Andere Planwoche öffnen"
+              value={startDate}
+              onChange={requestWeekChange}
+            />
           }
+          details={preparationDetails}
         />
       ) : (
         <>

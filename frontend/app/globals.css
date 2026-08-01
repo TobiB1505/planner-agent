@@ -6778,6 +6778,20 @@ button {
   font-weight: 650;
 }
 
+.plan-editor-summary-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.plan-editor-summary-week-picker {
+  min-width: 200px;
+}
+
+.plan-editor-summary-week-picker .week-picker-control {
+  min-height: 40px;
+}
+
 .plan-editor-summary-toggle {
   display: inline-flex;
   align-items: center;
@@ -6813,13 +6827,7 @@ button {
 .plan-editor-summary-details > .field {
   flex: 1 1 260px;
   min-width: 380px;
-  padding-top: 17px;
-}
-
-.plan-editor-summary-details > .planner-week-picker {
-  padding-top: 17px;
-  flex: 0 0 auto;
-  min-width: 220px;
+  padding: 16px 0;
 }
 
 /* Feste Werkzeugleiste (Aufgabe 4) */

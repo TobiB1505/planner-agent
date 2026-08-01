@@ -10,6 +10,7 @@ export default function PlanEditorSummary({
   rehearsalPlanReady,
   peopleCount,
   statusLabel,
+  weekPicker,
   details,
 }: {
   kw: number;
@@ -19,6 +20,8 @@ export default function PlanEditorSummary({
   rehearsalPlanReady: boolean;
   peopleCount: number;
   statusLabel: string;
+  /** Datumsauswahl, oben rechts neben dem Vorbereitungsdetails-Umschalter. */
+  weekPicker: ReactNode;
   /** Eingeklappter Detailbereich (Künstler-/Probenplan-Karten, Vorlagenwahl). */
   details: ReactNode;
 }) {
@@ -42,15 +45,18 @@ export default function PlanEditorSummary({
         </div>
         <div className="plan-editor-summary-status">
           <span>Status: {statusLabel}</span>
-          <button
-            type="button"
-            className="plan-editor-summary-toggle"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((current) => !current)}
-          >
-            {expanded ? "Vorbereitungsdetails ausblenden" : "Vorbereitungsdetails anzeigen"}
-            <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
-          </button>
+          <div className="plan-editor-summary-header-actions">
+            {weekPicker}
+            <button
+              type="button"
+              className="plan-editor-summary-toggle"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((current) => !current)}
+            >
+              {expanded ? "Vorbereitungsdetails ausblenden" : "Vorbereitungsdetails anzeigen"}
+              <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
+            </button>
+          </div>
         </div>
       </div>
       {expanded && <div className="plan-editor-summary-details">{details}</div>}
