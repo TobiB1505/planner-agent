@@ -2,12 +2,13 @@
 
 import PlanValidationSummary, { type ValidationStatus } from "@/components/PlanValidationSummary";
 import type { PlanValidationSummary as ValidationSummaryData } from "@/lib/planValidation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
 export interface PlanToolbarTool {
   label: string;
+  description?: string;
   onClick: () => void;
   disabled?: boolean;
 }
@@ -34,6 +35,7 @@ export default function PlanEditorToolbar({
   validationSummary,
   validationStatus,
   onOpenValidation,
+  viewControls,
 }: {
   weekLabel: string;
   rowCount: number;
@@ -56,6 +58,7 @@ export default function PlanEditorToolbar({
   validationSummary: ValidationSummaryData;
   validationStatus: ValidationStatus;
   onOpenValidation: () => void;
+  viewControls: ReactNode;
 }) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -91,79 +94,90 @@ export default function PlanEditorToolbar({
 
   return (
     <div className="plan-editor-toolbar" role="toolbar" aria-label="Dienstplan-Werkzeuge">
-      <div className="plan-editor-toolbar-info">
-        <span className="plan-editor-toolbar-week">{weekLabel}</span>
-        <div className="plan-editor-toolbar-undo">
-          <button
-            type="button"
-            className="btn-icon"
-            onClick={onUndo}
-            disabled={!canUndo}
-            title="Rückgängig (Strg/Cmd+Z)"
-            aria-label="Rückgängig"
-          >
-            ↶
-          </button>
-          <button
-            type="button"
-            className="btn-icon"
-            onClick={onRedo}
-            disabled={!canRedo}
-            title="Wiederholen (Strg/Cmd+Umschalt+Z)"
-            aria-label="Wiederholen"
-          >
-            ↷
-          </button>
-        </div>
-        <span className={`plan-editor-save-status ${statusTone}`} role="status">
-          {statusText}
-        </span>
-        {saveState === "error" && saveError && (
-          <span className="plan-editor-save-error">{saveError}</span>
-        )}
-        <span className="plan-editor-toolbar-count">{rowCount} Planzeilen</span>
-        <PlanValidationSummary summary={validationSummary} status={validationStatus} onOpen={onOpenValidation} />
-      </div>
-
-      <div className="plan-editor-toolbar-actions">
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={onSave}>
-          {saveState === "saving" && <span className="spinner" />}
-          {saveLabel}
-        </button>
-        <button type="button" className="btn" disabled={busy || exportDisabled} onClick={onExport}>
-          {exportLabel}
-        </button>
-        {tools.length > 0 && (
-          <div ref={toolsRef} className="plan-editor-tools-menu">
+      <div className="plan-editor-toolbar-primary">
+        <div className="plan-editor-toolbar-info">
+          <span className="plan-editor-toolbar-week">{weekLabel}</span>
+          <div className="plan-editor-toolbar-undo">
             <button
               type="button"
-              className="btn"
-              aria-haspopup="menu"
-              aria-expanded={toolsOpen}
-              onClick={() => setToolsOpen((current) => !current)}
+              className="btn-icon"
+              onClick={onUndo}
+              disabled={!canUndo}
+              title="Rückgängig (Strg/Cmd+Z)"
+              aria-label="Rückgängig"
             >
-              Planungswerkzeuge <span aria-hidden="true">▾</span>
+              ↶
             </button>
-            {toolsOpen && (
-              <div role="menu" aria-label="Planungswerkzeuge">
-                {tools.map((tool) => (
-                  <button
-                    key={tool.label}
-                    type="button"
-                    role="menuitem"
-                    disabled={tool.disabled}
-                    onClick={() => {
-                      setToolsOpen(false);
-                      tool.onClick();
-                    }}
-                  >
-                    {tool.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <button
+              type="button"
+              className="btn-icon"
+              onClick={onRedo}
+              disabled={!canRedo}
+              title="Wiederholen (Strg/Cmd+Umschalt+Z)"
+              aria-label="Wiederholen"
+            >
+              ↷
+            </button>
           </div>
-        )}
+          <span className={`plan-editor-save-status ${statusTone}`} role="status">
+            {statusText}
+          </span>
+          {saveState === "error" && saveError && (
+            <span className="plan-editor-save-error">{saveError}</span>
+          )}
+          <span className="plan-editor-toolbar-count">{rowCount} Planzeilen</span>
+          <PlanValidationSummary summary={validationSummary} status={validationStatus} onOpen={onOpenValidation} />
+        </div>
+
+        <div className="plan-editor-toolbar-actions">
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={onSave}>
+            {saveState === "saving" && <span className="spinner" />}
+            {saveLabel}
+          </button>
+          <button type="button" className="btn" disabled={busy || exportDisabled} onClick={onExport}>
+            {exportLabel}
+          </button>
+          {tools.length > 0 && (
+            <div ref={toolsRef} className="plan-editor-tools-menu">
+              <button
+                type="button"
+                className="btn"
+                aria-haspopup="menu"
+                aria-expanded={toolsOpen}
+                onClick={() => setToolsOpen((current) => !current)}
+              >
+                Plan optimieren <span aria-hidden="true">▾</span>
+              </button>
+              {toolsOpen && (
+                <div role="menu" aria-label="Plan optimieren">
+                  {tools.map((tool) => (
+                    <button
+                      key={tool.label}
+                      type="button"
+                      role="menuitem"
+                      disabled={tool.disabled}
+                      title={tool.description}
+                      onClick={() => {
+                        setToolsOpen(false);
+                        tool.onClick();
+                      }}
+                    >
+                      <strong>{tool.label}</strong>
+                      {tool.description && <span>{tool.description}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="plan-editor-toolbar-view">
+        {viewControls}
+        <span className="plan-editor-toolbar-view-hint">
+          Ansicht und Dichte werden auf diesem Gerät gespeichert.
+        </span>
       </div>
     </div>
   );

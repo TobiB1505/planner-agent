@@ -9,7 +9,7 @@ import sqlite3
 
 import pytest
 
-from backend import db, planning_rules
+from backend import db, planning_rules, rehearsal_plan
 from backend.api import _assignment_warnings
 
 
@@ -62,6 +62,12 @@ def test_normal_sport_prefers_spt_but_remains_manually_overridable():
     assert tc_automatic["allowed"] is False
     assert tc_automatic["recommended"] is False
 
+    deko_automatic = planning_rules.person_decision(
+        "Mara", "Deko", "Sportprogramm", "15:30 BVB", automatic=True
+    )
+    assert deko_automatic["allowed"] is True
+    assert deko_automatic["recommended"] is False
+
 
 def test_guests_vs_robins_keeps_tc_manual_but_out_of_automatic_selection():
     manual = planning_rules.person_decision(
@@ -98,20 +104,65 @@ def test_ops_prefers_manager_without_blocking_other_departments():
     assert rule["hard_rule"] is False
 
 
-def test_kp3_blocks_sound_and_light_as_a_hard_rule():
+def test_kp3_avoids_sound_and_light_without_hard_blocking_it():
     rule = planning_rules.assignment_rule(TEAM, "Kochdienste", "KP3 19:00 - 21:15")
 
     assert rule is not None
     assert rule["id"] == "kp3_no_sound_light"
-    assert rule["blocked_people"] == ["Luca"]
-    assert "Luca" not in rule["allowed_people"]
-    assert rule["hard_rule"] is True
+    assert rule["blocked_people"] == []
+    assert "Luca" in rule["allowed_people"]
+    assert "Luca" not in rule["recommended_people"]
+    assert rule["hard_rule"] is False
     assert planning_rules.hard_violation(
         "Luca", "Sound & Light", "Kochdienste", "KP3 19:00 - 21:15"
-    )
+    ) is None
     assert planning_rules.hard_violation(
         "Mara", "Deko", "Kochdienste", "KP3 19:00 - 21:15"
     ) is None
+
+
+def test_kp3_keeps_real_evening_contract_restriction():
+    rule = planning_rules.assignment_rule(
+        [*TEAM, {"name": "Brigitte", "department": "Entertainment"}],
+        "Kochdienste",
+        "KP3 19:00 - 21:15",
+    )
+
+    assert rule is not None
+    assert rule["blocked_people"] == ["Brigitte"]
+    assert rule["hard_rule"] is True
+    assert planning_rules.hard_violation(
+        "Brigitte", "Entertainment", "Kochdienste", "KP3 19:00 - 21:15"
+    )
+
+
+def test_hour_only_service_range_matches_backend_formats():
+    assert planning_rules.service_interval(
+        "An + Abreise-Dienst", "14-15 Uhr"
+    ) == (14 * 60, 15 * 60)
+
+
+def test_deko_relief_on_show_day_is_reported_before_save(memory_db, monkeypatch):
+    db.create_person(memory_db, "Mara", "Deko")
+    show_date = "2026-08-05"
+    monkeypatch.setattr(
+        rehearsal_plan,
+        "detect_show_dates",
+        lambda _events: {show_date},
+    )
+
+    warnings = _assignment_warnings(
+        memory_db,
+        [{
+            "date": show_date,
+            "category": "Barfrei",
+            "subcategory": None,
+            "person": "Mara",
+        }],
+        "2026-08-03",
+    )
+
+    assert any("An Showtagen ist für Deko" in warning for warning in warnings)
 
 
 @pytest.mark.parametrize(
