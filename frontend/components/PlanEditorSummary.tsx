@@ -46,7 +46,6 @@ export default function PlanEditorSummary({
         <div className="plan-editor-summary-status">
           <span>Status: {statusLabel}</span>
           <div className="plan-editor-summary-header-actions">
-            {weekPicker}
             <button
               type="button"
               className="plan-editor-summary-toggle"
@@ -56,6 +55,7 @@ export default function PlanEditorSummary({
               {expanded ? "Vorbereitungsdetails ausblenden" : "Vorbereitungsdetails anzeigen"}
               <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
             </button>
+            {weekPicker}
           </div>
         </div>
       </div>

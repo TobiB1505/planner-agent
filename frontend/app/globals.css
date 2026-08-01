@@ -6786,6 +6786,11 @@ button {
 
 .plan-editor-summary-week-picker {
   min-width: 200px;
+  margin-left: auto;
+}
+
+.plan-editor-summary-week-picker .field-label {
+  display: none;
 }
 
 .plan-editor-summary-week-picker .week-picker-control {
