@@ -102,7 +102,7 @@ const EMPTY_SUMMARY: PlanValidationSummary = {
 // Dieselben Schwellen wie im Mitarbeiter-Popup (Sprint 2) - hier nur
 // importiert, nicht erneut definiert, damit Popup und globale Prüfung nie
 // auseinanderlaufen können.
-const NEARBY_WARNING_GAP_MINUTES = 30;
+const NEARBY_WARNING_GAP_MINUTES = 60;
 const FAIRNESS_LOW_FACTOR = 0.34;
 const FAIRNESS_MIN_TEAM_AVERAGE = 3;
 
@@ -155,6 +155,8 @@ export function validatePlan({
   personCategories,
   assignmentRules,
   rehearsalIntervals,
+  showDates = [],
+  dekoPeople = [],
   onStageByDate = {},
   onStageShowsByDate = {},
 }: {
@@ -165,6 +167,8 @@ export function validatePlan({
   personCategories: Set<string>;
   assignmentRules: Record<string, AssignmentRule>;
   rehearsalIntervals: RehearsalInterval[];
+  showDates?: string[];
+  dekoPeople?: string[];
   onStageByDate?: Record<string, string[]>;
   onStageShowsByDate?: Record<string, string[]>;
 }): PlanValidationResult {
@@ -177,6 +181,8 @@ export function validatePlan({
   const dayTotal = new Map<string, number>();
   const categoryTotal = new Map<string, number>();
   const absentByPersonDay = new Map<string, string>();
+  const showDateSet = new Set(showDates);
+  const dekoSet = new Set(dekoPeople.map((name) => name.toLocaleLowerCase("de")));
 
   function addAssignment(entry: AssignmentEntry) {
     const key = `${entry.name}::${entry.dayLabel}`;
@@ -269,6 +275,29 @@ export function validatePlan({
             // oder Belastungsprüfungen ein - dafür fehlt eine verlässliche
             // Identität.
             continue;
+          }
+
+          if (
+            (category === "Ausschlafen" || category === "Barfrei") &&
+            Boolean(date) &&
+            showDateSet.has(date!) &&
+            dekoSet.has(lower)
+          ) {
+            issues.push({
+              id: `rule_violation:deko_show_relief:${dayLabel}:${rowId}:${lower}`,
+              severity: "error",
+              category: "rule_violation",
+              title: `${name} kann am Showtag keine Entlastung erhalten`,
+              description: `${name} arbeitet in der Deko und wird am ${dayLabel} für Bühnenaufbau und -abbau benötigt. Ausschlafen oder Barfrei ist an diesem Showtag nicht möglich.`,
+              affectedEmployees: [{ name }],
+              primaryCell: cellRef(rowId, dayLabel, name),
+              dayLabel,
+              date,
+              section: row.Abschnitt,
+              serviceName: category,
+              resolutionHint: "Entlastung auf einen Tag ohne Show verschieben.",
+              blocking: true,
+            });
           }
 
           if (rule?.blocked_people?.includes(name)) {
@@ -427,12 +456,13 @@ export function validatePlan({
         }
         const gap = gapMinutes(entry.interval, rehearsalSlot);
         if (gap <= NEARBY_WARNING_GAP_MINUTES) {
+          const transition = gap <= 30 ? "sehr knapper" : "knapper";
           issues.push({
             id: `rehearsal_conflict:${dayLabel}:${name}:${entry.rowId}:near:${rehearsal.activity}`,
             severity: "warning",
             category: "rehearsal_conflict",
             title: `Knapper Übergang für ${name}`,
-            description: `${name} hat Probe „${rehearsal.activity}“ ${clockLabel(rehearsal.start_time)}–${clockLabel(rehearsal.end_time)} Uhr, direkt vor oder nach ${entry.category}${entry.zeile ? ` (${entry.zeile})` : ""} ${serviceIntervalLabel(entry.interval)}.`,
+            description: `${name} hat Probe „${rehearsal.activity}“ ${clockLabel(rehearsal.start_time)}–${clockLabel(rehearsal.end_time)} Uhr; ${transition} Übergang zu ${entry.category}${entry.zeile ? ` (${entry.zeile})` : ""} ${serviceIntervalLabel(entry.interval)} (${gap} Minuten Puffer).`,
             affectedEmployees: [{ name }],
             primaryCell: cellRef(entry.rowId, dayLabel, name),
             dayLabel,

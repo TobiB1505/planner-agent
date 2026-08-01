@@ -1,6 +1,6 @@
 "use client";
 
-import ConfirmDialog, { type ConfirmDialogAction } from "@/components/ConfirmDialog";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import PageHeader from "@/components/PageHeader";
 import PersonCellEditor from "@/components/PersonCellEditor";
 import PlanEditorSummary from "@/components/PlanEditorSummary";
@@ -9,6 +9,9 @@ import PlanIssuesPanel from "@/components/PlanIssuesPanel";
 import PreparationStatusCard from "@/components/PreparationStatusCard";
 import SoftsportCellEditor from "@/components/SoftsportCellEditor";
 import WeekPicker from "@/components/WeekPicker";
+import DayNavigator from "@/components/plan-editor/DayNavigator";
+import EditorViewControls from "@/components/plan-editor/EditorViewControls";
+import PlanPreviewDialog from "@/components/plan-editor/PlanPreviewDialog";
 import {
   generatePlan,
   getActivePeople,
@@ -23,6 +26,7 @@ import {
   type ArtistPlanSummary,
   type ExtractedAbsence,
   type PlanTemplate,
+  type PlanGenerateResult,
   type PreviousWeekWorkload,
   type RehearsalInterval,
   type RehearsalPlanSummary,
@@ -30,6 +34,14 @@ import {
   xlsxGenerate,
 } from "@/lib/api";
 import { categoryColor, hexToRgba } from "@/lib/categoryColors";
+import { diffPlanRows, type PlanDiff } from "@/lib/plan-editor/planDiff";
+import {
+  loadPlanViewPreferences,
+  savePlanViewPreferences,
+  type PlanDensity,
+  type PlanViewPreferences,
+  type PlanViewMode,
+} from "@/lib/plan-editor/viewPreferences";
 import {
   buildCellIssueIndex,
   cellIssueKey,
@@ -42,6 +54,7 @@ import {
   ModuleRegistry,
   themeQuartz,
   type CellValueChangedEvent,
+  type CellClickedEvent,
   type ColDef,
   type GridApi,
   type GridReadyEvent,
@@ -64,12 +77,20 @@ type PlanRow = Record<string, string | null> & {
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 type PendingAction =
-  | { kind: "recalculate" }
-  | { kind: "rebuild" }
-  | { kind: "free-suggestion" }
   | { kind: "week-change"; nextDate: string }
   | { kind: "save-with-conflicts" }
   | { kind: "export-with-conflicts" };
+
+type AutomationPreview = {
+  kind: "recalculate" | "rebuild" | "free-suggestion";
+  title: string;
+  description: string;
+  applyLabel: string;
+  diff: PlanDiff;
+  nextRows: PlanRow[];
+  result?: PlanGenerateResult;
+  successMessage: string;
+};
 
 const ABSENCE_SECTIONS = new Set(["Urlaub/Krank", "Frei"]);
 
@@ -149,6 +170,24 @@ function splitNames(value: string): string[] {
     .split(/[,;\n]+/)
     .map((part) => part.includes("|") ? part.split("|").at(-1)!.trim() : part.trim())
     .filter(Boolean);
+}
+
+/** Bei kombinierten Zellen (z.B. `Boccia | Livia` oder Aperitif mit
+ * Ort/Uhrzeit/Künstler) gehört nur der Teil nach dem letzten Trenner zur
+ * automatischen MA-Zuweisung. Eine Neuverteilung darf den redaktionellen
+ * Präfix nicht nebenbei umformatieren. */
+function mergeGeneratedPersonCell(
+  currentValue: string | null | undefined,
+  generatedValue: string | null | undefined,
+): string | null {
+  const current = currentValue ?? "";
+  const generated = generatedValue ?? "";
+  const currentSeparator = current.lastIndexOf("|");
+  const generatedSeparator = generated.lastIndexOf("|");
+  if (currentSeparator < 0 || generatedSeparator < 0) return generatedValue ?? null;
+  const generatedPeople = generated.slice(generatedSeparator + 1).trim();
+  const currentPrefix = current.slice(0, currentSeparator + 1).trimEnd();
+  return generatedPeople ? `${currentPrefix} ${generatedPeople}` : currentPrefix;
 }
 
 function collectAbsences(
@@ -232,6 +271,15 @@ export default function PlanEditorPage() {
   const [activeStep, setActiveStep] = useState(1);
   const [exported, setExported] = useState(false);
   const loadedArchiveKeyRef = useRef<string | null>(null);
+  const manuallyEditedCellsRef = useRef<Set<string>>(new Set());
+
+  // ---------- Sprint 4: Arbeitsansicht ----------
+  const [viewPreferences, setViewPreferences] = useState<PlanViewPreferences>(() =>
+    loadPlanViewPreferences(typeof window === "undefined" ? undefined : window.innerWidth),
+  );
+  const { viewMode, density } = viewPreferences;
+  const [activeDay, setActiveDay] = useState("");
+  const [automationPreview, setAutomationPreview] = useState<AutomationPreview | null>(null);
 
   // ---------- Änderungsstatus (Aufgabe 3) ----------
   const [isDirty, setIsDirty] = useState(false);
@@ -253,6 +301,17 @@ export default function PlanEditorPage() {
   const gridApiRef = useRef<GridApi<PlanRow> | null>(null);
   const [gridHistory, setGridHistory] = useState({ canUndo: false, canRedo: false });
 
+  useEffect(() => {
+    savePlanViewPreferences(viewPreferences);
+  }, [viewPreferences]);
+
+  const effectiveActiveDay = useMemo(() => {
+    if (dayLabels.includes(activeDay)) return activeDay;
+    const todayIso = new Date().toLocaleDateString("sv-SE");
+    const todayIndex = weekDates.indexOf(todayIso);
+    return dayLabels[todayIndex >= 0 ? todayIndex : 0] ?? "";
+  }, [activeDay, dayLabels, weekDates]);
+
   const refreshGridHistory = useCallback(() => {
     const api = gridApiRef.current;
     if (!api) return;
@@ -271,6 +330,8 @@ export default function PlanEditorPage() {
   const clearDirty = useCallback(() => {
     setIsDirty(false);
     setChangeCount(0);
+    manuallyEditedCellsRef.current.clear();
+    gridApiRef.current?.refreshCells({ force: true });
   }, []);
 
   // Globale Planprüfung (Sprint 3). Läuft synchron über den aktuellen
@@ -292,6 +353,8 @@ export default function PlanEditorPage() {
         rehearsalIntervals,
         onStageByDate,
         onStageShowsByDate,
+        showDates,
+        dekoPeople,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -305,6 +368,8 @@ export default function PlanEditorPage() {
       rehearsalIntervals,
       onStageByDate,
       onStageShowsByDate,
+      showDates,
+      dekoPeople,
       revalidateNonce,
     ],
   );
@@ -476,13 +541,43 @@ export default function PlanEditorPage() {
     [personCategories],
   );
 
+  const handleViewModeChange = useCallback((nextMode: PlanViewMode) => {
+    setViewPreferences((current) => ({ ...current, viewMode: nextMode }));
+    window.requestAnimationFrame(() => {
+      const api = gridApiRef.current;
+      if (!api) return;
+      api.refreshHeader();
+      api.refreshCells({ force: true });
+      if (nextMode === "week") {
+        api.resetRowHeights();
+        api.sizeColumnsToFit();
+      }
+    });
+  }, []);
+
+  const handleDensityChange = useCallback((nextDensity: PlanDensity) => {
+    setViewPreferences((current) => ({ ...current, density: nextDensity }));
+    window.requestAnimationFrame(() => {
+      const api = gridApiRef.current;
+      if (!api) return;
+      api.refreshCells({ force: true });
+      if (viewMode === "week") api.resetRowHeights();
+    });
+  }, [viewMode]);
+
+  const selectDay = useCallback((dayLabel: string) => {
+    setActiveDay(dayLabel);
+    gridApiRef.current?.ensureColumnVisible(dayLabel);
+  }, []);
+
   const columnDefs = useMemo<ColDef<PlanRow>[]>(() => {
+    const overview = viewMode === "week";
     const fixed: ColDef<PlanRow>[] = [
       {
         field: "Abschnitt",
         headerName: "Abschnitt",
         pinned: "left",
-        width: 190,
+        width: overview ? 132 : 190,
         editable: false,
         lockPinned: true,
         cellStyle: (params) => ({
@@ -495,11 +590,11 @@ export default function PlanEditorPage() {
         field: "Zeile",
         headerName: "Zeile / Uhrzeit",
         pinned: "left",
-        width: 190,
+        width: overview ? 120 : 190,
         editable: false,
         lockPinned: true,
-        wrapText: true,
-        autoHeight: true,
+        wrapText: !overview,
+        autoHeight: !overview,
         cellStyle: (params) => ({
           backgroundColor: hexToRgba(rowColor(params.data), 0.18),
           color: "var(--muted)",
@@ -509,13 +604,16 @@ export default function PlanEditorPage() {
     ];
     const days = dayLabels.map<ColDef<PlanRow>>((label) => ({
       field: label,
-      headerName: label,
-      minWidth: 170,
+      headerName: weekDates[dayLabels.indexOf(label)] === new Date().toLocaleDateString("sv-SE")
+        ? `${label} · Heute`
+        : label,
+      minWidth: overview ? 94 : 170,
       flex: 1,
-      editable: true,
+      editable: !overview,
       singleClickEdit: true,
-      wrapText: true,
-      autoHeight: true,
+      wrapText: !overview,
+      autoHeight: !overview,
+      headerClass: label === effectiveActiveDay ? "plan-day-header-active" : undefined,
       // AG Grid beendet Editoren standardmäßig selbst bei Enter (noch vor dem
       // React-Editor). Die jeweiligen Editoren übernehmen Enter kontrolliert.
       suppressKeyboardEvent: (params) =>
@@ -610,6 +708,13 @@ export default function PlanEditorPage() {
       // komplette Spaltenkonfiguration neu aufbaut - nur ein gezieltes
       // refreshCells() nach der Prüfung (siehe cellIssueIndex-Effekt).
       cellClassRules: {
+        "plan-day-cell-active": () => label === effectiveActiveDay,
+        "plan-cell-manual": (params) =>
+          Boolean(
+            params.data &&
+              params.data._row_type !== "group" &&
+              manuallyEditedCellsRef.current.has(cellIssueKey(rowKey(params.data), label)),
+          ),
         "plan-cell-issue-error": (params) =>
           Boolean(
             params.data &&
@@ -654,62 +759,81 @@ export default function PlanEditorPage() {
     dekoPeople,
     previousWeekWorkload,
     weekDates,
+    viewMode,
+    effectiveActiveDay,
   ]);
 
-  /** Trägt die üblichen Frei-Tage ein. Hängt ausschließlich an: bereits eingetragene
-   *  Namen bleiben unangetastet, es wird nie etwas entfernt oder umsortiert. */
-  async function applyFreeSuggestion() {
-    if (!startDate || !rows.length) return;
-    setBusy(true);
-    setMessage({ kind: "info", text: "Frei-Vorschlag wird geholt …" });
-    try {
-      const existing = collectAbsences(rows, dayLabels, weekDates);
-      const result = await getFreeSuggestion(startDate, existing);
-      // Wer diese Woche schon irgendwo als abwesend steht, wird nicht erneut eingetragen.
-      const alreadyPlanned = new Set(
-        existing.map((absence) => absence.person.toLocaleLowerCase("de")),
-      );
-      const byDate = new Map<string, string[]>();
-      for (const suggestion of result.suggestions) {
-        if (alreadyPlanned.has(suggestion.person.toLocaleLowerCase("de"))) continue;
-        for (const iso of suggestion.dates) {
-          byDate.set(iso, [...(byDate.get(iso) ?? []), suggestion.person]);
+  async function buildGeneratedPlan(recalculate: boolean) {
+    const absenceInput = recalculate ? collectAbsences(rows, dayLabels, weekDates) : [];
+    const result = await generatePlan({
+      template_code: templateCode,
+      new_start: startDate,
+      absences: absenceInput,
+    });
+    let nextRows = result.rows as PlanRow[];
+    if (recalculate && rows.length) {
+      const previous = new Map(rows.map((row) => [rowKey(row), row]));
+      const generatedPersonCategories = new Set(result.person_categories);
+      nextRows = nextRows.map((row) => {
+        const old = previous.get(rowKey(row));
+        const category = rowCategory(row);
+        const preserve =
+          ABSENCE_SECTIONS.has(category) ||
+          !generatedPersonCategories.has(category);
+        if (!old) return row;
+        if (preserve) return { ...row, ...old };
+
+        // Eine automatische Optimierung darf bewusst bearbeitete Zellen nicht
+        // still überschreiben. Nur unveränderte Personenzellen werden aus dem
+        // neuen Vorschlag übernommen; die Vorschau zeigt dadurch exakt den
+        // tatsächlich anwendbaren Stand.
+        const merged = { ...row };
+        for (const label of result.day_labels) {
+          if (manuallyEditedCellsRef.current.has(cellIssueKey(rowKey(old), label))) {
+            merged[label] = old[label];
+          } else {
+            merged[label] = mergeGeneratedPersonCell(old[label], row[label]);
+          }
         }
-      }
-      let added = 0;
-      setRows((current) => current.map((row) => {
-        if (row.Abschnitt !== "Frei") return row;
-        const next = { ...row };
-        dayLabels.forEach((label, index) => {
-          const names = byDate.get(weekDates[index]) ?? [];
-          if (!names.length) return;
-          const cell = (next[label] ?? "").trim();
-          const present = new Set(splitNames(cell).map((n) => n.toLocaleLowerCase("de")));
-          const fresh = names.filter((n) => !present.has(n.toLocaleLowerCase("de")));
-          if (!fresh.length) return;
-          added += fresh.length;
-          next[label] = cell ? `${cell}, ${fresh.join(", ")}` : fresh.join(", ");
-        });
-        return next;
-      }));
-      const manual = result.needs_manual.length
-        ? ` · ${result.needs_manual.length} MA ohne erkennbares Muster: ${result.needs_manual.join(", ")} – bitte manuell setzen.`
-        : "";
-      if (added) markDirty(added);
-      setMessage({
-        kind: added ? "success" : "info",
-        text: added
-          ? `${added} Frei-Tage eingetragen.${manual} Danach einmal „Zuweisungen neu berechnen“ drücken, damit die Dienste sie berücksichtigen.`
-          : `Keine neuen Frei-Tage nötig – alles schon eingetragen.${manual}`,
+        return merged;
       });
-    } catch (error) {
-      setMessage({
-        kind: "error",
-        text: error instanceof Error ? error.message : "Frei-Vorschlag fehlgeschlagen.",
-      });
-    } finally {
-      setBusy(false);
     }
+    return { result, nextRows };
+  }
+
+  function applyGeneratedPlan(result: PlanGenerateResult, nextRows: PlanRow[], recalculate: boolean) {
+    if (!recalculate) manuallyEditedCellsRef.current.clear();
+    setRows(nextRows);
+    setDayLabels(result.day_labels);
+    setWeekDates(result.week_dates_iso);
+    setPersonCategories(new Set(result.person_categories));
+    setAssignmentRules(result.assignment_rules);
+    setResolvedTemplateWeekId(result.template_week_id);
+    setXlsxSheet(result.xlsx_sheet ?? selectedTemplate?.sheet ?? "");
+    setRehearsalIntervals(result.rehearsal_intervals ?? []);
+    setShowDates(result.show_dates ?? []);
+    setOnStageByDate(result.on_stage_by_date ?? {});
+    setOnStageShowsByDate(result.on_stage_shows_by_date ?? {});
+    setDekoPeople(result.deko_people ?? []);
+    setPreviousWeekWorkload(result.previous_week_workload ?? {});
+    setExported(false);
+    setActiveStep(3);
+    markDirty(1);
+    setGridHistory({ canUndo: false, canRedo: false });
+    setMessage({
+      kind: "success",
+      text: recalculate
+        ? "Automatische Verteilung übernommen. Info- und Abwesenheitsfelder wurden beibehalten."
+        : (
+            `${selectedTemplate?.name ?? `Woche ${templateCode}`} · ${selectedTemplate?.program ?? ""} wurde erstellt. ` +
+            (result.artist_plan
+              ? "Der gespeicherte Künstlerplan wurde automatisch übernommen."
+              : "Für diese Woche ist noch kein Künstlerplan gespeichert.") +
+            (result.rehearsal_plan
+              ? " Der Probenplan schützt automatisch vor zeitlichen Überschneidungen."
+              : " Für diese Woche ist noch kein Probenplan gespeichert.")
+          ),
+    });
   }
 
   async function generate(recalculate = false) {
@@ -718,69 +842,105 @@ export default function PlanEditorPage() {
       return;
     }
     setBusy(true);
-    setMessage({ kind: "info", text: recalculate ? "Zuweisungen werden neu verteilt …" : "Wochenplan wird aufgebaut …" });
+    setMessage({ kind: "info", text: recalculate ? "Automatische Verteilung wird vorbereitet …" : "Wochenplan wird aufgebaut …" });
     try {
-      const absenceInput = recalculate ? collectAbsences(rows, dayLabels, weekDates) : [];
-      const result = await generatePlan({
-        template_code: templateCode,
-        new_start: startDate,
-        absences: absenceInput,
-      });
-      let nextRows = result.rows as PlanRow[];
-      if (recalculate && rows.length) {
-        const previous = new Map(rows.map((row) => [rowKey(row), row]));
-        const generatedPersonCategories = new Set(result.person_categories);
-        nextRows = nextRows.map((row) => {
-          const old = previous.get(rowKey(row));
-          const category = rowCategory(row);
-          const preserve =
-            ABSENCE_SECTIONS.has(category) ||
-            !generatedPersonCategories.has(category);
-          return old && preserve ? { ...row, ...old } : row;
-        });
-      }
-      setRows(nextRows);
-      setDayLabels(result.day_labels);
-      setWeekDates(result.week_dates_iso);
-      setPersonCategories(new Set(result.person_categories));
-      setAssignmentRules(result.assignment_rules);
-      setResolvedTemplateWeekId(result.template_week_id);
-      setXlsxSheet(result.xlsx_sheet ?? selectedTemplate?.sheet ?? "");
-      setRehearsalIntervals(result.rehearsal_intervals ?? []);
-      setShowDates(result.show_dates ?? []);
-      setOnStageByDate(result.on_stage_by_date ?? {});
-      setOnStageShowsByDate(result.on_stage_shows_by_date ?? {});
-      setDekoPeople(result.deko_people ?? []);
-      setPreviousWeekWorkload(result.previous_week_workload ?? {});
-      setExported(false);
-      setActiveStep(3);
-      markDirty(1);
-      // Ein voll ersetzter Datensatz kappt AG Grids Undo/Redo-Verlauf - die
-      // Anzeige muss das widerspiegeln, statt fälschlich "verfügbar" zu zeigen.
-      setGridHistory({ canUndo: false, canRedo: false });
-      setMessage({
-        kind: "success",
-        text: recalculate
-          ? "Zuweisungen neu berechnet. Deine Info- und Abwesenheitsfelder wurden beibehalten."
-          : (
-              `${selectedTemplate?.name ?? `Woche ${templateCode}`} · ${selectedTemplate?.program ?? ""} wurde erstellt. ` +
-              (
-                result.artist_plan
-                  ? "Der gespeicherte Künstlerplan wurde automatisch übernommen."
-                  : "Für diese Woche ist noch kein Künstlerplan gespeichert."
-              ) +
-              (
-                result.rehearsal_plan
-                  ? " Der Probenplan schützt automatisch vor zeitlichen Überschneidungen."
-                  : " Für diese Woche ist noch kein Probenplan gespeichert."
-              )
-            ),
-      });
+      const { result, nextRows } = await buildGeneratedPlan(recalculate);
+      applyGeneratedPlan(result, nextRows, recalculate);
     } catch (error) {
       setMessage({ kind: "error", text: error instanceof Error ? error.message : "Plan konnte nicht erstellt werden." });
     } finally {
       setBusy(false);
     }
+  }
+
+  async function prepareGeneratedPreview(recalculate: boolean) {
+    if (!templateCode || !startDate || !rows.length) return;
+    setBusy(true);
+    setMessage({ kind: "info", text: "Änderungsvorschau wird berechnet …" });
+    try {
+      const { result, nextRows } = await buildGeneratedPlan(recalculate);
+      setAutomationPreview({
+        kind: recalculate ? "recalculate" : "rebuild",
+        title: recalculate ? "Automatische Verteilung verbessern" : "Plan komplett neu erstellen",
+        description: recalculate
+          ? "Personenzuweisungen werden neu verteilt. Info- und Abwesenheitsfelder bleiben erhalten."
+          : "Der aktuelle Wochenplan wird durch einen vollständig neuen Planungsvorschlag ersetzt.",
+        applyLabel: recalculate ? "Verteilung übernehmen" : "Neuen Plan übernehmen",
+        diff: diffPlanRows(rows, nextRows, result.day_labels),
+        nextRows,
+        result,
+        successMessage: recalculate
+          ? "Automatische Verteilung wurde übernommen."
+          : "Der neue Planungsvorschlag wurde übernommen.",
+      });
+      setMessage(null);
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof Error ? error.message : "Vorschau konnte nicht erstellt werden." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function prepareFreeSuggestionPreview() {
+    if (!startDate || !rows.length) return;
+    setBusy(true);
+    setMessage({ kind: "info", text: "Vorschau für freie Tage wird vorbereitet …" });
+    try {
+      const existing = collectAbsences(rows, dayLabels, weekDates);
+      const result = await getFreeSuggestion(startDate, existing);
+      const alreadyPlanned = new Set(existing.map((absence) => absence.person.toLocaleLowerCase("de")));
+      const byDate = new Map<string, string[]>();
+      for (const suggestion of result.suggestions) {
+        if (alreadyPlanned.has(suggestion.person.toLocaleLowerCase("de"))) continue;
+        for (const iso of suggestion.dates) {
+          byDate.set(iso, [...(byDate.get(iso) ?? []), suggestion.person]);
+        }
+      }
+      const nextRows = rows.map((row) => {
+        if (row.Abschnitt !== "Frei") return row;
+        const next = { ...row };
+        dayLabels.forEach((label, index) => {
+          const names = byDate.get(weekDates[index]) ?? [];
+          if (!names.length) return;
+          const cell = (next[label] ?? "").trim();
+          const present = new Set(splitNames(cell).map((name) => name.toLocaleLowerCase("de")));
+          const fresh = names.filter((name) => !present.has(name.toLocaleLowerCase("de")));
+          if (fresh.length) next[label] = cell ? `${cell}, ${fresh.join(", ")}` : fresh.join(", ");
+        });
+        return next;
+      });
+      const manual = result.needs_manual.length
+        ? ` ${result.needs_manual.length} Mitarbeiter benötigen weiterhin eine manuelle Entscheidung.`
+        : "";
+      setAutomationPreview({
+        kind: "free-suggestion",
+        title: "Freie Tage optimieren",
+        description: `Bestehende Frei-Einträge bleiben unverändert; nur fehlende Vorschläge werden ergänzt.${manual}`,
+        applyLabel: "Freie Tage übernehmen",
+        diff: diffPlanRows(rows, nextRows, dayLabels),
+        nextRows,
+        successMessage: "Vorgeschlagene freie Tage wurden übernommen. Prüfe danach die automatische Verteilung.",
+      });
+      setMessage(null);
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof Error ? error.message : "Vorschau konnte nicht erstellt werden." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function applyAutomationPreview() {
+    if (!automationPreview) return;
+    const preview = automationPreview;
+    setAutomationPreview(null);
+    if (preview.result) {
+      applyGeneratedPlan(preview.result, preview.nextRows, preview.kind === "recalculate");
+      return;
+    }
+    setRows(preview.nextRows);
+    markDirty(Math.max(1, preview.diff.changes.length));
+    setGridHistory({ canUndo: false, canRedo: false });
+    setMessage({ kind: "success", text: preview.successMessage });
   }
 
   async function performSave(): Promise<boolean> {
@@ -955,13 +1115,36 @@ export default function PlanEditorPage() {
       onExport={exportExcel}
       exportDisabled={!xlsxSheet}
       tools={[
-        { label: "Frei-Tage vorschlagen", onClick: () => setPendingAction({ kind: "free-suggestion" }), disabled: busy },
-        { label: "Zuweisungen neu berechnen", onClick: () => setPendingAction({ kind: "recalculate" }), disabled: busy },
-        { label: "Plan vollständig neu erstellen", onClick: () => setPendingAction({ kind: "rebuild" }), disabled: busy },
+        {
+          label: "Freie Tage optimieren",
+          description: "Fehlende Frei-Muster ergänzen und vorher als Vergleich prüfen.",
+          onClick: prepareFreeSuggestionPreview,
+          disabled: busy,
+        },
+        {
+          label: "Automatische Verteilung verbessern",
+          description: "Personenzuweisungen neu verteilen; Infos und Abwesenheiten bleiben erhalten.",
+          onClick: () => prepareGeneratedPreview(true),
+          disabled: busy,
+        },
+        {
+          label: "Plan komplett neu erstellen",
+          description: "Alle Planfelder durch einen neuen Vorschlag ersetzen.",
+          onClick: () => prepareGeneratedPreview(false),
+          disabled: busy,
+        },
       ]}
       validationSummary={validation.summary}
       validationStatus={validation.failed ? "failed" : "idle"}
       onOpenValidation={() => setIssuesPanelOpen(true)}
+      viewControls={
+        <EditorViewControls
+          viewMode={viewMode}
+          density={density}
+          onViewModeChange={handleViewModeChange}
+          onDensityChange={handleDensityChange}
+        />
+      }
     />
   );
 
@@ -1008,15 +1191,20 @@ export default function PlanEditorPage() {
 
   const gridSection = rows.length > 0 && (
     <>
-      <div className="planner-grid-meta">
-        <div>
-          Namen tippen und auswählen · Infozeilen direkt als Klartext bearbeiten
+      <div className="planner-grid-meta plan-workspace-orientation">
+        <div className="plan-workspace-copy">
+          <strong>{viewMode === "week" ? "Wochenüberblick" : "Bearbeitungsansicht"}</strong>
+          <span>
+            {viewMode === "week"
+              ? "Alle sieben Tage kompakt · Für Änderungen zur Detailansicht wechseln"
+              : "Namen tippen und auswählen · Infozeilen direkt als Klartext bearbeiten"}
+          </span>
         </div>
-        <span className="badge">{visibleRowCount} Planzeilen · 7 Tage</span>
+        <DayNavigator dayLabels={dayLabels} weekDates={weekDates} activeDay={effectiveActiveDay} onSelect={selectDay} />
       </div>
-      <section className="panel overflow-hidden">
-        <div className="overflow-x-auto">
-          <div className={`plan-grid ${hasExistingPlan ? "h-[calc(100vh-260px)]" : "h-[calc(100vh-315px)]"} min-h-[560px]`}>
+      <section className="panel plan-grid-shell overflow-hidden">
+        <div className="plan-grid-scroll-shell">
+          <div className={`plan-grid plan-grid-${viewMode} plan-density-${density} ${hasExistingPlan ? "h-[calc(100vh-244px)]" : "h-[calc(100vh-300px)]"} min-h-[520px]`}>
             <AgGridReact<PlanRow>
               theme={gridTheme}
               rowData={rows}
@@ -1025,7 +1213,13 @@ export default function PlanEditorPage() {
               defaultColDef={{ sortable: false, resizable: true }}
               isFullWidthRow={(params) => params.rowNode.data?._row_type === "group"}
               fullWidthCellRenderer={GroupHeaderRenderer}
-              getRowHeight={(params) => params.data?._row_type === "group" ? 36 : undefined}
+              getRowHeight={(params) => {
+                if (params.data?._row_type === "group") {
+                  return density === "compact" ? 30 : density === "large" ? 44 : 36;
+                }
+                if (viewMode === "detail") return undefined;
+                return density === "compact" ? 32 : density === "large" ? 48 : 40;
+              }}
               stopEditingWhenCellsLoseFocus
               undoRedoCellEditing
               undoRedoCellEditingLimit={30}
@@ -1039,8 +1233,19 @@ export default function PlanEditorPage() {
                 // einen Re-Render aus. Ein neues rowData-Array-Objekt an AG Grid
                 // zu geben, hätte hier den undoRedoCellEditing-Stack invalidiert
                 // (jede Zuweisung machte Rückgängig sofort wieder wirkungslos).
-                if (event.oldValue !== event.newValue) markDirty(1);
+                if (event.oldValue !== event.newValue) {
+                  const field = event.colDef.field;
+                  if (field && event.data) {
+                    manuallyEditedCellsRef.current.add(cellIssueKey(rowKey(event.data), field));
+                    event.api.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
+                  }
+                  markDirty(1);
+                }
                 refreshGridHistory();
+              }}
+              onCellClicked={(event: CellClickedEvent<PlanRow>) => {
+                const field = event.colDef.field;
+                if (field && dayLabels.includes(field)) setActiveDay(field);
               }}
               getRowId={(params) => rowKey(params.data)}
             />
@@ -1298,64 +1503,6 @@ export default function PlanEditorPage() {
         </section>
       )}
 
-      {pendingAction?.kind === "recalculate" && (
-        <ConfirmDialog
-          open
-          title="Zuweisungen neu berechnen?"
-          description={
-            <>
-              <p>Automatisch erzeugte Zuweisungen werden neu berechnet. Manuell bearbeitete Informations- und Abwesenheitsfelder bleiben erhalten.</p>
-              {isDirty && <p>Du hast noch ungespeicherte Änderungen an diesem Plan.</p>}
-              <p>Einzelne Zellbearbeitungen lassen sich per Strg/Cmd+Z rückgängig machen, solange du die Seite nicht neu lädst. Die Neuberechnung selbst kann anschließend nicht automatisch rückgängig gemacht werden.</p>
-            </>
-          }
-          actions={buildActions(isDirty, "Neu berechnen", closeConfirmDialog, async () => {
-            const ok = await performSave();
-            if (ok) generate(true);
-          }, () => generate(true))}
-          onDismiss={closeConfirmDialog}
-        />
-      )}
-
-      {pendingAction?.kind === "rebuild" && (
-        <ConfirmDialog
-          open
-          title="Plan vollständig neu erstellen?"
-          description={
-            <>
-              <p>Der gesamte Dienstplan wird verworfen und komplett neu aufgebaut - das betrifft auch manuell bearbeitete Informations- und Abwesenheitsfelder.</p>
-              {isDirty && <p>Du hast noch ungespeicherte Änderungen an diesem Plan.</p>}
-              <p>Dieser Neuaufbau kann anschließend nicht automatisch rückgängig gemacht werden.</p>
-            </>
-          }
-          actions={buildActions(isDirty, "Neu erstellen", closeConfirmDialog, async () => {
-            const ok = await performSave();
-            if (ok) generate(false);
-          }, () => generate(false), "danger")}
-          onDismiss={closeConfirmDialog}
-        />
-      )}
-
-      {pendingAction?.kind === "free-suggestion" && (
-        <ConfirmDialog
-          open
-          title="Frei-Vorschlag übernehmen?"
-          description={
-            <p>Für Mitarbeiter ohne Eintrag werden die üblichen Frei-Tage ergänzt. Bestehende Frei-Einträge werden dabei nicht verändert oder entfernt.</p>
-          }
-          actions={[
-            { label: "Abbrechen", onClick: closeConfirmDialog, variant: "default" },
-            {
-              label: "Übernehmen",
-              variant: "primary",
-              autoFocus: true,
-              onClick: () => { closeConfirmDialog(); applyFreeSuggestion(); },
-            },
-          ]}
-          onDismiss={closeConfirmDialog}
-        />
-      )}
-
       {pendingAction?.kind === "week-change" && (
         <ConfirmDialog
           open
@@ -1461,6 +1608,19 @@ export default function PlanEditorPage() {
         />
       )}
 
+      {automationPreview && (
+        <PlanPreviewDialog
+          open
+          title={automationPreview.title}
+          description={automationPreview.description}
+          diff={automationPreview.diff}
+          busy={busy}
+          applyLabel={automationPreview.applyLabel}
+          onApply={applyAutomationPreview}
+          onDismiss={() => setAutomationPreview(null)}
+        />
+      )}
+
       <PlanIssuesPanel
         open={issuesPanelOpen}
         issues={validation.issues}
@@ -1473,22 +1633,4 @@ export default function PlanEditorPage() {
       />
     </div>
   );
-}
-
-function buildActions(
-  isDirty: boolean,
-  confirmLabel: string,
-  onCancel: () => void,
-  onSaveFirst: () => void,
-  onConfirm: () => void,
-  confirmVariant: "primary" | "danger" = "primary",
-): ConfirmDialogAction[] {
-  const actions: ConfirmDialogAction[] = [
-    { label: "Abbrechen", onClick: onCancel, variant: "default" },
-  ];
-  if (isDirty) {
-    actions.push({ label: "Erst speichern", onClick: onSaveFirst, variant: "default" });
-  }
-  actions.push({ label: confirmLabel, onClick: onConfirm, variant: confirmVariant, autoFocus: !isDirty });
-  return actions;
 }

@@ -77,6 +77,15 @@ export function serviceInterval(category: string, slot: string): TimeInterval | 
     if (end <= start) end += 1440;
     return [start, end];
   }
+  const hourRange = text.match(
+    /(^|[^\d])(\d{1,2})\s*(?:-|–|bis)\s*(\d{1,2})\s*uhr\b/i,
+  );
+  if (hourRange) {
+    const start = clockMinutes(hourRange[2], "00");
+    let end = clockMinutes(hourRange[3], "00");
+    if (end <= start) end += 1440;
+    return [start, end];
+  }
   const single = text.match(/(^|[^\d])(\d{1,2})[:.](\d{2})(?!\d)/);
   if (single) {
     const start = clockMinutes(single[2], single[3]);
@@ -148,6 +157,7 @@ export type RecommendationReasonCode =
   | "low_daily_load"
   | "low_weekly_load"
   | "matching_experience"
+  | "day_lead"
   | "fairness_balance"
   | "no_rehearsal"
   | "no_show_conflict";
@@ -163,7 +173,8 @@ export type ConflictReasonCode =
   | "show_conflict"
   | "high_daily_load"
   | "high_weekly_load"
-  | "repeated_task";
+  | "repeated_task"
+  | "department_preference";
 
 export type ReasonCode = RecommendationReasonCode | ConflictReasonCode;
 
@@ -181,7 +192,9 @@ const REASON_PRIORITY: ReasonCode[] = [
   "high_daily_load",
   "high_weekly_load",
   "repeated_task",
+  "department_preference",
   "fairness_balance",
+  "day_lead",
   "matching_experience",
   "low_daily_load",
   "low_weekly_load",
@@ -279,6 +292,7 @@ export function recommendForCell({
   const rehearsalNearbyDetail = new Map<string, RehearsalInterval>();
   const rehearsalOverlapDetail = new Map<string, RehearsalInterval>();
   const rehearsalToday = new Set<string>();
+  const dayLeadPeople = new Set<string>();
 
   for (const row of rows) {
     if (row._row_type === "group") continue;
@@ -290,6 +304,10 @@ export function recommendForCell({
         if (!absenceKind.has(name)) absenceKind.set(name, category);
       }
       continue;
+    }
+
+    if (category === "Tagesverantwortung") {
+      for (const name of namesFromCell(row[dayLabel])) dayLeadPeople.add(name);
     }
 
     if (category.includes("NITE CLUB")) {
@@ -395,6 +413,7 @@ export function recommendForCell({
   const allowed = (rule?.allowed_people ?? people).filter((name) => !blocked.has(name));
   const baseRecommended = new Set(rule?.recommended_people ?? allowed);
   const recommendedCandidates = allowed.filter((name) => baseRecommended.has(name));
+  const isOpsTarget = targetCategory.replace(/[\s/+]/g, "").toLocaleLowerCase("de") === "opswp";
 
   const reliefNeed = (name: string) => {
     const lateBonus = workedLateBefore.has(name)
@@ -419,13 +438,18 @@ export function recommendForCell({
     );
   };
 
+  const opsLeadRank = (name: string) =>
+    isOpsTarget && dayLeadPeople.has(name) ? 0 : 1;
+
   if (isReliefTarget) {
     recommendedCandidates.sort((a, b) =>
       reliefNeed(b) - reliefNeed(a) || a.localeCompare(b, "de")
     );
   } else {
     recommendedCandidates.sort((a, b) =>
-      serviceLoad(a) - serviceLoad(b) || a.localeCompare(b, "de")
+      opsLeadRank(a) - opsLeadRank(b) ||
+      serviceLoad(a) - serviceLoad(b) ||
+      a.localeCompare(b, "de")
     );
   }
 
@@ -489,6 +513,25 @@ export function recommendForCell({
 
   function warningReasons(name: string): CandidateReason[] {
     const reasons: CandidateReason[] = [];
+    if (
+      rule &&
+      (rule.allowed_people ?? people).includes(name) &&
+      !(rule.recommended_people ?? []).includes(name)
+    ) {
+      const preferenceText: Record<string, string> = {
+        sport_spt: "Sportprogramm bevorzugt SPT; manuelle Ausnahme möglich",
+        sport_guests_vs_robins: "Gäste vs. Robins bevorzugt SPT; manuelle Ausnahme möglich",
+        kp3_no_sound_light: "KP3 bevorzugt andere Abteilungen vor S&L",
+        ops_managers: "OPS/WP bevorzugt Manager",
+        aperitif_sound_light: "Aperitif bevorzugt S&L",
+      };
+      reasons.push(
+        buildReason(
+          "department_preference",
+          preferenceText[rule.id] ?? "Laut Abteilungslogik nicht die erste Empfehlung",
+        ),
+      );
+    }
     if (showConflict.has(name)) {
       const detail = showConflictDetail.get(name);
       reasons.push(
@@ -552,6 +595,9 @@ export function recommendForCell({
       );
       return sortReasons(reasons);
     }
+    if (isOpsTarget && dayLeadPeople.has(name)) {
+      reasons.push(buildReason("day_lead", "Hat an diesem Tag die Tagesverantwortung"));
+    }
     const day = dayTotal.get(name) ?? 0;
     const weekly = weeklyTotal.get(name) ?? 0;
     const sameCategory = categoryTotal.get(name) ?? 0;
@@ -589,7 +635,11 @@ export function recommendForCell({
   const recommendedForStatus = new Set(
     (isReliefTarget
       ? [...cleanRecommended].sort((a, b) => reliefNeed(b) - reliefNeed(a) || a.localeCompare(b, "de"))
-      : [...cleanRecommended].sort((a, b) => serviceLoad(a) - serviceLoad(b) || a.localeCompare(b, "de"))
+      : [...cleanRecommended].sort((a, b) =>
+          opsLeadRank(a) - opsLeadRank(b) ||
+          serviceLoad(a) - serviceLoad(b) ||
+          a.localeCompare(b, "de"),
+        )
     ).slice(0, 5),
   );
 

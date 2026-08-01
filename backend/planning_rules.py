@@ -167,7 +167,8 @@ def active_planning_rules() -> list[dict]:
             "id": "departments",
             "title": "Abteilungslogik",
             "description": (
-                "S&L wird beim Aperitif bevorzugt und KP3 vermeidet S&L."
+                "S&L wird beim Aperitif bevorzugt. Bei KP3 werden andere "
+                "Abteilungen zuerst empfohlen; S&L bleibt für Sonderfälle möglich."
             ),
             "tone": "info",
         },
@@ -310,13 +311,18 @@ def person_decision(
         }
     if rule_id == "sport_spt":
         recommended = "SPT" in tags
+        # SPT bleibt die fachlich richtige erste Wahl. Andere Abteilungen dürfen
+        # bei Engpässen automatisch nachrücken; nur T&C wird nicht ungefragt für
+        # Sport verplant, bleibt aber für Sonderfälle manuell auswählbar.
+        allowed = True if not automatic else "T&C" not in tags
         return {
             "rule_id": rule_id,
-            "allowed": recommended if automatic else True,
+            "allowed": allowed,
             "recommended": recommended,
             "message": (
-                "Sportprogramm wird standardmäßig SPT zugewiesen. "
-                "Andere Mitarbeiter können manuell ergänzt werden."
+                "Sportprogramm wird primär SPT zugewiesen. Andere Abteilungen "
+                "können bei Bedarf nachrücken; T&C wird nicht automatisch eingeplant, "
+                "bleibt für Sonderfälle aber manuell auswählbar."
             ),
         }
     if rule_id == "sport_guests_vs_robins":
@@ -336,15 +342,20 @@ def person_decision(
         }
     if rule_id == "kp3_no_sound_light":
         is_8h_contract = name.strip().casefold() in _EIGHT_HOUR_CONTRACT_CASEFOLDED
-        allowed = "S&L" not in tags and not is_8h_contract
+        # Der 8h-Vertrag ist eine echte zeitliche Einschränkung. S&L ist dagegen
+        # eine starke Einsatzpräferenz: wegen des Abendprogramms möglichst nicht
+        # für KP3 wählen, aber Sonderfälle nicht hart blockieren.
+        allowed = not is_8h_contract
+        recommended = allowed and "S&L" not in tags
         return {
             "rule_id": rule_id,
             "allowed": allowed,
-            "recommended": allowed,
+            "recommended": recommended,
             "message": (
-                "KP3 am Abend ist für S&L nicht möglich, weil S&L während des "
-                "Abendprogramms gebraucht wird. Brigitte und Manu sind auf "
-                "8-Stunden-Verträgen angestellt und übernehmen abends keine Dienste."
+                "Bei KP3 werden andere Abteilungen vor S&L empfohlen, weil S&L "
+                "während des Abendprogramms gebraucht wird; Ausnahmen bleiben möglich. "
+                "Brigitte und Manu sind auf 8-Stunden-Verträgen angestellt und "
+                "übernehmen abends keine Dienste."
             ),
         }
     if rule_id == "ops_managers":

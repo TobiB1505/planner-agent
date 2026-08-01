@@ -603,3 +603,514 @@ button.plan-validation-summary {
 .plan-grid .ag-cell.plan-cell-issue-warning::after {
   color: #c47c25;
 }
+
+/* Sprint 4: Wochenarbeitsplatz ------------------------------------------ */
+
+.plan-editor-page {
+  min-height: 100%;
+}
+
+.plan-editor-toolbar {
+  top: 10px;
+  display: grid;
+  gap: 9px;
+  padding: 9px 12px;
+}
+
+.plan-editor-toolbar-primary,
+.plan-editor-toolbar-view {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  min-width: 0;
+}
+
+.plan-editor-toolbar-view {
+  border-top: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  padding-top: 8px;
+}
+
+.plan-editor-toolbar-view-hint {
+  color: var(--muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.plan-view-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-view-segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+  padding: 2px;
+}
+
+.plan-view-segmented button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 11px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.plan-view-segmented button:hover {
+  color: var(--foreground);
+}
+
+.plan-view-segmented button.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.plan-density-select {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+  padding: 2px 4px 2px 9px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.plan-density-select select {
+  min-height: 27px;
+  border: 0;
+  border-radius: 7px;
+  outline: 0;
+  background: var(--surface);
+  color: var(--foreground);
+  padding: 3px 24px 3px 8px;
+  font: inherit;
+}
+
+.plan-editor-tools-menu > div button {
+  display: grid;
+  gap: 2px;
+}
+
+.plan-editor-tools-menu > div button strong {
+  font-size: 12px;
+  font-weight: 730;
+}
+
+.plan-editor-tools-menu > div button span {
+  max-width: 280px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.plan-workspace-orientation {
+  min-height: 40px;
+}
+
+.plan-workspace-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 180px;
+}
+
+.plan-workspace-copy strong {
+  color: var(--foreground);
+  font-size: 11.5px;
+}
+
+.plan-workspace-copy span {
+  color: var(--muted);
+}
+
+.plan-day-navigator {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(56px, 1fr));
+  width: min(760px, 72%);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.plan-day-navigator button {
+  position: relative;
+  display: grid;
+  min-height: 34px;
+  place-items: center;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.plan-day-navigator button:last-child {
+  border-right: 0;
+}
+
+.plan-day-navigator button:hover,
+.plan-day-navigator button.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.plan-day-navigator button.is-active::after {
+  position: absolute;
+  right: 22%;
+  bottom: 3px;
+  left: 22%;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  content: "";
+}
+
+.plan-day-navigator small {
+  color: #2da970;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.plan-grid-shell {
+  border-radius: 16px;
+  box-shadow: 0 8px 26px rgba(10, 10, 24, 0.07);
+}
+
+.plan-grid-scroll-shell {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.plan-grid.plan-grid-week {
+  min-width: 0;
+}
+
+.plan-grid.plan-grid-week .ag-cell,
+.plan-grid.plan-grid-week .ag-header-cell {
+  padding-right: 5px;
+  padding-left: 5px;
+}
+
+.plan-grid.plan-grid-week .ag-cell-value {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-grid.plan-grid-week .ag-cell:not(.ag-cell-inline-editing) {
+  cursor: default !important;
+}
+
+.plan-grid.plan-grid-detail .ag-cell:not(.ag-cell-inline-editing):hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
+  cursor: text;
+}
+
+.plan-grid .ag-cell.ag-cell-inline-editing,
+.plan-grid .ag-cell.ag-cell-focus {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.plan-grid .ag-header-cell.plan-day-header-active {
+  background: color-mix(in srgb, var(--accent) 9%, var(--background));
+}
+
+.plan-grid .ag-header-cell.plan-day-header-active::after {
+  position: absolute;
+  right: 18%;
+  bottom: 0;
+  left: 18%;
+  height: 2px;
+  border-radius: 999px 999px 0 0;
+  background: var(--accent);
+  content: "";
+}
+
+.plan-grid .ag-cell.plan-day-cell-active:not(.plan-cell-issue-error, .plan-cell-issue-warning) {
+  background-image: linear-gradient(color-mix(in srgb, var(--accent) 5%, transparent), color-mix(in srgb, var(--accent) 5%, transparent));
+}
+
+.plan-grid .ag-cell.plan-cell-manual::before {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 1;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--surface) 78%, transparent);
+  content: "";
+}
+
+.plan-grid.plan-density-compact {
+  --ag-font-size: 11px;
+  --ag-spacing: 4px;
+  --ag-header-height: 34px;
+}
+
+.plan-grid.plan-density-standard {
+  --ag-font-size: 13px;
+  --ag-spacing: 7px;
+  --ag-header-height: 40px;
+}
+
+.plan-grid.plan-density-large {
+  --ag-font-size: 14px;
+  --ag-spacing: 9px;
+  --ag-header-height: 48px;
+}
+
+/* Vorschau automatischer Änderungen */
+
+.plan-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 8, 18, 0.58);
+  padding: 24px;
+  backdrop-filter: blur(5px);
+}
+
+.plan-preview-dialog {
+  display: grid;
+  width: min(760px, 100%);
+  max-height: min(780px, calc(100vh - 48px));
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 19px;
+  outline: 0;
+  background: var(--background);
+  box-shadow: 0 30px 90px rgba(4, 4, 14, 0.38);
+}
+
+.plan-preview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--border);
+  padding: 20px 22px 16px;
+}
+
+.plan-preview-eyebrow {
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 820;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.plan-preview-header h2 {
+  margin: 4px 0 5px;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.plan-preview-header p {
+  max-width: 610px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.plan-preview-header > button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 17px;
+}
+
+.plan-preview-stats {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  padding: 10px 22px;
+}
+
+.plan-preview-stats span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.plan-preview-stats .is-added strong,
+.plan-preview-values .is-after {
+  color: #2da970;
+}
+
+.plan-preview-stats .is-changed strong {
+  color: #c47c25;
+}
+
+.plan-preview-stats .is-removed strong,
+.plan-preview-values .is-before {
+  color: #db4b56;
+}
+
+.plan-preview-list {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 16px 22px 22px;
+}
+
+.plan-preview-day {
+  display: grid;
+  gap: 6px;
+}
+
+.plan-preview-day h3 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  background: var(--background);
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.plan-preview-change {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.75fr) minmax(240px, 1.25fr);
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  padding: 9px 11px;
+}
+
+.plan-preview-change > div:first-child,
+.plan-preview-values {
+  display: grid;
+  gap: 2px;
+}
+
+.plan-preview-change strong {
+  font-size: 11.5px;
+}
+
+.plan-preview-change span {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.plan-preview-values span {
+  border-left: 2px solid currentColor;
+  padding-left: 8px;
+}
+
+.plan-preview-empty {
+  display: grid;
+  gap: 5px;
+  place-items: center;
+  border: 1px dashed var(--border);
+  border-radius: 13px;
+  padding: 36px 20px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.plan-preview-empty strong {
+  color: var(--foreground);
+}
+
+.plan-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 12px 16px;
+}
+
+.plan-preview-actions > span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+@media (max-width: 1180px) {
+  .plan-editor-toolbar-primary,
+  .plan-editor-toolbar-view {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .plan-editor-toolbar-actions,
+  .plan-view-controls {
+    width: 100%;
+  }
+
+  .plan-editor-toolbar-view-hint {
+    display: none;
+  }
+
+  .plan-day-navigator {
+    width: min(100%, 680px);
+  }
+}
+
+@media (max-width: 760px) {
+  .plan-view-controls,
+  .plan-workspace-orientation,
+  .plan-preview-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .plan-view-segmented {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .plan-density-select {
+    justify-content: space-between;
+  }
+
+  .plan-day-navigator {
+    grid-template-columns: repeat(7, minmax(44px, 1fr));
+  }
+
+  .plan-preview-change {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-preview-actions > span {
+    margin-right: 0;
+  }
+}
