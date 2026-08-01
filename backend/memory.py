@@ -553,6 +553,22 @@ def on_stage_by_date(
     return _on_stage_from_memory(schedule, build_memory(conn)["people"])
 
 
+def on_stage_shows_by_date(
+    conn,
+    start_iso: str,
+    end_iso: str,
+    template_code: str | None = None,
+) -> dict[str, list[str]]:
+    """{datum: [Show-/Party-Name, ...]} - für Konflikttexte im Plan-Editor.
+
+    Liefert nur die menschenlesbaren Namen (z.B. "Taste of New York"), keine
+    Personen - die Namen kommen bereits aus derselben `show_schedule`-Quelle,
+    die auch `on_stage_by_date` speist.
+    """
+    schedule = show_schedule(conn, start_iso, end_iso, template_code)
+    return {iso: [show["label"] for show in entry["shows"]] for iso, entry in schedule.items()}
+
+
 def planning_signals(
     conn,
     start_iso: str,

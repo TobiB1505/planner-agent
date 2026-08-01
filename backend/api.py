@@ -944,6 +944,9 @@ def plan_existing(start_date: str):
         "on_stage_by_date": memory.on_stage_by_date(
             conn, week_dates_iso[0], week_dates_iso[-1], template_code
         ),
+        "on_stage_shows_by_date": memory.on_stage_shows_by_date(
+            conn, week_dates_iso[0], week_dates_iso[-1], template_code
+        ),
         "deko_people": deko_people,
         "previous_week": previous_workload["week"],
         "previous_week_workload": previous_workload["people"],
@@ -1064,6 +1067,9 @@ def plan_generate(payload: PlanGenerateRequest):
         "rehearsal_intervals": rehearsal_intervals,
         "show_dates": sorted(show_dates),
         "on_stage_by_date": memory.on_stage_by_date(
+            conn, week_dates_iso[0], week_dates_iso[-1], payload.template_code
+        ),
+        "on_stage_shows_by_date": memory.on_stage_shows_by_date(
             conn, week_dates_iso[0], week_dates_iso[-1], payload.template_code
         ),
         "deko_people": deko_people,

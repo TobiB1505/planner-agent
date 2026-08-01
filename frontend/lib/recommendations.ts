@@ -13,6 +13,15 @@ export type RecommendationRow = Record<string, string | null> & {
 
 const RELIEF_CATEGORIES = new Set(["Ausschlafen", "Barfrei"]);
 
+// Ab hier gilt jemand als "stark ausgelastet" für die entsprechende Warnung. Die
+// zugrunde liegenden Zähler (dayTotal/weeklyTotal/categoryTotal) sind echte, aus
+// dem aktuellen Wochenraster berechnete Werte - nur die Schwellen hier sind eine
+// bewusste, dokumentierte Designentscheidung dieses Sprints, keine vorgegebene
+// Fachregel.
+const HIGH_DAILY_LOAD_THRESHOLD = 2;
+const HIGH_WEEKLY_LOAD_FACTOR = 1.5;
+const REPEATED_TASK_THRESHOLD = 3;
+
 function categoryOf(row: RecommendationRow): string {
   return row._category || row.Abschnitt;
 }
@@ -51,13 +60,13 @@ function timeKey(category: string, slot: string): string {
     : `KATEGORIE:${category.toLocaleLowerCase("de")}`;
 }
 
-type TimeInterval = [number, number];
+export type TimeInterval = [number, number];
 
 function clockMinutes(hour: string, minute: string): number {
   return Number(hour) * 60 + Number(minute);
 }
 
-function serviceInterval(category: string, slot: string): TimeInterval | null {
+export function serviceInterval(category: string, slot: string): TimeInterval | null {
   const text = `${slot} ${category}`;
   const range = text.match(
     /(^|[^\d])(\d{1,2})[:.](\d{2})\s*(?:-|–|bis)\s*(\d{1,2})[:.](\d{2})(?!\d)/i,
@@ -115,6 +124,108 @@ function increment(map: Map<string, number>, name: string) {
   map.set(name, (map.get(name) ?? 0) + 1);
 }
 
+function clockLabel(raw: string): string {
+  return raw.slice(0, 5);
+}
+
+/** Rundet auf eine ganze Zahl, aber nicht auf 0, wenn der echte Wert >0 ist -
+ *  sonst würde "Team-Ø 0" bei z.B. 0,3 fälschlich "keine Belastung" suggerieren. */
+function roundDisplay(value: number): number {
+  if (value > 0 && value < 1) return Math.round(value * 10) / 10;
+  return Math.round(value);
+}
+
+// ---------------------------------------------------------------------------
+// Kandidaten-Statusmodell (Sprint 2)
+// ---------------------------------------------------------------------------
+
+/** Fachlicher Hauptstatus einer Person für eine bestimmte Zelle - genau einer pro
+ *  Person, nie eine Kombination aus unabhängigen Booleans. */
+export type CandidateAvailability = "recommended" | "available" | "warning" | "unavailable";
+
+export type RecommendationReasonCode =
+  | "no_time_conflict"
+  | "low_daily_load"
+  | "low_weekly_load"
+  | "matching_experience"
+  | "fairness_balance"
+  | "no_rehearsal"
+  | "no_show_conflict";
+
+export type ConflictReasonCode =
+  | "absence"
+  | "already_assigned_relief"
+  | "deko_show_lock"
+  | "time_conflict"
+  | "rehearsal_overlap"
+  | "rule_blocked"
+  | "rehearsal_nearby"
+  | "show_conflict"
+  | "high_daily_load"
+  | "high_weekly_load"
+  | "repeated_task";
+
+export type ReasonCode = RecommendationReasonCode | ConflictReasonCode;
+
+/** Anzeige-Priorität, wenn eine Person mehrere Gründe gleichzeitig hat - vorne
+ *  steht, was Tobi zuerst wissen muss (siehe Sprint-2-Vorgabe Aufgabe 5). */
+const REASON_PRIORITY: ReasonCode[] = [
+  "time_conflict",
+  "rehearsal_overlap",
+  "rule_blocked",
+  "absence",
+  "already_assigned_relief",
+  "deko_show_lock",
+  "show_conflict",
+  "rehearsal_nearby",
+  "high_daily_load",
+  "high_weekly_load",
+  "repeated_task",
+  "fairness_balance",
+  "matching_experience",
+  "low_daily_load",
+  "low_weekly_load",
+  "no_rehearsal",
+  "no_show_conflict",
+  "no_time_conflict",
+];
+
+export interface CandidateReason {
+  code: ReasonCode;
+  /** Fertiger, auf Deutsch formulierter Text - zentral in diesem Modul erzeugt
+   *  (buildReason), damit UI-Komponenten keine eigenen Textbausteine pflegen. */
+  text: string;
+}
+
+export interface CandidateInfo {
+  name: string;
+  status: CandidateAvailability;
+  /** Sortiert nach REASON_PRIORITY, wichtigster Grund zuerst. */
+  reasons: CandidateReason[];
+  /** Interner Rang für die Sortierung innerhalb der "Empfohlen"-Gruppe (kleiner = besser). */
+  score: number;
+}
+
+function buildReason(code: ReasonCode, text: string): CandidateReason {
+  return { code, text };
+}
+
+function sortReasons(reasons: CandidateReason[]): CandidateReason[] {
+  return [...reasons].sort(
+    (a, b) => REASON_PRIORITY.indexOf(a.code) - REASON_PRIORITY.indexOf(b.code),
+  );
+}
+
+export function serviceIntervalLabel(interval: TimeInterval): string {
+  const clock = (minutes: number) => {
+    const wrapped = ((minutes % 1440) + 1440) % 1440;
+    const h = Math.floor(wrapped / 60);
+    const m = wrapped % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  };
+  return `${clock(interval[0])}–${clock(interval[1])} Uhr`;
+}
+
 export function recommendForCell({
   targetRow,
   dayLabel,
@@ -127,6 +238,7 @@ export function recommendForCell({
   rehearsalIntervals,
   showDates,
   onStageByDate = {},
+  onStageShowsByDate = {},
   dekoPeople,
   previousWeekWorkload,
 }: {
@@ -142,6 +254,8 @@ export function recommendForCell({
   showDates: string[];
   /** Aus dem MA-Gedächtnis: wer steht an dem Abend auf der Bühne. */
   onStageByDate?: Record<string, string[]>;
+  /** Aus dem MA-Gedächtnis: welche Show/Party läuft an dem Abend (nur Namen). */
+  onStageShowsByDate?: Record<string, string[]>;
   dekoPeople: string[];
   previousWeekWorkload: Record<string, PreviousWeekWorkload>;
 }) {
@@ -158,16 +272,23 @@ export function recommendForCell({
   const reliefTotal = new Map<string, number>();
   const dayTotal = new Map<string, number>();
   const unavailable = new Set<string>();
+  const absenceKind = new Map<string, string>();
   const timeConflicts = new Set<string>();
   const workedLateBefore = new Set<string>();
   const rehearsalNearby = new Map<string, number>();
+  const rehearsalNearbyDetail = new Map<string, RehearsalInterval>();
+  const rehearsalOverlapDetail = new Map<string, RehearsalInterval>();
+  const rehearsalToday = new Set<string>();
 
   for (const row of rows) {
     if (row._row_type === "group") continue;
     const category = categoryOf(row);
 
     if (category === "Frei" || category === "Urlaub/Krank") {
-      for (const name of namesFromCell(row[dayLabel])) unavailable.add(name);
+      for (const name of namesFromCell(row[dayLabel])) {
+        unavailable.add(name);
+        if (!absenceKind.has(name)) absenceKind.set(name, category);
+      }
       continue;
     }
 
@@ -240,28 +361,33 @@ export function recommendForCell({
   // der Show/Party steht, wird abgewertet - auch für Wochen ohne importierten Probenplan.
   const isEveningTarget = Boolean(targetInterval) && targetInterval![0] >= 17 * 60;
   const showConflict = new Set<string>();
+  const showConflictDetail = new Map<string, RehearsalInterval>();
   if (isEveningTarget && !isReliefTarget && targetDate) {
     for (const name of onStageByDate[targetDate] ?? []) showConflict.add(name);
   }
   if (!isReliefTarget && targetDate && targetInterval) {
     for (const rehearsal of rehearsalIntervals) {
       if (rehearsal.date !== targetDate) continue;
+      rehearsalToday.add(rehearsal.person_name);
       const rehearsalSlot = storedInterval(
         rehearsal.start_time,
         rehearsal.end_time,
       );
       if (isEveningCooking && rehearsal.is_show) {
         showConflict.add(rehearsal.person_name);
+        showConflictDetail.set(rehearsal.person_name, rehearsal);
         continue;
       }
       if (overlap(targetInterval, rehearsalSlot)) {
         blocked.add(rehearsal.person_name);
+        rehearsalOverlapDetail.set(rehearsal.person_name, rehearsal);
         continue;
       }
       const gap = gapMinutes(targetInterval, rehearsalSlot);
       const level = gap <= 30 ? 2 : gap <= 60 ? 1 : 0;
       if (level > (rehearsalNearby.get(rehearsal.person_name) ?? 0)) {
         rehearsalNearby.set(rehearsal.person_name, level);
+        rehearsalNearbyDetail.set(rehearsal.person_name, rehearsal);
       }
     }
   }
@@ -270,39 +396,224 @@ export function recommendForCell({
   const baseRecommended = new Set(rule?.recommended_people ?? allowed);
   const recommendedCandidates = allowed.filter((name) => baseRecommended.has(name));
 
+  const reliefNeed = (name: string) => {
+    const lateBonus = workedLateBefore.has(name)
+      ? (targetCategory === "Ausschlafen" ? 1000 : 80)
+      : 0;
+    const cookingBonus =
+      (cookingTotal.get(name) ?? 0) * (targetCategory === "Barfrei" ? 140 : 20);
+    const workloadBonus = (weeklyTotal.get(name) ?? 0) * 25;
+    const busyDayBonus = (dayTotal.get(name) ?? 0) * 10;
+    return lateBonus + cookingBonus + workloadBonus + busyDayBonus;
+  };
+  const serviceLoad = (name: string) => {
+    const previous = previousWeekWorkload[name];
+    return (
+      (rehearsalNearby.get(name) ?? 0) * 10000 +
+      (showConflict.has(name) ? 8000 : 0) +
+      (categoryTotal.get(name) ?? 0) * 90 +
+      (weeklyTotal.get(name) ?? 0) * 24 +
+      (dayTotal.get(name) ?? 0) * 8 +
+      (previous?.overload ?? 0) * 20 +
+      (previous?.weighted_load ?? 0) * 3
+    );
+  };
+
   if (isReliefTarget) {
-    const reliefNeed = (name: string) => {
-      const lateBonus = workedLateBefore.has(name)
-        ? (targetCategory === "Ausschlafen" ? 1000 : 80)
-        : 0;
-      const cookingBonus =
-        (cookingTotal.get(name) ?? 0) * (targetCategory === "Barfrei" ? 140 : 20);
-      const workloadBonus = (weeklyTotal.get(name) ?? 0) * 25;
-      const busyDayBonus = (dayTotal.get(name) ?? 0) * 10;
-      return lateBonus + cookingBonus + workloadBonus + busyDayBonus;
-    };
     recommendedCandidates.sort((a, b) =>
       reliefNeed(b) - reliefNeed(a) || a.localeCompare(b, "de")
     );
   } else {
-    const serviceLoad = (name: string) => {
-      const previous = previousWeekWorkload[name];
-      return (
-        (rehearsalNearby.get(name) ?? 0) * 10000 +
-        (showConflict.has(name) ? 8000 : 0) +
-        (categoryTotal.get(name) ?? 0) * 90 +
-        (weeklyTotal.get(name) ?? 0) * 24 +
-        (dayTotal.get(name) ?? 0) * 8 +
-        (previous?.overload ?? 0) * 20 +
-        (previous?.weighted_load ?? 0) * 3
-      );
-    };
     recommendedCandidates.sort((a, b) =>
       serviceLoad(a) - serviceLoad(b) || a.localeCompare(b, "de")
     );
   }
 
   const recommended = recommendedCandidates.slice(0, 5);
+
+  // --- Sprint 2: strukturierte Kandidatenliste für ALLE (aktiven) Personen ---
+
+  const avgWeekly =
+    people.length > 0
+      ? [...weeklyTotal.values()].reduce((sum, value) => sum + value, 0) / people.length
+      : 0;
+
+  const showLabelsToday = targetDate ? onStageShowsByDate[targetDate] ?? [] : [];
+  const showLabelText = showLabelsToday.join(" / ");
+  const hasRehearsalDataThisWeek = rehearsalIntervals.length > 0;
+  const hasShowDataThisWeek = Object.keys(onStageByDate).length > 0;
+
+  function unavailableReasons(name: string): CandidateReason[] {
+    const reasons: CandidateReason[] = [];
+    if (unavailable.has(name)) {
+      const kind = absenceKind.get(name) ?? "Urlaub/Krank";
+      reasons.push(buildReason("absence", kind));
+    }
+    if (isReliefTarget && (reliefTotal.get(name) ?? 0) > 0) {
+      reasons.push(
+        buildReason(
+          "already_assigned_relief",
+          "Hat diese Woche bereits einen Ausschlaf- oder Barfrei-Tag",
+        ),
+      );
+    }
+    if (dekoReliefBlocked && dekoPeople.includes(name)) {
+      reasons.push(
+        buildReason(
+          "deko_show_lock",
+          "Deko-Mitarbeiter: an Showtagen für Ausschlafen/Barfrei gesperrt (Bühnenauf-/abbau)",
+        ),
+      );
+    }
+    if (!isReliefTarget && timeConflicts.has(name)) {
+      reasons.push(
+        buildReason("time_conflict", "Bereits in einem zeitgleichen Dienst eingeteilt"),
+      );
+    }
+    const overlapRehearsal = rehearsalOverlapDetail.get(name);
+    if (overlapRehearsal) {
+      reasons.push(
+        buildReason(
+          "rehearsal_overlap",
+          `Probe „${overlapRehearsal.activity}“ ${clockLabel(overlapRehearsal.start_time)}–${clockLabel(overlapRehearsal.end_time)} Uhr überschneidet sich`,
+        ),
+      );
+    }
+    if ((rule?.blocked_people ?? []).includes(name)) {
+      reasons.push(
+        buildReason("rule_blocked", rule?.message || "Für diesen Dienst nicht zulässig"),
+      );
+    }
+    return sortReasons(reasons);
+  }
+
+  function warningReasons(name: string): CandidateReason[] {
+    const reasons: CandidateReason[] = [];
+    if (showConflict.has(name)) {
+      const detail = showConflictDetail.get(name);
+      reasons.push(
+        buildReason(
+          "show_conflict",
+          detail
+            ? `Show „${detail.activity}“ ab ${clockLabel(detail.start_time)} Uhr`
+            : showLabelText
+              ? `Show „${showLabelText}“ an diesem Abend`
+              : "Steht an diesem Abend laut Planung auf der Bühne",
+        ),
+      );
+    }
+    const nearbyLevel = rehearsalNearby.get(name) ?? 0;
+    if (nearbyLevel > 0) {
+      const detail = rehearsalNearbyDetail.get(name);
+      const closeness = nearbyLevel === 2 ? "sehr knapper" : "knapper";
+      reasons.push(
+        buildReason(
+          "rehearsal_nearby",
+          detail
+            ? `Probe „${detail.activity}“ ${clockLabel(detail.start_time)}–${clockLabel(detail.end_time)} Uhr – ${closeness} Übergang`
+            : `Probe zeitlich nah an diesem Dienst – ${closeness} Übergang`,
+        ),
+      );
+    }
+    const day = dayTotal.get(name) ?? 0;
+    if (day >= HIGH_DAILY_LOAD_THRESHOLD) {
+      reasons.push(
+        buildReason("high_daily_load", `Bereits ${day} Einsätze an diesem Tag`),
+      );
+    }
+    const weekly = weeklyTotal.get(name) ?? 0;
+    if (weekly >= 6 && weekly > avgWeekly * HIGH_WEEKLY_LOAD_FACTOR) {
+      reasons.push(
+        buildReason(
+          "high_weekly_load",
+          `Bereits ${weekly} Einsätze in dieser Woche (Team-Ø ${roundDisplay(avgWeekly)})`,
+        ),
+      );
+    }
+    const sameCategory = categoryTotal.get(name) ?? 0;
+    if (sameCategory >= REPEATED_TASK_THRESHOLD) {
+      reasons.push(
+        buildReason(
+          "repeated_task",
+          `Bereits ${sameCategory}x diese Woche in ${targetCategory} eingeteilt`,
+        ),
+      );
+    }
+    return sortReasons(reasons);
+  }
+
+  function recommendedReasons(name: string): CandidateReason[] {
+    const reasons: CandidateReason[] = [
+      buildReason("no_time_conflict", "Keine Konflikte"),
+    ];
+    if (isReliefTarget) {
+      reasons.push(
+        buildReason("fairness_balance", "Faire Wochenverteilung bei Ausschlafen/Barfrei"),
+      );
+      return sortReasons(reasons);
+    }
+    const day = dayTotal.get(name) ?? 0;
+    const weekly = weeklyTotal.get(name) ?? 0;
+    const sameCategory = categoryTotal.get(name) ?? 0;
+    if (day === 0) {
+      reasons.push(buildReason("low_daily_load", "Heute noch kein weiterer Dienst"));
+    }
+    if (weekly <= avgWeekly) {
+      reasons.push(
+        buildReason(
+          "low_weekly_load",
+          `${weekly} Dienste diese Woche (Team-Ø ${roundDisplay(avgWeekly)})`,
+        ),
+      );
+    }
+    if (sameCategory > 0 && sameCategory < REPEATED_TASK_THRESHOLD) {
+      reasons.push(
+        buildReason("matching_experience", `Bereits mit ${targetCategory} vertraut`),
+      );
+    }
+    if (hasRehearsalDataThisWeek && !rehearsalToday.has(name)) {
+      reasons.push(buildReason("no_rehearsal", "Keine Probe an diesem Tag"));
+    }
+    if (isEveningTarget && hasShowDataThisWeek && !showConflict.has(name)) {
+      reasons.push(buildReason("no_show_conflict", "Steht diesen Abend nicht auf der Bühne"));
+    }
+    return sortReasons(reasons).slice(0, 3);
+  }
+
+  // "Empfohlen" ist bewusst auf Kandidaten ohne jede Warnung beschränkt - eine
+  // Person mit Proben-Nähe- oder Show-Hinweis landet immer in der Warngruppe,
+  // selbst wenn sie sonst ganz oben im Ranking stünde (siehe Aufgabe 3).
+  const cleanAllowed = allowed.filter((name) => warningReasons(name).length === 0);
+  const recommendedForStatus = new Set(
+    (isReliefTarget
+      ? [...cleanAllowed].sort((a, b) => reliefNeed(b) - reliefNeed(a) || a.localeCompare(b, "de"))
+      : [...cleanAllowed].sort((a, b) => serviceLoad(a) - serviceLoad(b) || a.localeCompare(b, "de"))
+    ).slice(0, 5),
+  );
+
+  const candidates: CandidateInfo[] = people.map((name) => {
+    if (blocked.has(name)) {
+      return {
+        name,
+        status: "unavailable",
+        reasons: unavailableReasons(name),
+        score: 0,
+      };
+    }
+    const warnings = warningReasons(name);
+    if (warnings.length > 0) {
+      return { name, status: "warning", reasons: warnings, score: serviceLoad(name) };
+    }
+    if (recommendedForStatus.has(name)) {
+      return {
+        name,
+        status: "recommended",
+        reasons: recommendedReasons(name),
+        score: isReliefTarget ? -reliefNeed(name) : serviceLoad(name),
+      };
+    }
+    return { name, status: "available", reasons: [], score: serviceLoad(name) };
+  });
 
   return {
     recommendedPeople: recommended,
@@ -314,5 +625,8 @@ export function recommendForCell({
       : showConflict.size > 0
         ? "Rot markierte MA stehen an diesem Abend in der Show – nur im Ausnahmefall einplanen."
         : rule?.message ?? "",
+    candidates,
+    targetInterval,
+    targetDate,
   };
 }

@@ -220,6 +220,8 @@ export interface PlanGenerateResult {
   show_dates: string[];
   /** Datum -> MA, die laut Gedächtnis an dem Abend auf der Bühne stehen. */
   on_stage_by_date: Record<string, string[]>;
+  /** Datum -> Show-/Party-Namen, die an dem Abend laufen (für Konflikttexte). */
+  on_stage_shows_by_date: Record<string, string[]>;
   deko_people: string[];
   previous_week: {
     id: number;
