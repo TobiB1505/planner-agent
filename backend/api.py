@@ -7,8 +7,10 @@ import json
 import logging
 import math
 import os
+import shutil
 import sqlite3
 import tempfile
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
@@ -43,6 +45,7 @@ if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Planner-Agent API")
+_PROCESS_STARTED_AT = time.monotonic()
 KNOWN_DEPARTMENT_TOKENS = {
     "S&L", "SPT", "NM", "KÜCHE", "COCINA", "TC", "DEKO", "LIVE-ENT",
     "SPORTSTAINER", "MANAGER", "REQUI", "WASPO", "FO", "WFA", "SPA",
@@ -1342,3 +1345,94 @@ def health():
         "database": database_status,
         "database_path": config_paths.relative_to_project(config_paths.DATABASE_PATH),
     }
+
+
+def _dir_diagnostic(path: Path) -> dict:
+    exists = path.exists()
+    writable = False
+    if exists:
+        probe = path / ".system_write_check"
+        try:
+            probe.write_text("ok")
+            probe.unlink()
+            writable = True
+        except OSError:
+            writable = False
+    return {
+        "path": config_paths.relative_to_project(path),
+        "exists": exists,
+        "writable": writable,
+    }
+
+
+@app.get("/api/system/diagnostics")
+def system_diagnostics():
+    """Reiner Lesezugriff für den Service Manager - prüft denselben Zustand
+    wie backend/run_local.py beim Start, aber strukturiert für die UI statt
+    als Konsolenausgabe. Verändert nichts, legt nichts an (bis auf eine
+    sofort wieder gelöschte Prüfdatei je Ordner, um "beschreibbar" zu testen)."""
+    database_exists = config_paths.DATABASE_PATH.exists()
+    integrity: Optional[str] = None
+    database_status = "missing"
+    if database_exists:
+        try:
+            conn = sqlite3.connect(str(config_paths.DATABASE_PATH))
+            integrity = conn.execute("PRAGMA integrity_check;").fetchone()[0]
+            conn.close()
+            database_status = "connected" if integrity == "ok" else "error"
+        except sqlite3.Error as exc:
+            database_status = "error"
+            integrity = str(exc)
+
+    templates = [
+        {"name": name, "filename": path.name, "exists": path.exists()}
+        for name, path in (
+            ("Woche A", config_paths.WEEK_A_TEMPLATE_PATH),
+            ("Woche B", config_paths.WEEK_B_TEMPLATE_PATH),
+            ("Künstlerplan", config_paths.ARTIST_TEMPLATE_PATH),
+        )
+    ]
+
+    directories = {
+        "database": _dir_diagnostic(config_paths.DATABASE_DIR),
+        "archive": _dir_diagnostic(config_paths.DIENSTPLAN_ARCHIVE_DIR),
+        "uploads": _dir_diagnostic(config_paths.UPLOAD_DIR),
+        "exports": _dir_diagnostic(config_paths.EXPORT_DIR),
+    }
+
+    disk_usage = shutil.disk_usage(config_paths.LOCAL_DATA_DIR if config_paths.LOCAL_DATA_DIR.exists() else config_paths.PROJECT_ROOT)
+
+    return {
+        "database": {
+            "status": database_status,
+            "integrity_check": integrity,
+            "path": config_paths.relative_to_project(config_paths.DATABASE_PATH),
+        },
+        "templates": templates,
+        "directories": directories,
+        "host": os.getenv("BACKEND_HOST", "127.0.0.1"),
+        "port": os.getenv("BACKEND_PORT", "8000"),
+        "cors_origins": _cors_origins(),
+        "uptime_seconds": round(time.monotonic() - _PROCESS_STARTED_AT, 1),
+        "disk": {
+            "free_bytes": disk_usage.free,
+            "total_bytes": disk_usage.total,
+        },
+    }
+
+
+@app.post("/api/system/restart")
+def system_restart():
+    """Löst einen Neustart des Backend-Worker-Prozesses aus.
+
+    Kein eigener Prozess-Ersatz (os.execv o.ä.) - das wäre bei einem laufenden
+    uvicorn-Reload-Setup fehleranfällig (doppelt gebundene Ports, verwaiste
+    Reloader-Prozesse). Stattdessen wird lediglich die mtime dieser Datei
+    aktualisiert - der uvicorn-Reloader, den backend/run_local.py bereits mit
+    reload=True startet, beobachtet genau das und ersetzt den Worker-Prozess
+    darauf hin selbst sauber. Funktioniert deshalb nur, wenn das Backend über
+    `python -m backend.run_local` (bzw. die Startskripte) läuft.
+    """
+    api_file = Path(__file__)
+    os.utime(api_file, None)
+    return {"status": "restarting"}

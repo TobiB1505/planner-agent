@@ -608,3 +608,42 @@ export const setSetting = (key: string, value: string) =>
 
 export const healthCheck = () =>
   get<{ status: string; database?: string; database_path?: string }>("/health");
+
+// ---------- Service Manager ----------
+export interface SystemTemplateStatus {
+  name: string;
+  filename: string;
+  exists: boolean;
+}
+
+export interface SystemDirectoryStatus {
+  path: string;
+  exists: boolean;
+  writable: boolean;
+}
+
+export interface SystemDiagnostics {
+  database: {
+    status: "connected" | "missing" | "error";
+    integrity_check: string | null;
+    path: string;
+  };
+  templates: SystemTemplateStatus[];
+  directories: {
+    database: SystemDirectoryStatus;
+    archive: SystemDirectoryStatus;
+    uploads: SystemDirectoryStatus;
+    exports: SystemDirectoryStatus;
+  };
+  host: string;
+  port: string;
+  cors_origins: string[];
+  uptime_seconds: number;
+  disk: {
+    free_bytes: number;
+    total_bytes: number;
+  };
+}
+
+export const getSystemDiagnostics = () => get<SystemDiagnostics>("/system/diagnostics");
+export const restartBackend = () => post<{ status: string }>("/system/restart");
