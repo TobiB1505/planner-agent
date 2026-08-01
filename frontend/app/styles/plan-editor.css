@@ -1,0 +1,605 @@
+/* ---------- Dienstplan-Editor: Bearbeitungsmodus ---------- */
+
+.btn-danger-solid {
+  border-color: rgba(219, 75, 86, 0.35);
+  background: #db4b56;
+  color: #fff;
+}
+
+.btn-danger-solid:hover {
+  background: #c73f4a;
+  border-color: rgba(219, 75, 86, 0.5);
+}
+
+/* Bestätigungsdialog */
+
+.confirm-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 10, 20, 0.45);
+  padding: 20px;
+}
+
+.confirm-dialog {
+  width: 100%;
+  max-width: 460px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--background);
+  box-shadow: 0 24px 60px rgba(10, 10, 24, 0.28);
+  padding: 22px;
+}
+
+.confirm-dialog h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 780;
+}
+
+.confirm-dialog-description {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.confirm-dialog-description p {
+  margin: 0;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+/* Kompakter Bearbeitungsmodus-Header (Aufgabe 1) */
+
+.plan-editor-summary-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+}
+
+.plan-editor-summary-copy h1 {
+  margin: 0;
+  font-size: clamp(1.3rem, 1.6vw, 1.6rem);
+  font-weight: 780;
+  letter-spacing: -0.03em;
+}
+
+.plan-editor-summary-copy p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.plan-editor-summary-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.plan-editor-summary-checks .is-ready {
+  color: #2da970;
+}
+
+.plan-editor-summary-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.plan-editor-summary-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.plan-editor-summary-week-picker {
+  min-width: 200px;
+  margin-left: auto;
+}
+
+.plan-editor-summary-week-picker .field-label {
+  display: none;
+}
+
+.plan-editor-summary-week-picker .week-picker-control {
+  min-height: 40px;
+}
+
+.plan-editor-summary-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+  padding: 5px 11px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.plan-editor-summary-toggle:hover {
+  background: var(--accent-soft);
+}
+
+.plan-editor-summary-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 14px;
+  border-top: 1px solid var(--border);
+  padding: 16px 20px 20px;
+}
+
+.plan-editor-summary-details > .preparation-card {
+  flex: 1 1 380px;
+  min-width: 340px;
+}
+
+.plan-editor-summary-details > .field {
+  flex: 1 1 260px;
+  min-width: 380px;
+  padding: 16px 0;
+}
+
+/* Feste Werkzeugleiste (Aufgabe 4) */
+
+.plan-editor-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  backdrop-filter: blur(8px);
+  padding: 10px 14px;
+  box-shadow: 0 6px 18px rgba(10, 10, 24, 0.06);
+}
+
+.plan-editor-toolbar-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  min-width: 0;
+}
+
+.plan-editor-toolbar-week {
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.plan-editor-toolbar-undo {
+  display: flex;
+  gap: 4px;
+}
+
+.plan-editor-save-status {
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.plan-editor-save-status.is-dirty {
+  color: #c47c25;
+}
+
+.plan-editor-save-status.is-clean {
+  color: #2da970;
+}
+
+.plan-editor-save-status.is-error {
+  color: #db4b56;
+}
+
+.plan-editor-save-error {
+  color: #db4b56;
+  font-size: 11.5px;
+}
+
+.plan-editor-toolbar-count {
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.plan-editor-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-editor-tools-menu {
+  position: relative;
+}
+
+.plan-editor-tools-menu > div {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: 220px;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--background);
+  box-shadow: 0 14px 36px rgba(10, 10, 24, 0.18);
+  padding: 5px;
+}
+
+.plan-editor-tools-menu > div button {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--foreground);
+  padding: 9px 10px;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.plan-editor-tools-menu > div button:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.plan-editor-tools-menu > div button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.plan-editor-bottom-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+@media (max-width: 900px) {
+  .plan-editor-toolbar {
+    justify-content: flex-start;
+  }
+
+  .plan-editor-toolbar-actions {
+    width: 100%;
+  }
+
+  .plan-editor-toolbar-actions .btn {
+    flex: 1 1 auto;
+  }
+
+  .plan-editor-summary-checks {
+    margin-left: 0;
+  }
+}
+
+/* Planprüfung (Sprint 3) --------------------------------------------------- */
+
+.plan-validation-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  padding: 4px 10px;
+  color: var(--foreground);
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+button.plan-validation-summary {
+  cursor: pointer;
+}
+
+.plan-validation-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.plan-validation-summary.is-checking {
+  color: var(--muted);
+}
+
+.plan-validation-summary.is-clean {
+  border-color: rgba(45, 169, 112, 0.35);
+  color: #2da970;
+}
+
+.plan-validation-summary.is-warning {
+  border-color: rgba(196, 124, 37, 0.4);
+  color: #c47c25;
+}
+
+.plan-validation-summary.is-error,
+.plan-validation-summary.is-failed {
+  border-color: rgba(219, 75, 86, 0.45);
+  color: #db4b56;
+}
+
+.plan-validation-summary-cta {
+  margin-left: 2px;
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Konflikt-Seitenpanel */
+
+.plan-issues-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  width: min(420px, 100vw);
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--background);
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.28);
+}
+
+.plan-issues-panel-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  padding: 16px 16px 14px;
+}
+
+.plan-issues-panel-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.plan-issues-panel-counts {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.plan-issues-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plan-issues-panel-close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.plan-issues-panel-close:hover {
+  background: var(--accent-soft);
+}
+
+.plan-issues-panel-filters {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  padding: 10px 16px;
+}
+
+.plan-issues-filter {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  padding: 4px 11px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.plan-issues-filter.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.plan-issues-panel-list {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 14px 16px 20px;
+}
+
+.plan-issues-panel-empty {
+  display: grid;
+  gap: 6px;
+  border: 1px dashed var(--border);
+  border-radius: 13px;
+  padding: 22px 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.plan-issues-panel-empty strong {
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.plan-issues-panel-error {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(219, 75, 86, 0.35);
+  border-radius: 13px;
+  background: rgba(219, 75, 86, 0.08);
+  padding: 14px;
+  color: #db4b56;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.plan-issue-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 12px 13px;
+}
+
+.plan-issue-card.is-error {
+  border-left-color: #db4b56;
+}
+
+.plan-issue-card.is-warning {
+  border-left-color: #c47c25;
+}
+
+.plan-issue-card.is-info {
+  border-left-color: var(--muted);
+}
+
+.plan-issue-card-label {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.plan-issue-card.is-error .plan-issue-card-label {
+  color: #db4b56;
+}
+
+.plan-issue-card.is-warning .plan-issue-card-label {
+  color: #c47c25;
+}
+
+.plan-issue-card-who {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  color: var(--foreground);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.plan-issue-card-day {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.plan-issue-card h3 {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.plan-issue-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.plan-issue-card-time {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.plan-issue-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.plan-issue-card-actions .btn {
+  min-height: 30px;
+  padding: 5px 11px;
+  font-size: 11.5px;
+}
+
+@media (max-width: 760px) {
+  .plan-issues-panel {
+    left: 0;
+    width: auto;
+    border-left: none;
+  }
+}
+
+/* Konfliktmarkierungen direkt in der Tabelle */
+
+/* KEIN "position: relative" auf .ag-cell: AG Grid positioniert Zellen selbst
+   per transform/position (Virtualisierung) - eine erzwungene position:relative
+   hebelt das aus und verdoppelt effektiv den Spaltenversatz jeder Zelle nach
+   der ersten (genau der Bug, der Spalten "verlorengehen" ließ). .ag-cell ist
+   bereits selbst positioniert und damit ein gültiger Bezugsrahmen für das
+   absolut positionierte Warnsymbol unten - kein eigenes position nötig.
+*/
+.plan-grid .ag-cell.plan-cell-issue-error {
+  box-shadow: inset 3px 0 0 #db4b56;
+}
+
+.plan-grid .ag-cell.plan-cell-issue-warning {
+  box-shadow: inset 3px 0 0 #c47c25;
+}
+
+.plan-grid .ag-cell.plan-cell-issue-error::after,
+.plan-grid .ag-cell.plan-cell-issue-warning::after {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 10px;
+  line-height: 1;
+  content: "⚠";
+}
+
+.plan-grid .ag-cell.plan-cell-issue-error::after {
+  color: #db4b56;
+}
+
+.plan-grid .ag-cell.plan-cell-issue-warning::after {
+  color: #c47c25;
+}

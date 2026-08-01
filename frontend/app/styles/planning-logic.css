@@ -1,0 +1,150 @@
+/* Planungslogik nutzt als eigener Verwaltungsbereich bewusst größere Typografie. */
+.planning-logic-page .dashboard-rules-toggle {
+  grid-template-columns: 44px minmax(0, 1fr) auto auto 18px;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.planning-logic-page .dashboard-rules-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 22px;
+}
+
+.planning-logic-page .dashboard-rules-heading small {
+  font-size: 10px;
+}
+
+.planning-logic-page .dashboard-rules-heading strong {
+  margin-top: 2px;
+  font-size: 18px;
+}
+
+.planning-logic-page .dashboard-rules-heading > span {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.planning-logic-page .dashboard-rules-summary > span,
+.planning-logic-page .dashboard-rules-count {
+  font-size: 10px;
+}
+
+.planning-logic-page .dashboard-rules-summary > span {
+  min-height: 28px;
+  padding: 4px 9px 4px 5px;
+}
+
+.planning-logic-page .dashboard-rules-summary i {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+}
+
+.planning-logic-page .dashboard-rules-tools {
+  gap: 16px;
+  padding: 12px 14px;
+}
+
+.planning-logic-page .dashboard-rule-filters button {
+  min-height: 38px;
+  padding: 7px 11px;
+  font-size: 11.5px;
+}
+
+.planning-logic-page .dashboard-rule-filters button > span {
+  min-width: 21px;
+  height: 21px;
+  font-size: 9px;
+}
+
+.planning-logic-page .dashboard-rule-search {
+  flex-basis: 280px;
+  width: min(100%, 280px);
+  padding-inline: 11px;
+}
+
+.planning-logic-page .dashboard-rule-search input {
+  height: 38px;
+  font-size: 12px;
+}
+
+.planning-logic-page .dashboard-rule-list {
+  gap: 10px;
+  padding: 14px;
+}
+
+.planning-logic-page .dashboard-rule-row {
+  border-radius: 12px;
+}
+
+.planning-logic-page .dashboard-rule-row > summary {
+  min-height: 58px;
+  grid-template-columns: 34px minmax(0, 1fr) 11px;
+  gap: 11px;
+  padding: 10px 12px;
+}
+
+.planning-logic-page .dashboard-rule-tone {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.planning-logic-page .dashboard-rule-title strong {
+  font-size: 13px;
+}
+
+.planning-logic-page .dashboard-rule-title small {
+  font-size: 10px;
+}
+
+.planning-logic-page .dashboard-rule-row > p {
+  margin: 0 12px 13px 57px;
+  padding-top: 11px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.planning-logic-page .planning-logic-overview article > span {
+  font-size: 10.5px;
+}
+
+.planning-logic-page .planning-logic-overview article > strong {
+  font-size: 29px;
+}
+
+.planning-logic-page .planning-logic-overview article > small {
+  font-size: 11px;
+}
+
+@media (max-width: 780px) {
+  .planning-logic-page .dashboard-rules-toggle {
+    grid-template-columns: 40px minmax(0, 1fr) 16px;
+    gap: 11px;
+    padding: 14px;
+  }
+
+  .planning-logic-page .dashboard-rules-mark {
+    width: 40px;
+    height: 40px;
+  }
+
+  .planning-logic-page .dashboard-rules-heading strong {
+    font-size: 15px;
+  }
+
+  .planning-logic-page .dashboard-rules-heading > span {
+    display: block;
+    white-space: normal;
+  }
+
+  .planning-logic-page .dashboard-rule-search {
+    width: 100%;
+    max-width: none;
+    flex-basis: auto;
+  }
+}
+
