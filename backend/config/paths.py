@@ -67,6 +67,16 @@ def ensure_runtime_directories() -> None:
         directory.mkdir(parents=True, exist_ok=True)
 
 
+def relative_to_project(path: Path) -> str:
+    """Projektbezogener Pfad für Ausgaben/Logs - nie ein voller Nutzerpfad."""
+    try:
+        return str(path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        # Liegt z.B. wegen PLANNER_DATA_DIR ausserhalb des Projekts - dann
+        # lieber nur den Ordnernamen als den vollen persönlichen Pfad zeigen.
+        return f".../{path.name}"
+
+
 def require_template(path: Path) -> Path:
     """Prüft, dass eine Programmvorlage existiert, statt still auf einen
     persönlichen Pfad zurückzufallen."""

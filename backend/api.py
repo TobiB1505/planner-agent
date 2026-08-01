@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import os
+import sqlite3
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -46,9 +47,22 @@ KNOWN_DEPARTMENT_TOKENS = {
     "S&L", "SPT", "NM", "KÜCHE", "COCINA", "TC", "DEKO", "LIVE-ENT",
     "SPORTSTAINER", "MANAGER", "REQUI", "WASPO", "FO", "WFA", "SPA",
 }
+def _cors_origins() -> list[str]:
+    """Liest erlaubte lokale Origins aus CORS_ORIGINS (kommasepariert).
+
+    Fällt ohne Einstellung auf die beiden lokalen Next.js-Dev-Adressen
+    zurück - die Browser-Anfragen laufen im Normalbetrieb ohnehin same-origin
+    über den next.config.ts-Rewrite, CORS greift nur bei direkter
+    Backend-Ansprache während der lokalen Entwicklung.
+    """
+    raw = os.getenv("CORS_ORIGINS", "")
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return origins or ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -1313,4 +1327,18 @@ def set_setting(key: str, payload: SettingValue):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    """Reiner Lesezugriff - verändert nie Daten, legt auch keine Datenbank an."""
+    database_status = "missing"
+    if config_paths.DATABASE_PATH.exists():
+        try:
+            conn = sqlite3.connect(str(config_paths.DATABASE_PATH))
+            conn.execute("SELECT 1")
+            conn.close()
+            database_status = "connected"
+        except sqlite3.Error:
+            database_status = "error"
+    return {
+        "status": "ok",
+        "database": database_status,
+        "database_path": config_paths.relative_to_project(config_paths.DATABASE_PATH),
+    }
