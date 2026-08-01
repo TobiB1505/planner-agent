@@ -262,6 +262,7 @@ temporär, nie im Vorlagenordner selbst.
 | `CORS_ORIGINS` | `.env` (Projektstamm) | Optional, kommaseparierte Liste erlaubter Browser-Origins |
 | `BACKEND_HOST` | `.env` (Projektstamm) | Optional, Standard `127.0.0.1` |
 | `BACKEND_PORT` | `.env` (Projektstamm) | Optional, Standard `8000` |
+| `BACKEND_RELOAD` | `.env` (Projektstamm) | Optional, `1` aktiviert Auto-Neustart bei Code-Änderungen (nur für aktive Entwicklung, Standard aus) |
 | `BACKEND_INTERNAL_URL` | `frontend/.env.local` | Optional, wohin Next.js `/api/...` weiterleitet (Standard `http://127.0.0.1:8000`) |
 
 Vorlagen liegen als `.env.example` bzw. `frontend/.env.example` bei - kopieren

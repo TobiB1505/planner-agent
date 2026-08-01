@@ -138,18 +138,30 @@ def main() -> None:
 
     host = os.getenv("BACKEND_HOST", "127.0.0.1")
     port = _resolve_port(os.getenv("BACKEND_PORT", "8000"), "BACKEND_PORT")
+    # reload=True ist eine Entwickler-Bequemlichkeit (Auto-Neustart bei
+    # Code-Änderungen) und lief lange als Standard - das war ein Fehler:
+    # ein normaler Nutzer bearbeitet keinen Code, bekommt davon nur einen
+    # zusätzlichen Reloader-Prozess ohne Nutzen, und der System-Manager-
+    # Neustart-Button (/api/system/restart) verliess sich fälschlich genau
+    # auf diesen Reload-Mechanismus - ohne ihn passierte beim Klick nichts.
+    # Der Neustart-Button funktioniert jetzt unabhängig davon (os.execv in
+    # api.py), Standard ist deshalb bewusst reload=False. Für aktive
+    # Entwicklung optional wieder aktivierbar: BACKEND_RELOAD=1.
+    reload_enabled = os.getenv("BACKEND_RELOAD", "0") == "1"
 
     import uvicorn
 
     print(f"Backend startet auf http://{host}:{port}")
     print(f"API-Dokumentation: http://{host}:{port}/docs")
     print(f"Health-Check: http://{host}:{port}/api/health")
+    if reload_enabled:
+        print("Entwicklermodus: BACKEND_RELOAD=1 - Auto-Neustart bei Code-Änderungen aktiv.")
 
     uvicorn.run(
         "backend.api:app",
         host=host,
         port=port,
-        reload=True,
+        reload=reload_enabled,
     )
 
 
