@@ -29,7 +29,7 @@ import {
   xlsxGenerate,
 } from "@/lib/api";
 import { categoryColor, hexToRgba } from "@/lib/categoryColors";
-import { recommendForCell } from "@/lib/recommendations";
+import { recommendForCell, serviceIntervalLabel } from "@/lib/recommendations";
 import {
   AllCommunityModule,
   ModuleRegistry,
@@ -111,6 +111,30 @@ function formatDateRange(startIso: string, endIso: string): string {
   return `${formatter.format(new Date(`${startIso}T12:00:00`))}–${formatter.format(new Date(`${endIso}T12:00:00`))}`;
 }
 
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat("de-DE", { weekday: "long" });
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" });
+
+function weekdayLabelFor(iso?: string): string | undefined {
+  if (!iso) return undefined;
+  return WEEKDAY_FORMATTER.format(new Date(`${iso}T12:00:00`));
+}
+
+function shortDateLabelFor(iso?: string): string | undefined {
+  if (!iso) return undefined;
+  // Intl hängt im de-DE-Format bei day+month bereits einen Punkt an ("27.07.").
+  return SHORT_DATE_FORMATTER.format(new Date(`${iso}T12:00:00`));
+}
+
+/** Löst Uhrzeitangaben aus dem Zeilentext ("KP3 19:00 - 21:15" -> "KP3"), damit der
+ *  Popup-Kopfbereich keine Zeit doppelt zeigt (die kommt separat aus serviceInterval). */
+function serviceExtraLabel(zeile: string): string {
+  return zeile
+    .replace(/\d{1,2}[:.]\d{2}\s*(?:-|–|bis)\s*\d{1,2}[:.]\d{2}/gi, "")
+    .replace(/\d{1,2}[:.]\d{2}/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function splitNames(value: string): string[] {
   return value
     .split(/[,;\n]+/)
@@ -187,6 +211,7 @@ export default function PlanEditorPage() {
   const [rehearsalIntervals, setRehearsalIntervals] = useState<RehearsalInterval[]>([]);
   const [showDates, setShowDates] = useState<string[]>([]);
   const [onStageByDate, setOnStageByDate] = useState<Record<string, string[]>>({});
+  const [onStageShowsByDate, setOnStageShowsByDate] = useState<Record<string, string[]>>({});
   const [dekoPeople, setDekoPeople] = useState<string[]>([]);
   const [previousWeekWorkload, setPreviousWeekWorkload] = useState<
     Record<string, PreviousWeekWorkload>
@@ -282,6 +307,7 @@ export default function PlanEditorPage() {
         setRehearsalIntervals(result.rehearsal_intervals ?? []);
         setShowDates(result.show_dates ?? []);
         setOnStageByDate(result.on_stage_by_date ?? {});
+        setOnStageShowsByDate(result.on_stage_shows_by_date ?? {});
         setDekoPeople(result.deko_people ?? []);
         setPreviousWeekWorkload(result.previous_week_workload ?? {});
         if (result.template_code === "A" || result.template_code === "B") {
@@ -431,6 +457,7 @@ export default function PlanEditorPage() {
                 rehearsalIntervals,
                 showDates,
                 onStageByDate,
+                onStageShowsByDate,
                 dekoPeople,
                 previousWeekWorkload,
               })
@@ -457,29 +484,37 @@ export default function PlanEditorPage() {
             popupPosition: "under",
           };
         }
-        return isPersonSection(category)
-          ? {
-              component: PersonCellEditor,
-              params: {
-                people,
-                recommendedPeople:
-                  dynamicRecommendation?.recommendedPeople ?? rule?.recommended_people,
-                blockedPeople:
-                  dynamicRecommendation?.blockedPeople ?? rule?.blocked_people,
-                ruleHint: dynamicRecommendation?.hint ?? rule?.message,
-                nearbyPeople: dynamicRecommendation?.nearbyPeople ?? [],
-                showPeople: dynamicRecommendation?.showPeople ?? [],
-                minimumPeople: isGuestsVsRobins ? 4 : 1,
-              },
-              popup: true,
-              popupPosition: "under",
-            }
-          : {
-              component: "agLargeTextCellEditor",
-              params: { maxLength: 500, rows: 5, cols: 35 },
-              popup: true,
-              popupPosition: "under",
-            };
+        if (!isPersonSection(category)) {
+          return {
+            component: "agLargeTextCellEditor",
+            params: { maxLength: 500, rows: 5, cols: 35 },
+            popup: true,
+            popupPosition: "under",
+          };
+        }
+        const extraLabel = serviceExtraLabel(params.data?.Zeile ?? "");
+        const serviceName =
+          extraLabel && extraLabel !== category ? `${category} · ${extraLabel}` : category;
+        const targetDate = dynamicRecommendation?.targetDate;
+        const targetInterval = dynamicRecommendation?.targetInterval;
+        return {
+          component: PersonCellEditor,
+          params: {
+            people,
+            candidates: dynamicRecommendation?.candidates ?? [],
+            ruleHint: dynamicRecommendation?.hint ?? rule?.message,
+            minimumPeople: isGuestsVsRobins ? 4 : 1,
+            serviceName,
+            sectionName: params.data?.Abschnitt && params.data.Abschnitt !== category
+              ? params.data.Abschnitt
+              : undefined,
+            weekdayLabel: weekdayLabelFor(targetDate),
+            dateLabel: shortDateLabelFor(targetDate),
+            timeLabel: targetInterval ? serviceIntervalLabel(targetInterval) : undefined,
+          },
+          popup: true,
+          popupPosition: "under",
+        };
       },
       cellStyle: (params) => ({
         backgroundColor: hexToRgba(rowColor(params.data), 0.13),
@@ -496,6 +531,7 @@ export default function PlanEditorPage() {
     rehearsalIntervals,
     showDates,
     onStageByDate,
+    onStageShowsByDate,
     dekoPeople,
     previousWeekWorkload,
     weekDates,
@@ -594,6 +630,7 @@ export default function PlanEditorPage() {
       setRehearsalIntervals(result.rehearsal_intervals ?? []);
       setShowDates(result.show_dates ?? []);
       setOnStageByDate(result.on_stage_by_date ?? {});
+      setOnStageShowsByDate(result.on_stage_shows_by_date ?? {});
       setDekoPeople(result.deko_people ?? []);
       setPreviousWeekWorkload(result.previous_week_workload ?? {});
       setExported(false);
@@ -708,6 +745,7 @@ export default function PlanEditorPage() {
     setRehearsalIntervals([]);
     setShowDates([]);
     setOnStageByDate({});
+    setOnStageShowsByDate({});
     setDekoPeople([]);
     setPreviousWeekWorkload({});
     setLoadedArchivedWeek(null);
@@ -840,7 +878,11 @@ export default function PlanEditorPage() {
                 refreshGridHistory();
               }}
               onCellValueChanged={(event: CellValueChangedEvent<PlanRow>) => {
-                if (event.data) setRows((current) => [...current]);
+                // KEIN setRows(...) hier: AG Grid mutiert event.data (dasselbe
+                // Objekt wie in rows) bereits direkt, und markDirty löst ohnehin
+                // einen Re-Render aus. Ein neues rowData-Array-Objekt an AG Grid
+                // zu geben, hätte hier den undoRedoCellEditing-Stack invalidiert
+                // (jede Zuweisung machte Rückgängig sofort wieder wirkungslos).
                 if (event.oldValue !== event.newValue) markDirty(1);
                 refreshGridHistory();
               }}
