@@ -4,6 +4,7 @@ data/
 __pycache__/
 *.pyc
 .streamlit/
+migration_backups/
 
 # Frontend
 frontend/node_modules/

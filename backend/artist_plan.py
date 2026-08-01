@@ -10,8 +10,8 @@ from typing import BinaryIO
 from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 
-import db
-import util
+from . import db
+from . import util
 
 FIELD_DEFINITIONS = [
     {"key": "lunch_dj", "label": "Mittagsgrill · DJ", "group": "Tages-Entertainment"},

@@ -20,19 +20,19 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-import assignment
-import artist_plan
-import db
-import grid
-import memory
-import plan_templates
-import planning_rules
-import rehearsal_plan
-import stats
-import template_spec
-import util
-import xlsx_template
-from extraction import extract_dienstplan
+from . import assignment
+from . import artist_plan
+from . import db
+from . import grid
+from . import memory
+from . import plan_templates
+from . import planning_rules
+from . import rehearsal_plan
+from . import stats
+from . import template_spec
+from . import util
+from . import xlsx_template
+from .extraction import extract_dienstplan
 
 load_dotenv()
 

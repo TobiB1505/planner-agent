@@ -5,10 +5,10 @@ import re
 
 import pandas as pd
 
-import planning_rules
-import template_spec
-import theme
-import util
+from . import planning_rules
+from . import template_spec
+from . import theme
+from . import util
 
 WEEKDAY_NAMES_DE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 

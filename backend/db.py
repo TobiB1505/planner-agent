@@ -4,7 +4,11 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "data" / "dienstplaene.db"
+# Temporary compatibility path until central path configuration is introduced.
+# db.py now lives in backend/, but the existing database stays at the repo-root
+# data/ folder so no migration or new empty database is triggered by this move.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = PROJECT_ROOT / "data" / "dienstplaene.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS people (

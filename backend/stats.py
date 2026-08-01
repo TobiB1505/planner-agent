@@ -7,11 +7,11 @@ from datetime import date, datetime, timedelta
 
 import pandas as pd
 
-import db
-import planning_rules
-import rehearsal_plan
-import template_spec
-import util
+from . import db
+from . import planning_rules
+from . import rehearsal_plan
+from . import template_spec
+from . import util
 
 
 def normalize_category(raw: str) -> str:

@@ -16,7 +16,7 @@ fi
 echo "Planner-Agent wird vorbereitet …"
 npm --prefix frontend run build
 
-./venv/bin/python -m uvicorn api:app --host 127.0.0.1 --port 8000 > .dienstplan-api.log 2>&1 &
+./venv/bin/python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 > .dienstplan-api.log 2>&1 &
 API_PID=$!
 
 cleanup() {

@@ -10,9 +10,12 @@ from pathlib import Path
 
 import openpyxl
 
-import db
+from . import db
 
-PROJECT_DIR = Path(__file__).parent
+# Temporary compatibility path until central path configuration is introduced.
+# plan_templates.py now lives in backend/, but the project templates/ folder
+# stays at the repo root and is not moved by this step.
+PROJECT_DIR = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = PROJECT_DIR / "templates"
 
 # Tobis Rechner-Standard: nur verwendet, solange in `settings` kein eigener

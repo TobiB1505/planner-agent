@@ -21,13 +21,13 @@ import math
 from collections import defaultdict
 from datetime import date, timedelta
 
-import db
-import grid
-import plan_templates
-import rehearsal_plan
-import stats
-import template_spec
-import xlsx_template
+from . import db
+from . import grid
+from . import plan_templates
+from . import rehearsal_plan
+from . import stats
+from . import template_spec
+from . import xlsx_template
 
 logger = logging.getLogger(__name__)
 
