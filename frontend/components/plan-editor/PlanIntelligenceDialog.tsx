@@ -2,6 +2,7 @@
 
 import { getPlanAudit, type PlanAuditEvent, type PlanQualityResult } from "@/lib/api";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 type IntelligenceTab = "quality" | "why" | "audit";
 
@@ -41,16 +42,21 @@ export default function PlanIntelligenceDialog({
 
   useEffect(() => {
     if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     function closeOnEscape(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
     }
     document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="intelligence-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
@@ -123,6 +129,7 @@ export default function PlanIntelligenceDialog({
           )}
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

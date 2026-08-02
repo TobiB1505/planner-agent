@@ -40,6 +40,7 @@ from . import util
 from . import xlsx_template
 from .extraction import extract_dienstplan
 from .intelligence import audit as intelligence_audit
+from .intelligence import dashboard as intelligence_dashboard
 from .intelligence import employee_stats, memory_engine, plan_quality, recommendation_engine
 
 load_dotenv()
@@ -318,7 +319,10 @@ def memory_set_task(person_id: int, payload: MemoryTaskUpdate):
 def dashboard_insights(week_id: int):
     conn = get_conn()
     try:
-        return clean(stats.week_insights(conn, week_id))
+        return clean({
+            **stats.week_insights(conn, week_id),
+            **intelligence_dashboard.dashboard_snapshot(conn, week_id),
+        })
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
 

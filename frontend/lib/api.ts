@@ -164,6 +164,18 @@ export interface DashboardInsights {
     services: number;
   }[];
   rules: PlanningRule[];
+  quality: PlanQualityResult;
+  intelligence: {
+    active_people: number;
+    evidence_profiles: number;
+    memory_profiles: number;
+    manual_skills: number;
+    manual_memory_entries: number;
+    historical_weeks: number;
+    rehearsal_weeks: number;
+    cold_start_people: string[];
+    recent_audit: PlanAuditEvent[];
+  };
 }
 
 export interface ExtractedAssignment {
@@ -419,7 +431,8 @@ export interface PlanAuditEventInput {
   metadata?: Record<string, unknown>;
 }
 
-export interface PlanAuditEvent extends PlanAuditEventInput {
+export interface PlanAuditEvent extends Omit<PlanAuditEventInput, "event_type"> {
+  event_type: PlanAuditEventInput["event_type"] | "plan_saved";
   id: number;
   week_plan_id: number | null;
   start_date: string;

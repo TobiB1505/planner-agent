@@ -796,9 +796,16 @@ export default function PlanEditorPage() {
         const list = cellIssueIndexRef.current.get(
           cellIssueKey(rowKey(params.data), label),
         );
-        if (!list || list.length === 0) return undefined;
-        const prefix = list.length > 1 ? `${list.length} Probleme: ` : "";
-        return prefix + list.map((issue) => issue.description).join(" | ");
+        const issueText = list?.length
+          ? `${list.length > 1 ? `${list.length} Probleme: ` : ""}${list
+              .map((issue) => issue.description)
+              .join(" | ")}`
+          : "";
+        const cellText = typeof params.value === "string" ? params.value.trim() : "";
+        if (overview && cellText) {
+          return issueText ? `${issueText}\n\nInhalt: ${cellText}` : cellText;
+        }
+        return issueText || undefined;
       },
     }));
     return [...fixed, ...days];
@@ -1348,15 +1355,6 @@ export default function PlanEditorPage() {
           </div>
         </div>
       </section>
-      <div className="plan-editor-bottom-actions">
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>
-          {saveState === "saving" && <span className="spinner" />}
-          Änderungen speichern
-        </button>
-        <button type="button" className="btn" disabled={busy || !xlsxSheet} onClick={exportExcel}>
-          Excel exportieren
-        </button>
-      </div>
     </>
   );
 

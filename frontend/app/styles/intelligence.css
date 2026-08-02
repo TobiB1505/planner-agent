@@ -322,9 +322,24 @@
 
 .plan-quality-toolbar span { font-size: .67rem; }
 .plan-quality-toolbar strong { color: var(--foreground); font-size: .76rem; }
-.plan-quality-toolbar.is-good { border-color: color-mix(in srgb, #45c98b 40%, var(--border)); }
-.plan-quality-toolbar.is-warning { border-color: color-mix(in srgb, #f1b85b 45%, var(--border)); }
-.plan-quality-toolbar.is-critical { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.plan-quality-toolbar.is-good {
+  border-color: color-mix(in srgb, #45c98b 40%, var(--border));
+  background: color-mix(in srgb, #45c98b 8%, var(--background));
+}
+
+.plan-quality-toolbar.is-warning {
+  border-color: color-mix(in srgb, #f1b85b 45%, var(--border));
+  background: color-mix(in srgb, #f1b85b 9%, var(--background));
+}
+
+.plan-quality-toolbar.is-critical {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: color-mix(in srgb, var(--danger) 9%, var(--background));
+}
+
+.plan-quality-toolbar.is-good strong { color: #45c98b; }
+.plan-quality-toolbar.is-warning strong { color: #f1b85b; }
+.plan-quality-toolbar.is-critical strong { color: var(--danger); }
 
 .plan-quality-hero {
   display: flex;

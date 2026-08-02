@@ -179,13 +179,12 @@ export default function PlanIssuesPanel({
                 {issue.timeRange && <div className="plan-issue-card-time">{issue.timeRange}</div>}
                 <div className="plan-issue-card-actions">
                   {issue.primaryCell && (
-                    <button type="button" className="btn" onClick={() => onNavigate(issue)}>
-                      Im Plan anzeigen
-                    </button>
-                  )}
-                  {issue.primaryCell && action && (
-                    <button type="button" className="btn btn-primary" onClick={() => onEdit(issue)}>
-                      {action}
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => (action ? onEdit(issue) : onNavigate(issue))}
+                    >
+                      {action ?? "Im Plan anzeigen"}
                     </button>
                   )}
                 </div>

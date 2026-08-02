@@ -1,6 +1,7 @@
 "use client";
 
 import PageHeader from "@/components/PageHeader";
+import DashboardIntelligenceOverview from "@/components/DashboardIntelligenceOverview";
 import {
   getDashboardInsights,
   getFairnessAlerts,
@@ -55,6 +56,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [readinessOpen, setReadinessOpen] = useState(true);
+  const [workloadExpanded, setWorkloadExpanded] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -86,13 +88,11 @@ export default function DashboardPage() {
         if (!active) return;
         setInsights(nextInsights);
         setAlerts(nextAlerts);
-        if (
+        setReadinessOpen(!(
           nextInsights.readiness.artist_plan
           && nextInsights.readiness.rehearsal_plan
           && nextInsights.readiness.duty_plan
-        ) {
-          setReadinessOpen(false);
-        }
+        ));
       })
       .catch((reason) => {
         if (!active) return;
@@ -181,6 +181,17 @@ export default function DashboardPage() {
         action: "Erstellen",
       });
     }
+    insights.quality.issues.slice(0, 4).forEach((issue, index) => {
+      items.push({
+        id: `quality-${issue.code}-${index}`,
+        title: "Planqualität prüfen",
+        description: issue.message,
+        tone: "warning",
+        context: "Gespeicherte Woche",
+        href: "/plan-editor",
+        action: "Analysieren",
+      });
+    });
     alerts.forEach((alert, index) => {
       items.push({
         id: `fairness-${String(alert.person ?? index)}-${index}`,
@@ -217,6 +228,7 @@ export default function DashboardPage() {
   function chooseWeek(weekId: number) {
     setLoading(true);
     setError("");
+    setWorkloadExpanded(false);
     setSelectedWeekId(weekId);
   }
 
@@ -332,6 +344,8 @@ export default function DashboardPage() {
               </div>
             </div>
           </section>
+
+          <DashboardIntelligenceOverview insights={insights} fairnessAlerts={alerts.length} />
 
           <section className="panel dashboard-show-panel dashboard-current-show-panel">
             <SectionHeader
@@ -463,7 +477,7 @@ export default function DashboardPage() {
                   <span>Frei / Abw.</span>
                 </div>
                 <div className="dashboard-workload-list">
-                  {workload.map((entry) => (
+                  {(workloadExpanded ? workload : workload.slice(0, 7)).map((entry) => (
                     <article className="dashboard-workload-row" key={entry.person}>
                       <div className="dashboard-person">
                         <span className="dashboard-person-avatar" aria-hidden="true">
@@ -497,6 +511,16 @@ export default function DashboardPage() {
                     </article>
                   ))}
                 </div>
+                {workload.length > 7 && (
+                  <button
+                    type="button"
+                    className="dashboard-workload-toggle"
+                    onClick={() => setWorkloadExpanded((current) => !current)}
+                  >
+                    {workloadExpanded ? "Kompakte Ansicht" : `Alle ${workload.length} Mitarbeiter anzeigen`}
+                    <span aria-hidden="true">{workloadExpanded ? "↑" : "↓"}</span>
+                  </button>
+                )}
               </div>
             ) : (
               <DashboardEmpty text="Für diese Woche liegen noch keine Mitarbeiter-Zuweisungen vor." />

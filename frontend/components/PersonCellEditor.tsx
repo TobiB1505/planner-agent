@@ -455,12 +455,24 @@ function PersonCellEditorInstance({
             status === "unavailable" && members.length > UNAVAILABLE_COLLAPSE_THRESHOLD;
           const visibleMembers =
             collapsible && !unavailableExpanded ? members.slice(0, UNAVAILABLE_COLLAPSE_THRESHOLD) : members;
+          const firstReason = members[0]?.reasons[0]?.text;
+          const sharedPrimaryReason =
+            members.length >= 3 &&
+            firstReason &&
+            members.every((candidate) => candidate.reasons[0]?.text === firstReason)
+              ? firstReason
+              : undefined;
           return (
             <div className="person-candidate-group" key={status}>
               <div className="person-candidate-group-title">
                 {GROUP_LABEL[status]}
                 <span>{members.length}</span>
               </div>
+              {sharedPrimaryReason && (
+                <div className={`person-candidate-group-note status-${status}`}>
+                  {sharedPrimaryReason}
+                </div>
+              )}
               {visibleMembers.map((candidate) => {
                 const globalIndex = interactiveCandidates.indexOf(candidate);
                 const primaryReason = candidate.reasons[0];
@@ -474,7 +486,7 @@ function PersonCellEditorInstance({
                       </span>
                       <span className="person-candidate-body">
                         <span className="person-candidate-name">{candidate.name}</span>
-                        {primaryReason && (
+                        {primaryReason && !sharedPrimaryReason && (
                           <span className="person-candidate-reason">{primaryReason.text}</span>
                         )}
                       </span>
@@ -500,16 +512,16 @@ function PersonCellEditorInstance({
                       )}
                       <span className="person-candidate-body">
                         <span className="person-candidate-name">{candidate.name}</span>
-                        {primaryReason ? (
+                        {primaryReason && !sharedPrimaryReason ? (
                           <span className="person-candidate-reason">{primaryReason.text}</span>
                         ) : (
-                          status === "available" && (
+                          status === "available" && !sharedPrimaryReason && (
                             <span className="person-candidate-reason is-muted">Keine besonderen Hinweise</span>
                           )
                         )}
                       </span>
                     </button>
-                    {status === "recommended" && candidate.reasons.length > 1 && (
+                    {status !== "available" && candidate.reasons.length > 1 && (
                       <button
                         type="button"
                         className="person-candidate-why"
@@ -564,7 +576,7 @@ function PersonCellEditorInstance({
             Abbrechen
           </button>
           <button type="button" className="btn btn-primary" disabled={submitting} onClick={confirmSubmit}>
-            Auswahl übernehmen
+            Übernehmen
           </button>
         </div>
       </div>

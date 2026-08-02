@@ -127,29 +127,16 @@ export default function PlanEditorToolbar({
               ↷
             </button>
           </div>
-          <span className={`plan-editor-save-status ${statusTone}`} role="status">
-            {statusText}
-          </span>
-          {saveState === "error" && saveError && (
-            <span className="plan-editor-save-error">{saveError}</span>
-          )}
-          <span className="plan-editor-toolbar-count">{rowCount} Planzeilen</span>
-          <PlanValidationSummary summary={validationSummary} status={validationStatus} onOpen={onOpenValidation} />
-          {onOpenIntelligence && (
-            <button
-              type="button"
-              className={`plan-quality-toolbar is-${qualityStatus ?? "loading"}`}
-              onClick={onOpenIntelligence}
-              aria-label="Planqualität und Begründungen öffnen"
-            >
-              <span>Planqualität</span>
-              <strong>{qualityLoading || qualityScore === undefined ? "…" : `${qualityScore}/100`}</strong>
-            </button>
-          )}
         </div>
 
         <div className="plan-editor-toolbar-actions">
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={onSave}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy || !isDirty}
+            title={!isDirty ? "Alle Änderungen sind bereits gespeichert" : undefined}
+            onClick={onSave}
+          >
             {saveState === "saving" && <span className="spinner" />}
             {saveLabel}
           </button>
@@ -193,10 +180,28 @@ export default function PlanEditorToolbar({
       </div>
 
       <div className="plan-editor-toolbar-view">
+        <div className="plan-editor-toolbar-health">
+          <span className={`plan-editor-save-status ${statusTone}`} role="status">
+            {statusText}
+          </span>
+          {saveState === "error" && saveError && (
+            <span className="plan-editor-save-error">{saveError}</span>
+          )}
+          <span className="plan-editor-toolbar-count">{rowCount} Planzeilen</span>
+          <PlanValidationSummary summary={validationSummary} status={validationStatus} onOpen={onOpenValidation} />
+          {onOpenIntelligence && (
+            <button
+              type="button"
+              className={`plan-quality-toolbar is-${qualityStatus ?? "loading"}`}
+              onClick={onOpenIntelligence}
+              aria-label="Planqualität und Begründungen öffnen"
+            >
+              <span>Planqualität</span>
+              <strong>{qualityLoading || qualityScore === undefined ? "…" : `${qualityScore}/100`}</strong>
+            </button>
+          )}
+        </div>
         {viewControls}
-        <span className="plan-editor-toolbar-view-hint">
-          Ansicht und Dichte werden auf diesem Gerät gespeichert.
-        </span>
       </div>
     </div>
   );

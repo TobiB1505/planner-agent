@@ -437,13 +437,6 @@
   opacity: 0.5;
 }
 
-.plan-editor-bottom-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 14px;
-}
-
 @media (max-width: 900px) {
   .plan-editor-toolbar {
     justify-content: flex-start;
@@ -779,7 +772,14 @@ button.plan-validation-summary {
   padding: 9px 12px;
 }
 
-.plan-editor-toolbar-primary,
+.plan-editor-toolbar-primary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 16px;
+  min-width: 0;
+}
+
 .plan-editor-toolbar-view {
   display: flex;
   align-items: center;
@@ -793,10 +793,11 @@ button.plan-validation-summary {
   padding-top: 8px;
 }
 
-.plan-editor-toolbar-view-hint {
-  color: var(--muted);
-  font-size: 10.5px;
-  white-space: nowrap;
+.plan-editor-toolbar-health {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
 }
 
 .plan-view-controls {
@@ -961,7 +962,8 @@ button.plan-validation-summary {
   overflow: hidden;
 }
 
-.plan-grid.plan-grid-week {
+.plan-grid.plan-grid-week,
+.plan-grid.plan-grid-detail {
   min-width: 0;
 }
 
@@ -1233,19 +1235,23 @@ button.plan-validation-summary {
 }
 
 @media (max-width: 1180px) {
-  .plan-editor-toolbar-primary,
   .plan-editor-toolbar-view {
-    align-items: flex-start;
-    flex-direction: column;
+    flex-wrap: wrap;
   }
 
-  .plan-editor-toolbar-actions,
+  .plan-editor-toolbar-health {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .plan-editor-toolbar-count {
+    display: none;
+  }
+
   .plan-view-controls {
     width: 100%;
-  }
-
-  .plan-editor-toolbar-view-hint {
-    display: none;
+    justify-content: flex-end;
+    margin-left: 0;
   }
 
   .plan-day-navigator {
@@ -1264,6 +1270,12 @@ button.plan-validation-summary {
   .plan-view-segmented {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .plan-editor-toolbar-health,
+  .plan-view-controls {
+    width: 100%;
+    margin-left: 0;
   }
 
   .plan-density-select {
