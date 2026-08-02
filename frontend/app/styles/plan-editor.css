@@ -547,16 +547,15 @@
 }
 
 .btn.btn-excel-export {
-  border-color: #218653;
-  background: linear-gradient(180deg, #26945d 0%, #217346 100%);
-  color: #fff;
-  box-shadow: 0 5px 14px rgba(33, 115, 70, 0.2);
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--foreground);
 }
 
 .btn.btn-excel-export:hover:not(:disabled) {
   border-color: #2ba968;
-  background: linear-gradient(180deg, #2ca967 0%, #258250 100%);
-  box-shadow: 0 7px 18px rgba(33, 115, 70, 0.28);
+  background: color-mix(in srgb, #2ba968 10%, var(--surface));
+  box-shadow: none;
 }
 
 .btn-excel-export-icon {
@@ -564,19 +563,19 @@
   height: 18px;
   flex: 0 0 auto;
   fill: none;
-  stroke: currentColor;
+  stroke: #217346;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.35;
 }
 
 .btn-excel-export-icon rect {
-  fill: currentColor;
-  stroke: currentColor;
+  fill: #217346;
+  stroke: #217346;
 }
 
 .btn-excel-export-x {
-  stroke: #217346;
+  stroke: #fff;
   stroke-width: 1.45;
 }
 
@@ -1026,19 +1025,8 @@ button.plan-validation-summary {
   min-height: 40px;
 }
 
-.plan-workspace-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 180px;
-}
-
-.plan-workspace-copy strong {
-  color: var(--foreground);
-  font-size: 11.5px;
-}
-
-.plan-workspace-copy span {
-  color: var(--muted);
+.plan-workspace-orientation-full .plan-day-navigator {
+  width: 100%;
 }
 
 .plan-day-navigator {
@@ -1590,11 +1578,64 @@ button.plan-validation-summary {
   gap: 10px;
 }
 
-.plan-day-view-date {
+.plan-day-view-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
   margin: 0 1px;
+}
+
+.plan-day-view-date {
+  margin: 0;
   color: var(--muted);
   font-size: 11.5px;
   font-weight: 700;
+}
+
+.plan-day-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.plan-day-action {
+  min-height: 28px;
+  padding: 3px 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.plan-day-action:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+.plan-day-action.is-danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #db4b56 45%, var(--border));
+  color: #db4b56;
+}
+
+.plan-day-section-head-row {
+  display: flex;
+  align-items: center;
+}
+
+.plan-day-section-head-row .plan-day-section-copy {
+  flex-shrink: 0;
+  margin-right: 12px;
+  opacity: 0;
+}
+
+.plan-day-section-head-row:hover .plan-day-section-copy,
+.plan-day-section-head-row:focus-within .plan-day-section-copy {
+  opacity: 1;
+}
+
+.plan-day-section-head-row .plan-day-section-copy:disabled {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .plan-day-view-sections {
@@ -1948,8 +1989,163 @@ button.plan-validation-summary {
   color: inherit;
 }
 
+/* ---------- Kopier-/Übernahmefunktionen der Tagesplanung ---------- */
+
+.copy-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.copy-panel-hint {
+  margin: 0;
+}
+
+.copy-panel-days {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.copy-panel-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.copy-panel-field > span,
+.copy-panel-field-label {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.copy-panel-field strong {
+  color: var(--foreground);
+  font-size: 12.5px;
+}
+
+.copy-panel-field select {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--foreground);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.copy-panel-arrow {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.copy-panel-target-days {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.copy-panel-target-days button {
+  min-width: 40px;
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.copy-panel-target-days button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.copy-panel-target-days button.is-active {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.copy-panel-target-days button:disabled {
+  opacity: 0.4;
+}
+
+.copy-panel-quick-select {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.copy-panel-quick-select .btn {
+  min-height: 28px;
+  padding: 3px 10px;
+  font-size: 11px;
+}
+
+.copy-panel-sections {
+  display: grid;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.copy-panel-section-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 7px;
+  padding: 4px 6px;
+  color: var(--foreground);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.copy-panel-section-row:hover {
+  background: var(--accent-soft);
+}
+
+.copy-panel-section-row input {
+  accent-color: var(--accent);
+}
+
+.copy-panel-section-row small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.copy-panel-summary {
+  display: grid;
+  gap: 3px;
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 10px 12px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.copy-panel-summary .is-warning {
+  color: #c47c25;
+}
+
+.copy-panel-summary .is-muted {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 @media (max-width: 760px) {
   .plan-view-switcher {
     flex-direction: column;
+  }
+
+  .plan-day-view-bar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
