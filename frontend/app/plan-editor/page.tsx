@@ -89,6 +89,17 @@ type PendingAction =
   | { kind: "save-with-conflicts" }
   | { kind: "export-with-conflicts" };
 
+type PlanHistoryChange = {
+  row: PlanRow;
+  dayLabel: string;
+  previousValue: string | null;
+  nextValue: string | null;
+};
+
+type PlanHistoryAction = {
+  changes: PlanHistoryChange[];
+};
+
 type AutomationPreview = {
   kind: "recalculate" | "rebuild" | "free-suggestion";
   title: string;
@@ -372,6 +383,18 @@ export default function PlanEditorPage() {
   // ---------- Undo/Redo (Aufgabe 3) ----------
   const gridApiRef = useRef<GridApi<PlanRow> | null>(null);
   const [gridHistory, setGridHistory] = useState({ canUndo: false, canRedo: false });
+  // AG Grid zeichnet nur Änderungen aus aktiven Zell-/Zeilen-Editiervorgängen
+  // (bzw. Paste/Fill) in seinen Undo-Stack auf - programmatische Mutationen wie
+  // die Tagesplanung-Inline-Bearbeitung und die Kopieraktionen tauchen dort nie
+  // auf. Diese laufen deshalb über einen eigenen Aktions-Stack (eine komplette
+  // Kopieraktion = genau ein Eintrag = ein Undo-Schritt). actionOrderRef merkt
+  // sich die Chronologie beider Stacks, damit die Toolbar-Buttons immer die
+  // zuletzt passierte Aktion rückgängig machen, egal aus welcher Quelle.
+  const customUndoRef = useRef<PlanHistoryAction[]>([]);
+  const customRedoRef = useRef<PlanHistoryAction[]>([]);
+  const actionOrderRef = useRef<("grid" | "custom")[]>([]);
+  const redoOrderRef = useRef<("grid" | "custom")[]>([]);
+  const gridUndoInFlightRef = useRef(false);
 
   useEffect(() => {
     savePlanViewPreferences(viewPreferences);
@@ -388,9 +411,17 @@ export default function PlanEditorPage() {
     const api = gridApiRef.current;
     if (!api) return;
     setGridHistory({
-      canUndo: api.getCurrentUndoSize() > 0,
-      canRedo: api.getCurrentRedoSize() > 0,
+      canUndo: api.getCurrentUndoSize() > 0 || customUndoRef.current.length > 0,
+      canRedo: api.getCurrentRedoSize() > 0 || customRedoRef.current.length > 0,
     });
+  }, []);
+
+  const resetHistory = useCallback(() => {
+    customUndoRef.current = [];
+    customRedoRef.current = [];
+    actionOrderRef.current = [];
+    redoOrderRef.current = [];
+    setGridHistory({ canUndo: false, canRedo: false });
   }, []);
 
   const markDirty = useCallback((count = 1) => {
@@ -522,27 +553,66 @@ export default function PlanEditorPage() {
   );
   const isAbsenceSection = useCallback((category: string) => ABSENCE_SECTIONS.has(category), []);
 
-  const commitDayEntry = useCallback((row: PlanRow, dayLabel: string, rawNextValue: string) => {
-    const previousValue = row[dayLabel] ?? null;
-    const nextValue = rawNextValue.trim() ? rawNextValue : null;
-    if (previousValue === nextValue) return;
-    row[dayLabel] = nextValue;
-    const key = cellIssueKey(rowKey(row), dayLabel);
-    manuallyEditedCellsRef.current.add(key);
-    auditEventsRef.current.push({
-      event_type: "cell_changed",
-      cause: "manual_edit",
-      cell_key: key,
-      previous_value: previousValue,
-      new_value: nextValue,
-      metadata: { section: row.Abschnitt, row: row.Zeile, day: dayLabel },
-    });
-    const node = gridApiRef.current?.getRowNode(rowKey(row));
-    if (node) {
-      gridApiRef.current?.refreshCells({ rowNodes: [node], columns: [dayLabel], force: true });
-    }
-    markDirty(1);
-  }, [markDirty]);
+  /** Wendet eine Menge von Zelländerungen als EINE zusammenhängende Aktion an
+   * (dieselbe Buchführung wie onCellValueChanged: dirty, Audit, Manuell-
+   * Markierung, Zell-Refresh) und legt sie als einen Eintrag im eigenen
+   * Undo-Stack ab - eine komplette Kopieraktion ist damit genau ein
+   * Undo-Schritt. */
+  const applyPlanChanges = useCallback(
+    (
+      requested: { row: PlanRow; dayLabel: string; nextValue: string }[],
+      cause: string,
+    ) => {
+      const changes: PlanHistoryChange[] = [];
+      for (const request of requested) {
+        const previousValue = request.row[request.dayLabel] ?? null;
+        const nextValue = request.nextValue.trim() ? request.nextValue : null;
+        if (previousValue === nextValue) continue;
+        changes.push({ row: request.row, dayLabel: request.dayLabel, previousValue, nextValue });
+      }
+      if (changes.length === 0) return;
+      for (const change of changes) {
+        change.row[change.dayLabel] = change.nextValue;
+        const key = cellIssueKey(rowKey(change.row), change.dayLabel);
+        manuallyEditedCellsRef.current.add(key);
+        auditEventsRef.current.push({
+          event_type: "cell_changed",
+          cause,
+          cell_key: key,
+          previous_value: change.previousValue,
+          new_value: change.nextValue,
+          metadata: { section: change.row.Abschnitt, row: change.row.Zeile, day: change.dayLabel },
+        });
+      }
+      customUndoRef.current.push({ changes });
+      customRedoRef.current = [];
+      redoOrderRef.current = [];
+      actionOrderRef.current.push("custom");
+      gridApiRef.current?.refreshCells({ force: true });
+      markDirty(changes.length);
+      refreshGridHistory();
+    },
+    [markDirty, refreshGridHistory],
+  );
+
+  const commitDayEntry = useCallback(
+    (row: PlanRow, dayLabel: string, rawNextValue: string) => {
+      applyPlanChanges([{ row, dayLabel, nextValue: rawNextValue }], "manual_edit");
+    },
+    [applyPlanChanges],
+  );
+
+  const revertOrReplayCustomAction = useCallback(
+    (action: PlanHistoryAction, direction: "undo" | "redo") => {
+      for (const change of action.changes) {
+        change.row[change.dayLabel] = direction === "undo" ? change.previousValue : change.nextValue;
+      }
+      auditEventsRef.current.push({ event_type: direction, cause: direction });
+      gridApiRef.current?.refreshCells({ force: true });
+      markDirty(action.changes.length);
+    },
+    [markDirty],
+  );
 
   /** Dieselbe Empfehlungslogik (recommendForCell), die die Wochenübersicht in
    * ihrem cellEditorSelector nutzt - für die Kandidatenliste in der
@@ -1048,7 +1118,7 @@ export default function PlanEditorPage() {
     setExported(false);
     setActiveStep(3);
     markDirty(1);
-    setGridHistory({ canUndo: false, canRedo: false });
+    resetHistory();
     setMessage({
       kind: "success",
       text: recalculate
@@ -1177,7 +1247,7 @@ export default function PlanEditorPage() {
     }
     setRows(preview.nextRows);
     markDirty(Math.max(1, preview.diff.changes.length));
-    setGridHistory({ canUndo: false, canRedo: false });
+    resetHistory();
     setMessage({ kind: "success", text: preview.successMessage });
   }
 
@@ -1340,7 +1410,7 @@ export default function PlanEditorPage() {
     setSaveState("idle");
     setSaveError("");
     setLastSavedAt(null);
-    setGridHistory({ canUndo: false, canRedo: false });
+    resetHistory();
   }
 
   function requestWeekChange(value: string) {
@@ -1355,15 +1425,54 @@ export default function PlanEditorPage() {
     setPendingAction(null);
   }
 
+  function popLastMarker(list: ("grid" | "custom")[], kind: "grid" | "custom") {
+    const index = list.lastIndexOf(kind);
+    if (index >= 0) list.splice(index, 1);
+  }
+
   function handleUndo() {
-    gridApiRef.current?.undoCellEditing();
-    auditEventsRef.current.push({ event_type: "undo", cause: "undo" });
+    const api = gridApiRef.current;
+    const gridCanUndo = (api?.getCurrentUndoSize() ?? 0) > 0;
+    const customCanUndo = customUndoRef.current.length > 0;
+    let kind = actionOrderRef.current[actionOrderRef.current.length - 1];
+    if (kind === "grid" && !gridCanUndo) kind = "custom";
+    if (kind === "custom" && !customCanUndo) kind = "grid";
+    if (!kind) kind = gridCanUndo ? "grid" : "custom";
+
+    if (kind === "custom" && customCanUndo) {
+      const action = customUndoRef.current.pop()!;
+      revertOrReplayCustomAction(action, "undo");
+      customRedoRef.current.push(action);
+      popLastMarker(actionOrderRef.current, "custom");
+      redoOrderRef.current.push("custom");
+    } else if (gridCanUndo) {
+      // Marker-Buchführung passiert im onUndoEnded-Handler des Grids, damit
+      // auch Grid-interne Tastatur-Undos (Strg+Z im Grid) erfasst werden.
+      api?.undoCellEditing();
+      auditEventsRef.current.push({ event_type: "undo", cause: "undo" });
+    }
     refreshGridHistory();
   }
 
   function handleRedo() {
-    gridApiRef.current?.redoCellEditing();
-    auditEventsRef.current.push({ event_type: "redo", cause: "redo" });
+    const api = gridApiRef.current;
+    const gridCanRedo = (api?.getCurrentRedoSize() ?? 0) > 0;
+    const customCanRedo = customRedoRef.current.length > 0;
+    let kind = redoOrderRef.current[redoOrderRef.current.length - 1];
+    if (kind === "grid" && !gridCanRedo) kind = "custom";
+    if (kind === "custom" && !customCanRedo) kind = "grid";
+    if (!kind) kind = gridCanRedo ? "grid" : "custom";
+
+    if (kind === "custom" && customCanRedo) {
+      const action = customRedoRef.current.pop()!;
+      revertOrReplayCustomAction(action, "redo");
+      customUndoRef.current.push(action);
+      popLastMarker(redoOrderRef.current, "custom");
+      actionOrderRef.current.push("custom");
+    } else if (gridCanRedo) {
+      api?.redoCellEditing();
+      auditEventsRef.current.push({ event_type: "redo", cause: "redo" });
+    }
     refreshGridHistory();
   }
 
@@ -1504,7 +1613,37 @@ export default function PlanEditorPage() {
                     });
                     event.api.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
                   }
+                  // Chronologie-Marker nur für echte Bearbeitungen - während
+                  // eines Grid-Undo/Redo feuert cellValueChanged ebenfalls,
+                  // erzeugt aber keinen neuen Undo-Eintrag.
+                  if (!gridUndoInFlightRef.current) {
+                    actionOrderRef.current.push("grid");
+                    customRedoRef.current = [];
+                    redoOrderRef.current = [];
+                  }
                   markDirty(1);
+                }
+                refreshGridHistory();
+              }}
+              onUndoStarted={() => {
+                gridUndoInFlightRef.current = true;
+              }}
+              onUndoEnded={(event: { operationPerformed: boolean }) => {
+                gridUndoInFlightRef.current = false;
+                if (event.operationPerformed) {
+                  popLastMarker(actionOrderRef.current, "grid");
+                  redoOrderRef.current.push("grid");
+                }
+                refreshGridHistory();
+              }}
+              onRedoStarted={() => {
+                gridUndoInFlightRef.current = true;
+              }}
+              onRedoEnded={(event: { operationPerformed: boolean }) => {
+                gridUndoInFlightRef.current = false;
+                if (event.operationPerformed) {
+                  popLastMarker(redoOrderRef.current, "grid");
+                  actionOrderRef.current.push("grid");
                 }
                 refreshGridHistory();
               }}
@@ -1713,6 +1852,16 @@ export default function PlanEditorPage() {
                   getCandidates={getCandidatesFor}
                   getSuggestions={getSuggestionsFor}
                   onCommitEntry={commitDayEntry}
+                  onApplyChanges={(changes, cause) =>
+                    applyPlanChanges(
+                      changes.map((change) => ({
+                        row: change.row as PlanRow,
+                        dayLabel: change.dayLabel,
+                        nextValue: change.nextValue,
+                      })),
+                      cause,
+                    )
+                  }
                 />
               </div>
               {/* AG Grid bleibt beim Moduswechsel gemountet (nur per CSS versteckt) -

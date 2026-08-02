@@ -8,6 +8,7 @@ export interface ConfirmDialogAction {
   /** primary = Haupt-Bestätigung, danger = zerstörerisch, default = neutral/Abbrechen. */
   variant?: "primary" | "danger" | "default";
   autoFocus?: boolean;
+  disabled?: boolean;
 }
 
 export interface ConfirmDialogProps {
@@ -73,6 +74,7 @@ export default function ConfirmDialog({ open, title, description, actions, onDis
               type="button"
               data-autofocus={action.autoFocus ? "true" : undefined}
               className={`btn ${action.variant === "primary" ? "btn-primary" : ""} ${action.variant === "danger" ? "btn-danger-solid" : ""}`}
+              disabled={action.disabled}
               onClick={action.onClick}
             >
               {action.label}
