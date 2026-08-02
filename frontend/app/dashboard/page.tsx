@@ -136,6 +136,12 @@ export default function DashboardPage() {
     );
   }, [insights]);
 
+  const workloadCounts = useMemo(() => ({
+    high: workload.filter((entry) => entry.status === "high").length,
+    balanced: workload.filter((entry) => entry.status === "balanced").length,
+    low: workload.filter((entry) => entry.status === "low").length,
+  }), [workload]);
+
   const actionItems = useMemo(() => {
     if (!insights) return [];
     const items: Array<{
@@ -240,10 +246,51 @@ export default function DashboardPage() {
 
   return (
     <div className="dashboard-shell mx-auto max-w-[1700px]">
-      <PageHeader
-        title="Dashboard"
-        subtitle="Planungsstand, offene Aufgaben und Team-Balance für die ausgewählte Woche"
-      />
+      <div className="dashboard-page-head">
+        <PageHeader
+          title="Dashboard"
+          subtitle="Planungsstand, offene Aufgaben und Team-Balance für die ausgewählte Woche"
+        />
+        <div className="dashboard-header-week" aria-label="Auswertungswoche auswählen">
+          <span>Auswertungswoche</span>
+          <div className="dashboard-week-controls">
+            <button
+              type="button"
+              className="dashboard-week-arrow"
+              onClick={() => selectRelativeWeek(-1)}
+              disabled={selectedIndex <= 0}
+              aria-label="Neuere gespeicherte Woche"
+              title="Neuere gespeicherte Woche"
+            >
+              ‹
+            </button>
+            <label className="dashboard-week-select">
+              <span className="sr-only">Auswertungswoche</span>
+              <select
+                aria-label="Auswertungswoche"
+                value={selectedWeekId ?? ""}
+                onChange={(event) => chooseWeek(Number(event.target.value))}
+                disabled={!weeks.length}
+              >
+                {!weeks.length && <option value="">Keine Woche vorhanden</option>}
+                {weeks.map((week) => (
+                  <option key={week.id} value={week.id}>{week.label}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="dashboard-week-arrow"
+              onClick={() => selectRelativeWeek(1)}
+              disabled={selectedIndex < 0 || selectedIndex >= weeks.length - 1}
+              aria-label="Ältere gespeicherte Woche"
+              title="Ältere gespeicherte Woche"
+            >
+              ›
+            </button>
+          </div>
+        </div>
+      </div>
 
       {error && <div className="status status-error">{error}</div>}
 
@@ -381,53 +428,6 @@ export default function DashboardPage() {
             )}
           </section>
 
-          <section className="dashboard-saved-week-bar">
-            <div className="dashboard-saved-week-copy">
-              <span className="dashboard-eyebrow">Auswertung gespeicherte Woche</span>
-              <strong>{selectedWeek?.label ?? "Woche auswählen"}</strong>
-              <span>
-                {selectedWeek
-                  ? `${formatDate(selectedWeek.start_date)} – ${formatDate(selectedWeek.end_date)}`
-                  : "Fairness, Belastung und Abteilungsabdeckung"}
-              </span>
-            </div>
-            <div className="dashboard-week-controls">
-              <button
-                type="button"
-                className="dashboard-week-arrow"
-                onClick={() => selectRelativeWeek(-1)}
-                disabled={selectedIndex <= 0}
-                aria-label="Neuere gespeicherte Woche"
-                title="Neuere gespeicherte Woche"
-              >
-                ‹
-              </button>
-              <label className="dashboard-week-select">
-                <span>Gespeicherte Woche</span>
-                <select
-                  value={selectedWeekId ?? ""}
-                  onChange={(event) => chooseWeek(Number(event.target.value))}
-                  disabled={!weeks.length}
-                >
-                  {!weeks.length && <option value="">Keine Woche vorhanden</option>}
-                  {weeks.map((week) => (
-                    <option key={week.id} value={week.id}>{week.label}</option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className="dashboard-week-arrow"
-                onClick={() => selectRelativeWeek(1)}
-                disabled={selectedIndex < 0 || selectedIndex >= weeks.length - 1}
-                aria-label="Ältere gespeicherte Woche"
-                title="Ältere gespeicherte Woche"
-              >
-                ›
-              </button>
-            </div>
-          </section>
-
           <section className="panel dashboard-actions-panel">
             <SectionHeader
               eyebrow="Handlungsbedarf"
@@ -436,13 +436,13 @@ export default function DashboardPage() {
               badge={`${actionItems.filter((item) => item.tone !== "positive").length} offen`}
             />
             <div className="dashboard-action-list">
-              {actionItems.map((item) => (
+              {actionItems.map((item, index) => (
                 <article
                   key={item.id}
                   className={`dashboard-action-item tone-${item.tone}`}
                 >
                   <span className="dashboard-action-marker" aria-hidden="true">
-                    {item.tone === "positive" ? "✓" : item.tone === "warning" ? "!" : "i"}
+                    {item.tone === "positive" ? "✓" : String(index + 1).padStart(2, "0")}
                   </span>
                   <div>
                     <small className="dashboard-action-context">{item.context}</small>
@@ -466,32 +466,30 @@ export default function DashboardPage() {
             />
             {workload.length ? (
               <div className="dashboard-workload-wrap">
-                <div className="dashboard-workload-head" aria-hidden="true">
-                  <span>Mitarbeiter</span>
-                  <span>Balance</span>
-                  <span>Dienste</span>
-                  <span>Kochen</span>
-                  <span>Sport</span>
-                  <span>Spät</span>
-                  <span>Entlastung</span>
-                  <span>Frei / Abw.</span>
+                <div className="dashboard-workload-summary" aria-label="Verteilung der Team-Belastung">
+                  <span className="is-high"><i /> <strong>{workloadCounts.high}</strong> hoch belastet</span>
+                  <span className="is-balanced"><i /> <strong>{workloadCounts.balanced}</strong> ausgeglichen</span>
+                  <span className="is-low"><i /> <strong>{workloadCounts.low}</strong> niedrig belastet</span>
                 </div>
-                <div className="dashboard-workload-list">
+                <div className="dashboard-workload-grid">
                   {(workloadExpanded ? workload : workload.slice(0, 7)).map((entry) => (
-                    <article className="dashboard-workload-row" key={entry.person}>
-                      <div className="dashboard-person">
-                        <span className="dashboard-person-avatar" aria-hidden="true">
-                          {entry.person.slice(0, 1).toUpperCase()}
-                        </span>
-                        <span>
-                          <strong>{entry.person}</strong>
-                          <small>{entry.department || "Keine Abteilung"}</small>
-                        </span>
-                      </div>
-                      <div className="dashboard-balance">
+                    <article className={`dashboard-workload-card is-${entry.status}`} key={entry.person}>
+                      <header>
+                        <div className="dashboard-person">
+                          <span className="dashboard-person-avatar" aria-hidden="true">
+                            {entry.person.slice(0, 1).toUpperCase()}
+                          </span>
+                          <span>
+                            <strong>{entry.person}</strong>
+                            <small>{entry.department || "Keine Abteilung"}</small>
+                          </span>
+                        </div>
                         <span className={`dashboard-balance-label is-${entry.status}`}>
                           {statusLabel(entry.status)}
                         </span>
+                      </header>
+                      <div className="dashboard-workload-score">
+                        <span><strong>{entry.services}</strong><small>Dienste</small></span>
                         <span className="dashboard-balance-track" aria-hidden="true">
                           <span
                             className={`is-${entry.status}`}
@@ -499,15 +497,14 @@ export default function DashboardPage() {
                           />
                         </span>
                       </div>
-                      <WorkloadMetric label="Dienste" value={entry.services} strong />
-                      <WorkloadMetric label="Kochen" value={entry.cooking} />
-                      <WorkloadMetric label="Sport" value={entry.sport} />
-                      <WorkloadMetric label="Spät" value={entry.late_duties} />
-                      <WorkloadMetric label="Entlastung" value={entry.relief} positive />
-                      <WorkloadMetric
-                        label="Frei / Abw."
-                        value={`${entry.free_days} / ${entry.absence_days}`}
-                      />
+                      <div className="dashboard-workload-facts">
+                        <WorkloadFact label="Kochen" value={entry.cooking} />
+                        <WorkloadFact label="Sport" value={entry.sport} />
+                        <WorkloadFact label="Spät" value={entry.late_duties} warning={entry.late_duties > 1} />
+                        <WorkloadFact label="Entlastung" value={entry.relief} positive />
+                        <WorkloadFact label="Frei" value={entry.free_days} />
+                        <WorkloadFact label="Abwesend" value={entry.absence_days} />
+                      </div>
                     </article>
                   ))}
                 </div>
@@ -525,40 +522,6 @@ export default function DashboardPage() {
             ) : (
               <DashboardEmpty text="Für diese Woche liegen noch keine Mitarbeiter-Zuweisungen vor." />
             )}
-          </section>
-
-          <section className="panel dashboard-department-panel">
-              <SectionHeader
-                eyebrow="Auswertung gespeicherte Woche"
-                title={`Abteilungsabdeckung · ${selectedWeek?.label ?? ""}`}
-                description="Wie viele aktive Mitarbeiter je Bereich im Plan vorkommen."
-                badge={`${insights.departments.length} Bereiche`}
-              />
-              {insights.departments.length ? (
-                <div className="dashboard-department-list">
-                  {insights.departments.map((department) => {
-                    const coverage = department.active_people
-                      ? Math.min((department.scheduled_people / department.active_people) * 100, 100)
-                      : 0;
-                    return (
-                      <article key={department.department} className="dashboard-department-row">
-                        <div>
-                          <strong>{department.department}</strong>
-                          <span>
-                            {department.scheduled_people} von {department.active_people} eingeplant
-                          </span>
-                        </div>
-                        <strong>{department.services}</strong>
-                        <span className="dashboard-department-track" aria-hidden="true">
-                          <span style={{ width: `${coverage}%` }} />
-                        </span>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : (
-                <DashboardEmpty text="Noch keine Abteilungsabdeckung verfügbar." />
-              )}
           </section>
 
         </>
@@ -623,19 +586,19 @@ function SectionHeader({
   );
 }
 
-function WorkloadMetric({
+function WorkloadFact({
   label,
   value,
-  strong = false,
   positive = false,
+  warning = false,
 }: {
   label: string;
   value: number | string;
-  strong?: boolean;
   positive?: boolean;
+  warning?: boolean;
 }) {
   return (
-    <span className={`dashboard-workload-metric ${strong ? "is-strong" : ""} ${positive ? "is-positive" : ""}`}>
+    <span className={`dashboard-workload-fact ${positive ? "is-positive" : ""} ${warning ? "is-warning" : ""}`}>
       <small>{label}</small>
       <strong>{value}</strong>
     </span>
