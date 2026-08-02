@@ -362,6 +362,38 @@ export interface EmployeeIntelligenceProfile {
   cache: { data_version: string; hit: boolean };
 }
 
+export interface TeamIntelligencePerson {
+  person_id: number;
+  active: boolean;
+  history_assignments: number;
+  weeks_available: number;
+  current_week: EmployeeIntelligenceProfile["current_week"];
+  trend: EmployeeIntelligenceProfile["trend"];
+  top_skills: Array<Pick<EmployeeSkill, "id" | "name" | "level" | "source">>;
+  skill_count: number;
+  memory_count: number;
+  manual_memory_count: number;
+  data_status: "ready" | "learning" | "new";
+  planning_hint: {
+    tone: "positive" | "warning" | "info" | "neutral";
+    label: string;
+    text: string;
+  };
+}
+
+export interface TeamIntelligenceOverview {
+  summary: {
+    active_people: number;
+    with_history: number;
+    with_memory: number;
+    with_skills: number;
+    current_week_assignments: number;
+    current_week_conflicts: number;
+    attention_people: number;
+  };
+  people: TeamIntelligencePerson[];
+}
+
 export interface IntelligenceReason {
   code: IntelligenceReasonCode;
   label: string;
@@ -760,6 +792,17 @@ export const getEmployeeIntelligence = (
   if (options?.currentWeekStart) params.set("current_week_start", options.currentWeekStart);
   const suffix = params.size ? `?${params.toString()}` : "";
   return get<EmployeeIntelligenceProfile>(`/intelligence/employees/${personId}${suffix}`);
+};
+
+export const getTeamIntelligenceOverview = (options?: {
+  weeks?: number;
+  currentWeekStart?: string;
+}) => {
+  const params = new URLSearchParams();
+  if (options?.weeks) params.set("weeks", String(options.weeks));
+  if (options?.currentWeekStart) params.set("current_week_start", options.currentWeekStart);
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return get<TeamIntelligenceOverview>(`/intelligence/employees${suffix}`);
 };
 
 export const setEmployeeSkill = (

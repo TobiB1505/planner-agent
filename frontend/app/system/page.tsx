@@ -8,11 +8,28 @@ import {
   healthCheck,
   type SystemDiagnostics,
 } from "@/lib/api";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 type HealthState = "checking" | "up" | "down";
 
 const HEALTH_POLL_INTERVAL_MS = 5000;
+
+type SystemGlyphKind = "server" | "clock" | "database" | "refresh" | "screen" | "check" | "file" | "folder" | "network";
+
+function SystemGlyph({ kind }: { kind: SystemGlyphKind }) {
+  const paths: Record<SystemGlyphKind, ReactNode> = {
+    server: <><rect x="3" y="4" width="18" height="6" rx="2" /><rect x="3" y="14" width="18" height="6" rx="2" /><path d="M7 7h.01M7 17h.01M17 7h1M17 17h1" /></>,
+    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    database: <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" /></>,
+    refresh: <><path d="M20 6v5h-5" /><path d="M18.2 16a8 8 0 1 1 .6-8.6L20 11" /></>,
+    screen: <><rect x="3" y="4" width="18" height="14" rx="2" /><path d="M8 22h8M12 18v4" /></>,
+    check: <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.6 2.6L16.5 9" /></>,
+    file: <><path d="M6 2h8l4 4v16H6z" /><path d="M14 2v5h5M9 12h6M9 16h6" /></>,
+    folder: <><path d="M3 7h7l2 2h9v10H3z" /><path d="M3 7V5h7l2 2" /></>,
+    network: <><circle cx="12" cy="12" r="3" /><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><path d="m7 7 3 3m7-3-3 3M12 15v5" /></>,
+  };
+  return <svg className="system-glyph" viewBox="0 0 24 24" aria-hidden="true">{paths[kind]}</svg>;
+}
 
 function formatBytes(bytes: number): string {
   const gb = bytes / 1024 ** 3;
@@ -144,101 +161,147 @@ export default function SystemPage() {
     exports: "Exporte",
   };
 
+  const templatesReady = diagnostics?.templates.filter((template) => template.exists).length ?? 0;
+  const directoryEntries = diagnostics ? Object.entries(diagnostics.directories) : [];
+  const directoriesReady = directoryEntries.filter(([, dir]) => dir.exists && dir.writable).length;
+  const diskUsedPercent = diagnostics && diagnostics.disk.total_bytes > 0
+    ? Math.min(100, Math.max(0, ((diagnostics.disk.total_bytes - diagnostics.disk.free_bytes) / diagnostics.disk.total_bytes) * 100))
+    : 0;
+  const systemReady = health === "up" && diagnostics?.database.status === "connected";
+
   return (
     <div className="system-page">
       <PageHeader
         title="System"
-        subtitle="Health-Status, Diagnose und Neustart für das lokale Backend"
+        subtitle="Lokale Dienste, Datenbank und Arbeitsverzeichnisse auf einen Blick"
       />
+
+      <section className={`system-health-banner is-${health}`} aria-live="polite">
+        <span className="system-health-icon"><SystemGlyph kind="server" /></span>
+        <div className="system-health-copy">
+          <span className="system-eyebrow">Planner-Agent lokal</span>
+          <h2>
+            {health === "checking" && "System wird geprüft …"}
+            {health === "up" && (systemReady ? "System ist betriebsbereit" : "System ist erreichbar")}
+            {health === "down" && "Backend ist nicht erreichbar"}
+          </h2>
+          <p>
+            {health === "checking" && "Verbindung und Datenbankstatus werden gerade geladen."}
+            {health === "up" && "Die lokale Planung läuft. Der Status wird automatisch alle fünf Sekunden geprüft."}
+            {health === "down" && "Starte das Backend neu oder öffne den Planner-Agent über das Startskript."}
+          </p>
+        </div>
+        <span className="system-live-badge">
+          <i aria-hidden="true" />
+          {health === "checking" ? "Prüfung läuft" : health === "up" ? "Live verbunden" : "Offline"}
+        </span>
+      </section>
 
       <section className="system-overview" aria-label="Status-Übersicht">
         <article className={health === "up" ? "tone-positive" : health === "down" ? "tone-warning" : ""}>
-          <span>Backend</span>
-          <strong>
-            {health === "checking" && "…"}
-            {health === "up" && "Erreichbar"}
-            {health === "down" && "Nicht erreichbar"}
-          </strong>
-          <small>{health === "up" ? "Health-Check alle 5s" : "Bitte Startskript prüfen"}</small>
+          <span className="system-stat-icon"><SystemGlyph kind="server" /></span>
+          <div>
+            <span>Backend</span>
+            <strong>{health === "checking" ? "…" : health === "up" ? "Erreichbar" : "Offline"}</strong>
+            <small>{diagnostics ? `${diagnostics.host}:${diagnostics.port}` : "Lokaler Dienst"}</small>
+          </div>
         </article>
         <article>
-          <span>Laufzeit</span>
-          <strong>{diagnostics ? formatUptime(diagnostics.uptime_seconds) : "–"}</strong>
-          <small>seit letztem Start</small>
+          <span className="system-stat-icon"><SystemGlyph kind="clock" /></span>
+          <div>
+            <span>Laufzeit</span>
+            <strong>{diagnostics ? formatUptime(diagnostics.uptime_seconds) : "–"}</strong>
+            <small>Seit dem letzten Backend-Start</small>
+          </div>
         </article>
         <article className={diagnostics?.database.status === "connected" ? "tone-positive" : "tone-warning"}>
-          <span>Datenbank</span>
-          <strong>
-            {diagnostics?.database.status === "connected" && "Verbunden"}
-            {diagnostics?.database.status === "missing" && "Fehlt"}
-            {diagnostics?.database.status === "error" && "Fehler"}
-            {!diagnostics && "–"}
-          </strong>
-          <small>{diagnostics?.database.integrity_check ?? "–"}</small>
+          <span className="system-stat-icon"><SystemGlyph kind="database" /></span>
+          <div>
+            <span>Datenbank</span>
+            <strong>
+              {diagnostics?.database.status === "connected" && "Verbunden"}
+              {diagnostics?.database.status === "missing" && "Fehlt"}
+              {diagnostics?.database.status === "error" && "Fehler"}
+              {!diagnostics && "–"}
+            </strong>
+            <small>{diagnostics?.database.integrity_check ?? "Noch keine Diagnose"}</small>
+          </div>
         </article>
       </section>
 
-      <section className="panel system-actions">
-        <div className="panel-body">
-          <h2>Aktionen</h2>
-          <p className="system-actions-hint">
-            Ein Neustart betrifft nur den Backend-Prozess - deine Daten bleiben unverändert.
-          </p>
-          <div className="system-actions-buttons">
-            <button type="button" className="btn btn-primary" onClick={handleRestart} disabled={restarting}>
-              {restarting ? "Backend startet neu …" : "Backend neu starten"}
-            </button>
-            <button type="button" className="btn" onClick={handleFrontendReload}>
-              Frontend neu laden
-            </button>
-            <button type="button" className="btn" onClick={() => refreshAll()} disabled={restarting}>
-              Diagnose aktualisieren
-            </button>
-          </div>
-          {message && <div className={`status status-${message.kind}`}>{message.text}</div>}
-        </div>
-      </section>
-
-      {diagnosticsError && (
-        <section className="panel">
+      <div className="system-main-grid">
+        <section className="panel system-actions">
           <div className="panel-body">
-            <div className="status status-error">{diagnosticsError}</div>
+            <div className="system-section-heading">
+              <div>
+                <span className="system-eyebrow">Steuerung</span>
+                <h2>Systemaktionen</h2>
+                <p>Gezielte Aktionen für den lokalen Planner-Agent.</p>
+              </div>
+            </div>
+            <div className="system-action-list">
+              <article>
+                <span className="system-action-icon"><SystemGlyph kind="refresh" /></span>
+                <div><strong>Backend neu starten</strong><small>Startet die Planungs- und Datenebene neu. Deine Daten bleiben erhalten.</small></div>
+                <button type="button" className="btn btn-primary" onClick={handleRestart} disabled={restarting}>
+                  {restarting ? "Startet …" : "Neu starten"}
+                </button>
+              </article>
+              <article>
+                <span className="system-action-icon"><SystemGlyph kind="screen" /></span>
+                <div><strong>Oberfläche neu laden</strong><small>Lädt die aktuelle Ansicht frisch, ohne das Backend zu verändern.</small></div>
+                <button type="button" className="btn" onClick={handleFrontendReload}>Neu laden</button>
+              </article>
+              <article>
+                <span className="system-action-icon"><SystemGlyph kind="check" /></span>
+                <div><strong>Diagnose aktualisieren</strong><small>Prüft Vorlagen, Ordner, Speicher und Datenbank erneut.</small></div>
+                <button type="button" className="btn" onClick={() => refreshAll()} disabled={restarting}>Jetzt prüfen</button>
+              </article>
+            </div>
+            {message && <div className={`status status-${message.kind}`}>{message.text}</div>}
           </div>
         </section>
-      )}
+
+        <section className="panel system-connection-panel">
+          <div className="panel-body">
+            <div className="system-section-heading">
+              <div>
+                <span className="system-eyebrow">Ressourcen</span>
+                <h2>Verbindung & Speicher</h2>
+                <p>Technische Basis der lokalen Anwendung.</p>
+              </div>
+              <span className="system-section-icon"><SystemGlyph kind="network" /></span>
+            </div>
+            <dl className="system-detail-grid">
+              <div><dt>Lokale Adresse</dt><dd>{diagnostics ? `${diagnostics.host}:${diagnostics.port}` : "–"}</dd></div>
+              <div><dt>Erlaubte Verbindungen</dt><dd>{diagnostics?.cors_origins.join(", ") || "–"}</dd></div>
+            </dl>
+            <div className="system-storage">
+              <div><span>Speicherbelegung</span><strong>{diagnostics ? `${formatBytes(diagnostics.disk.free_bytes)} frei` : "–"}</strong></div>
+              <div className="system-storage-track" aria-hidden="true"><span style={{ width: `${diskUsedPercent}%` }} /></div>
+              <small>{diagnostics ? `${formatBytes(diagnostics.disk.total_bytes)} Gesamtspeicher` : "Noch keine Diagnose geladen"}</small>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {diagnosticsError && <div className="status status-error system-diagnostics-error">{diagnosticsError}</div>}
 
       {diagnostics && (
-        <>
+        <div className="system-diagnostics-grid">
           <section className="panel system-diagnostics-panel">
             <div className="panel-body">
-              <h2>Excel-Vorlagen</h2>
+              <div className="system-section-heading">
+                <div><span className="system-eyebrow">Planerstellung</span><h2>Excel-Vorlagen</h2><p>Benötigte Grundlagen für Woche A und Woche B.</p></div>
+                <span className="system-count-badge">{templatesReady}/{diagnostics.templates.length}</span>
+              </div>
               <ul className="system-check-list">
                 {diagnostics.templates.map((template) => (
                   <li key={template.filename}>
-                    <span className={`system-dot ${template.exists ? "is-ok" : "is-warning"}`} aria-hidden="true" />
-                    <span className="system-check-label">{template.name}</span>
-                    <span className="system-check-detail">{template.filename}</span>
-                    <span className="system-check-status">{template.exists ? "gefunden" : "fehlt"}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </section>
-
-          <section className="panel system-diagnostics-panel">
-            <div className="panel-body">
-              <h2>Laufzeitordner</h2>
-              <ul className="system-check-list">
-                {Object.entries(diagnostics.directories).map(([key, dir]) => (
-                  <li key={key}>
-                    <span
-                      className={`system-dot ${dir.exists && dir.writable ? "is-ok" : "is-warning"}`}
-                      aria-hidden="true"
-                    />
-                    <span className="system-check-label">{dirLabels[key] ?? key}</span>
-                    <span className="system-check-detail">{dir.path}</span>
-                    <span className="system-check-status">
-                      {!dir.exists ? "fehlt" : dir.writable ? "beschreibbar" : "nicht beschreibbar"}
+                    <span className="system-row-icon"><SystemGlyph kind="file" /></span>
+                    <span className="system-check-copy"><strong>{template.name}</strong><small>{template.filename}</small></span>
+                    <span className={`system-check-status ${template.exists ? "is-ok" : "is-warning"}`}>
+                      <i aria-hidden="true" />{template.exists ? "Bereit" : "Fehlt"}
                     </span>
                   </li>
                 ))}
@@ -248,26 +311,24 @@ export default function SystemPage() {
 
           <section className="panel system-diagnostics-panel">
             <div className="panel-body">
-              <h2>Verbindung</h2>
-              <dl className="system-detail-grid">
-                <div>
-                  <dt>Adresse</dt>
-                  <dd>{diagnostics.host}:{diagnostics.port}</dd>
-                </div>
-                <div>
-                  <dt>Erlaubte Origins (CORS)</dt>
-                  <dd>{diagnostics.cors_origins.join(", ")}</dd>
-                </div>
-                <div>
-                  <dt>Freier Speicherplatz</dt>
-                  <dd>
-                    {formatBytes(diagnostics.disk.free_bytes)} von {formatBytes(diagnostics.disk.total_bytes)}
-                  </dd>
-                </div>
-              </dl>
+              <div className="system-section-heading">
+                <div><span className="system-eyebrow">Dateisystem</span><h2>Laufzeitordner</h2><p>Schreibzugriff für Planung, Uploads und Exporte.</p></div>
+                <span className="system-count-badge">{directoriesReady}/{directoryEntries.length}</span>
+              </div>
+              <ul className="system-check-list">
+                {directoryEntries.map(([key, dir]) => (
+                  <li key={key}>
+                    <span className="system-row-icon"><SystemGlyph kind="folder" /></span>
+                    <span className="system-check-copy"><strong>{dirLabels[key] ?? key}</strong><small>{dir.path}</small></span>
+                    <span className={`system-check-status ${dir.exists && dir.writable ? "is-ok" : "is-warning"}`}>
+                      <i aria-hidden="true" />{!dir.exists ? "Fehlt" : dir.writable ? "Bereit" : "Gesperrt"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </section>
-        </>
+        </div>
       )}
     </div>
   );

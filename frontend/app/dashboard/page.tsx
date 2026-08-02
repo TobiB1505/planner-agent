@@ -257,10 +257,10 @@ export default function DashboardPage() {
             <button
               type="button"
               className="dashboard-week-arrow"
-              onClick={() => selectRelativeWeek(-1)}
-              disabled={selectedIndex <= 0}
-              aria-label="Neuere gespeicherte Woche"
-              title="Neuere gespeicherte Woche"
+              onClick={() => selectRelativeWeek(1)}
+              disabled={selectedIndex < 0 || selectedIndex >= weeks.length - 1}
+              aria-label="Vorherige Woche"
+              title="Vorherige Woche"
             >
               ‹
             </button>
@@ -281,10 +281,10 @@ export default function DashboardPage() {
             <button
               type="button"
               className="dashboard-week-arrow"
-              onClick={() => selectRelativeWeek(1)}
-              disabled={selectedIndex < 0 || selectedIndex >= weeks.length - 1}
-              aria-label="Ältere gespeicherte Woche"
-              title="Ältere gespeicherte Woche"
+              onClick={() => selectRelativeWeek(-1)}
+              disabled={selectedIndex <= 0}
+              aria-label="Nächste Woche"
+              title="Nächste Woche"
             >
               ›
             </button>
@@ -296,12 +296,12 @@ export default function DashboardPage() {
 
       <section className="dashboard-week-hero">
         <div className="dashboard-week-copy">
-          <span className="dashboard-eyebrow">Aktuelle Planung</span>
-          <h2>{planningWeek?.label ?? "Planungswoche wird vorbereitet"}</h2>
+          <span className="dashboard-eyebrow">Ausgewählte Planwoche</span>
+          <h2>{selectedWeek?.label ?? "Planungswoche auswählen"}</h2>
           <p>
-            {planningWeek
-              ? `${formatDate(planningWeek.start_date)} – ${formatDate(planningWeek.end_date)}`
-              : "Bereitschaft von Künstlerplan, Probenplan und Dienstplan."}
+            {selectedWeek
+              ? `${formatDate(selectedWeek.start_date)} – ${formatDate(selectedWeek.end_date)}`
+              : "Noch keine gespeicherte Woche vorhanden."}
           </p>
         </div>
         <div className="dashboard-planning-action">
@@ -396,9 +396,9 @@ export default function DashboardPage() {
 
           <section className="panel dashboard-show-panel dashboard-current-show-panel">
             <SectionHeader
-              eyebrow="Aktuelle Planung"
+              eyebrow="Ausgewählte Planwoche"
               title="Show- und Probentage"
-              description={`${planningWeek?.label ?? "Planungswoche"} · Shows und Probendichte der kommenden Planung.`}
+              description={`${planningWeek?.label ?? "Planungswoche"} · Shows und Probendichte der gewählten Woche.`}
               badge={`${insights.show_days.length} Showtage`}
             />
             {insights.show_days.length ? (

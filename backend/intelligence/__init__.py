@@ -1,6 +1,6 @@
 """Erklärbare, datenbasierte Planungsebene des Planner-Agent (Sprint 5)."""
 
-from . import audit, dashboard, employee_stats, memory_engine, plan_quality, recommendation_engine
+from . import audit, dashboard, employee_stats, memory_engine, plan_quality, recommendation_engine, team_overview
 
 __all__ = [
     "audit",
@@ -9,4 +9,5 @@ __all__ = [
     "memory_engine",
     "plan_quality",
     "recommendation_engine",
+    "team_overview",
 ]

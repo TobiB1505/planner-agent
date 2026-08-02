@@ -99,6 +99,37 @@ def test_recommendation_reasons_are_evidence_based(tmp_path, monkeypatch):
     assert any(warning["code"] == "rule_blocked" for warning in dylana["warnings"])
 
 
+def test_moderation_recommendation_prefers_spt_and_manager_and_warns_for_sound_light(
+    tmp_path,
+    monkeypatch,
+):
+    conn = _conn(tmp_path, monkeypatch)
+    db.create_person(conn, "Sven", "SPT")
+    db.create_person(conn, "Fanny", "Manager")
+    db.create_person(conn, "Luca", "S&L")
+    db.create_person(conn, "Mara", "Deko")
+    conn.commit()
+
+    result = recommendation_engine.recommend(
+        conn,
+        target_date="2026-07-27",
+        category="Moderation + Getränkedienst",
+        subcategory=None,
+        assignments=[],
+        absences=[],
+    )
+    candidates = {item["employee"]: item for item in result["candidates"]}
+
+    assert candidates["Sven"]["status"] == "recommended"
+    assert candidates["Fanny"]["status"] == "recommended"
+    assert candidates["Luca"]["status"] == "warning"
+    assert any(
+        warning["code"] == "department_preference"
+        for warning in candidates["Luca"]["warnings"]
+    )
+    assert candidates["Luca"]["status"] != "unavailable"
+
+
 def test_plan_quality_handles_good_conflict_and_missing_data(tmp_path, monkeypatch):
     conn = _conn(tmp_path, monkeypatch)
     dani_id = db.create_person(conn, "Dani", "Sportstainer")

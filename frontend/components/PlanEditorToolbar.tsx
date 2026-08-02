@@ -218,7 +218,18 @@ export default function PlanEditorToolbar({
               )}
             </div>
           )}
-          <button type="button" className="btn" disabled={busy || exportDisabled} onClick={onExport}>
+          <button
+            type="button"
+            className="btn btn-excel-export"
+            disabled={busy || exportDisabled}
+            onClick={onExport}
+          >
+            <svg className="btn-excel-export-icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M7 2.5h9.5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H7" />
+              <path d="M11 6h6.5M11 10h6.5M11 14h6.5M13.5 6v8" />
+              <rect x="2.5" y="5" width="9" height="10" rx="1.5" />
+              <path className="btn-excel-export-x" d="m5 8 4 4m0-4-4 4" />
+            </svg>
             <span className="plan-toolbar-label-long">{exportLabel}</span>
             <span className="plan-toolbar-label-short">Excel</span>
           </button>

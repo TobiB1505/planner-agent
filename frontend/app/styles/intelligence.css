@@ -5,6 +5,8 @@
   display: grid;
   place-items: center;
   padding: 24px;
+  overflow: hidden;
+  overscroll-behavior: contain;
   background: color-mix(in srgb, #050713 70%, transparent);
   backdrop-filter: blur(10px);
   animation: intelligence-fade-in 160ms ease-out;
@@ -22,6 +24,14 @@
   animation: intelligence-dialog-in 180ms cubic-bezier(.2, .8, .2, 1);
 }
 
+.employee-intelligence {
+  display: grid;
+  width: min(1180px, calc(100vw - 36px));
+  height: min(820px, calc(100dvh - 32px));
+  max-height: none;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .employee-intelligence-head,
 .plan-intelligence-head {
   display: flex;
@@ -31,6 +41,85 @@
   padding: 24px 28px 20px;
   border-bottom: 1px solid var(--border);
   background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--surface)), var(--surface));
+}
+
+.employee-intelligence-head {
+  align-items: center;
+  padding: 18px 22px;
+  background:
+    radial-gradient(circle at 82% -30%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 38%),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, var(--surface)), var(--surface));
+}
+
+.employee-intelligence-identity,
+.employee-intelligence-head-actions,
+.employee-intelligence-status {
+  display: flex;
+  align-items: center;
+}
+
+.employee-intelligence-identity {
+  min-width: 0;
+  gap: 13px;
+}
+
+.employee-intelligence-avatar {
+  display: grid;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--accent);
+  font-size: .77rem;
+  font-weight: 900;
+  box-shadow: 0 8px 26px color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+.employee-intelligence-head-actions {
+  gap: 14px;
+}
+
+.employee-intelligence-status {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--background) 70%, transparent);
+}
+
+.employee-intelligence-status > span {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 4px;
+  border-right: 1px solid var(--border);
+  padding: 7px 11px;
+  color: var(--muted);
+  font-size: .65rem;
+  white-space: nowrap;
+}
+
+.employee-intelligence-status > span:last-child {
+  border-right: 0;
+}
+
+.employee-intelligence-status strong {
+  color: var(--foreground);
+  font-size: .76rem;
+}
+
+.employee-intelligence-status .is-up {
+  color: #e3a64d;
+}
+
+.employee-intelligence-status .is-down {
+  color: #43bd83;
+}
+
+.employee-intelligence-close {
+  flex: 0 0 auto;
 }
 
 .employee-intelligence-head h2,
@@ -66,6 +155,33 @@
   background: var(--background);
 }
 
+.employee-intelligence-workspace {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: 218px minmax(0, 1fr);
+}
+
+.employee-intelligence-tabs {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 5px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  border-bottom: 0;
+  padding: 17px 13px;
+  background: color-mix(in srgb, var(--background) 72%, var(--surface));
+}
+
+.employee-intelligence-nav-label {
+  margin: 1px 8px 7px;
+  color: var(--muted);
+  font-size: .61rem;
+  font-weight: 850;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
 .employee-intelligence-tabs button,
 .plan-intelligence-tabs button {
   flex: 0 0 auto;
@@ -77,6 +193,67 @@
   font-size: .8rem;
   font-weight: 750;
   cursor: pointer;
+}
+
+.employee-intelligence-tabs button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 31px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  border: 1px solid transparent;
+  padding: 8px;
+  text-align: left;
+}
+
+.employee-intelligence-tabs button > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.employee-intelligence-tabs button strong {
+  overflow: hidden;
+  color: currentColor;
+  font-size: .72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-intelligence-tabs button small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: .59rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-intelligence-tab-icon {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: .72rem;
+}
+
+.employee-intelligence-tabs button.is-active .employee-intelligence-tab-icon {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  color: var(--accent);
+}
+
+.employee-intelligence-tabs > p {
+  margin: auto 8px 2px;
+  border-top: 1px solid var(--border);
+  padding-top: 13px;
+  color: var(--muted);
+  font-size: .59rem;
+  line-height: 1.5;
 }
 
 .employee-intelligence-tabs button:hover,
@@ -100,6 +277,57 @@
   padding: 24px 28px 30px;
 }
 
+.employee-intelligence-body {
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 22px 24px 28px;
+  scrollbar-gutter: stable;
+}
+
+.employee-intelligence-body > .intelligence-section {
+  margin-top: 0;
+}
+
+.employee-intelligence-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 15px;
+}
+
+.employee-intelligence-section-head h3 {
+  margin: 3px 0 0;
+  color: var(--foreground);
+  font-size: 1.05rem;
+}
+
+.employee-intelligence-trend {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--muted);
+  font-size: .65rem;
+  font-weight: 760;
+}
+
+.employee-intelligence-trend.is-up {
+  border-color: color-mix(in srgb, #e3a64d 32%, var(--border));
+  background: color-mix(in srgb, #e3a64d 9%, transparent);
+  color: #d99732;
+}
+
+.employee-intelligence-trend.is-down {
+  border-color: color-mix(in srgb, #43bd83 32%, var(--border));
+  background: color-mix(in srgb, #43bd83 9%, transparent);
+  color: #43bd83;
+}
+
 .intelligence-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -112,6 +340,16 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--background);
+}
+
+.employee-intelligence .intelligence-metrics article {
+  min-height: 91px;
+  background: color-mix(in srgb, var(--background) 82%, var(--surface));
+}
+
+.employee-intelligence .intelligence-metrics strong {
+  margin: 5px 0 2px;
+  font-size: 1.45rem;
 }
 
 .intelligence-metrics span,
@@ -162,6 +400,19 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--background);
+}
+
+.employee-intelligence .skill-card,
+.employee-intelligence .memory-intelligence-card,
+.employee-intelligence .intelligence-note {
+  background: color-mix(in srgb, var(--background) 80%, var(--surface));
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.employee-intelligence .skill-card:hover,
+.employee-intelligence .memory-intelligence-card:hover,
+.employee-intelligence .intelligence-note:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
 }
 
 .skill-card > div,
@@ -451,12 +702,48 @@
   .optimization-goals { grid-template-columns: repeat(3, 1fr); }
   .intelligence-form-row,
   .intelligence-form-row.memory-form { grid-template-columns: 1fr 1fr; }
+
+  .employee-intelligence-workspace {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .employee-intelligence-tabs {
+    flex-direction: row;
+    gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 9px 12px;
+  }
+
+  .employee-intelligence-tabs button {
+    width: auto;
+    grid-template-columns: 27px auto;
+    padding: 6px 9px;
+  }
+
+  .employee-intelligence-tab-icon {
+    width: 27px;
+    height: 27px;
+  }
+
+  .employee-intelligence-tabs button small,
+  .employee-intelligence-tabs > p,
+  .employee-intelligence-nav-label {
+    display: none;
+  }
 }
 
 @media (max-width: 620px) {
   .intelligence-backdrop { padding: 8px; }
   .employee-intelligence,
   .plan-intelligence-dialog { width: calc(100vw - 16px); max-height: calc(100vh - 16px); border-radius: 18px; }
+  .employee-intelligence { height: calc(100dvh - 16px); }
+  .employee-intelligence-head { padding: 14px 15px; }
+  .employee-intelligence-avatar { width: 42px; height: 42px; flex-basis: 42px; border-radius: 13px; }
+  .employee-intelligence-status { display: none; }
   .employee-intelligence-body,
   .plan-intelligence-body { padding: 18px; }
   .intelligence-metrics,

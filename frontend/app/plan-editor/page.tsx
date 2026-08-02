@@ -44,7 +44,6 @@ import {
   savePlanViewPreferences,
   type PlanDensity,
   type PlanViewPreferences,
-  type PlanViewMode,
 } from "@/lib/plan-editor/viewPreferences";
 import {
   buildCellIssueIndex,
@@ -279,9 +278,9 @@ export default function PlanEditorPage() {
 
   // ---------- Sprint 4: Arbeitsansicht ----------
   const [viewPreferences, setViewPreferences] = useState<PlanViewPreferences>(() =>
-    loadPlanViewPreferences(typeof window === "undefined" ? undefined : window.innerWidth),
+    loadPlanViewPreferences(),
   );
-  const { viewMode, density } = viewPreferences;
+  const { density } = viewPreferences;
   const [activeDay, setActiveDay] = useState("");
   const [automationPreview, setAutomationPreview] = useState<AutomationPreview | null>(null);
 
@@ -579,29 +578,15 @@ export default function PlanEditorPage() {
     [personCategories],
   );
 
-  const handleViewModeChange = useCallback((nextMode: PlanViewMode) => {
-    setViewPreferences((current) => ({ ...current, viewMode: nextMode }));
-    window.requestAnimationFrame(() => {
-      const api = gridApiRef.current;
-      if (!api) return;
-      api.refreshHeader();
-      api.refreshCells({ force: true });
-      if (nextMode === "week") {
-        api.resetRowHeights();
-        api.sizeColumnsToFit();
-      }
-    });
-  }, []);
-
   const handleDensityChange = useCallback((nextDensity: PlanDensity) => {
     setViewPreferences((current) => ({ ...current, density: nextDensity }));
     window.requestAnimationFrame(() => {
       const api = gridApiRef.current;
       if (!api) return;
       api.refreshCells({ force: true });
-      if (viewMode === "week") api.resetRowHeights();
+      api.resetRowHeights();
     });
-  }, [viewMode]);
+  }, []);
 
   const selectDay = useCallback((dayLabel: string) => {
     setActiveDay(dayLabel);
@@ -609,13 +594,12 @@ export default function PlanEditorPage() {
   }, []);
 
   const columnDefs = useMemo<ColDef<PlanRow>[]>(() => {
-    const overview = viewMode === "week";
     const fixed: ColDef<PlanRow>[] = [
       {
         field: "Abschnitt",
         headerName: "Abschnitt",
         pinned: "left",
-        width: overview ? 132 : 190,
+        width: 132,
         editable: false,
         lockPinned: true,
         cellStyle: (params) => ({
@@ -628,11 +612,11 @@ export default function PlanEditorPage() {
         field: "Zeile",
         headerName: "Zeile / Uhrzeit",
         pinned: "left",
-        width: overview ? 120 : 190,
+        width: 120,
         editable: false,
         lockPinned: true,
-        wrapText: !overview,
-        autoHeight: !overview,
+        wrapText: false,
+        autoHeight: false,
         cellStyle: (params) => ({
           backgroundColor: hexToRgba(rowColor(params.data), 0.18),
           color: "var(--muted)",
@@ -645,12 +629,12 @@ export default function PlanEditorPage() {
       headerName: weekDates[dayLabels.indexOf(label)] === new Date().toLocaleDateString("sv-SE")
         ? `${label} · Heute`
         : label,
-      minWidth: overview ? 94 : 170,
+      minWidth: 94,
       flex: 1,
-      editable: !overview,
+      editable: true,
       singleClickEdit: true,
-      wrapText: !overview,
-      autoHeight: !overview,
+      wrapText: false,
+      autoHeight: false,
       headerClass: label === effectiveActiveDay ? "plan-day-header-active" : undefined,
       // AG Grid beendet Editoren standardmäßig selbst bei Enter (noch vor dem
       // React-Editor). Die jeweiligen Editoren übernehmen Enter kontrolliert.
@@ -802,7 +786,7 @@ export default function PlanEditorPage() {
               .join(" | ")}`
           : "";
         const cellText = typeof params.value === "string" ? params.value.trim() : "";
-        if (overview && cellText) {
+        if (cellText) {
           return issueText ? `${issueText}\n\nInhalt: ${cellText}` : cellText;
         }
         return issueText || undefined;
@@ -823,7 +807,6 @@ export default function PlanEditorPage() {
     previousWeekWorkload,
     startDate,
     weekDates,
-    viewMode,
     effectiveActiveDay,
   ]);
 
@@ -1251,9 +1234,7 @@ export default function PlanEditorPage() {
       onOpenIntelligence={() => setIntelligenceOpen(true)}
       viewControls={
         <EditorViewControls
-          viewMode={viewMode}
           density={density}
-          onViewModeChange={handleViewModeChange}
           onDensityChange={handleDensityChange}
         />
       }
@@ -1283,18 +1264,14 @@ export default function PlanEditorPage() {
     <>
       <div className="planner-grid-meta plan-workspace-orientation">
         <div className="plan-workspace-copy">
-          <strong>{viewMode === "week" ? "Wochenüberblick" : "Bearbeitungsansicht"}</strong>
-          <span>
-            {viewMode === "week"
-              ? "Alle sieben Tage kompakt · Für Änderungen zur Detailansicht wechseln"
-              : "Namen tippen und auswählen · Infozeilen direkt als Klartext bearbeiten"}
-          </span>
+          <strong>Wochenübersicht</strong>
+          <span>Alle sieben Tage direkt bearbeiten · Namen auswählen und Infozeilen als Klartext eintragen</span>
         </div>
         <DayNavigator dayLabels={dayLabels} weekDates={weekDates} activeDay={effectiveActiveDay} onSelect={selectDay} />
       </div>
       <section className="panel plan-grid-shell overflow-hidden">
         <div className="plan-grid-scroll-shell">
-          <div className={`plan-grid plan-grid-${viewMode} plan-density-${density} ${hasExistingPlan ? "h-[calc(100vh-244px)]" : "h-[calc(100vh-300px)]"} min-h-[520px]`}>
+          <div className={`plan-grid plan-grid-week plan-density-${density} ${hasExistingPlan ? "h-[calc(100vh-244px)]" : "h-[calc(100vh-300px)]"} min-h-[520px]`}>
             <AgGridReact<PlanRow>
               theme={gridTheme}
               rowData={rows}
@@ -1307,7 +1284,6 @@ export default function PlanEditorPage() {
                 if (params.data?._row_type === "group") {
                   return density === "compact" ? 30 : density === "large" ? 44 : 36;
                 }
-                if (viewMode === "detail") return undefined;
                 return density === "compact" ? 32 : density === "large" ? 48 : 40;
               }}
               stopEditingWhenCellsLoseFocus

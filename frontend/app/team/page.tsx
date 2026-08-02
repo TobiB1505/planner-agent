@@ -6,31 +6,57 @@ import {
   createPerson,
   deletePerson,
   getTeam,
+  getTeamIntelligenceOverview,
   updatePerson,
   type Person,
+  type TeamIntelligenceOverview,
+  type TeamIntelligencePerson,
 } from "@/lib/api";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 type TeamView = "active" | "inactive";
+type IntelligenceView = "all" | "ready" | "attention";
 type Notice = { kind: "success" | "error" | "info"; text: string };
+
+function currentMonday(): string {
+  const now = new Date();
+  const weekday = now.getDay() || 7;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - weekday + 1, 12);
+  return monday.toLocaleDateString("sv-SE");
+}
 
 export default function TeamPage() {
   const departmentListId = useId();
   const [people, setPeople] = useState<Person[]>([]);
+  const [intelligence, setIntelligence] = useState<TeamIntelligenceOverview | null>(null);
   const [name, setName] = useState("");
   const [department, setDepartment] = useState("");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<TeamView>("active");
+  const [intelligenceView, setIntelligenceView] = useState<IntelligenceView>("all");
   const [addOpen, setAddOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [profilePersonId, setProfilePersonId] = useState<number | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      setPeople(await getTeam());
+      const [teamResult, intelligenceResult] = await Promise.allSettled([
+        getTeam(),
+        getTeamIntelligenceOverview({ currentWeekStart: currentMonday() }),
+      ]);
+      if (teamResult.status === "rejected") throw teamResult.reason;
+      setPeople(teamResult.value);
+      if (intelligenceResult.status === "fulfilled") {
+        setIntelligence(intelligenceResult.value);
+      } else {
+        setNotice({
+          kind: "info",
+          text: "Team ist verfügbar, die Intelligence-Auswertung konnte aber nicht geladen werden.",
+        });
+      }
     } catch (error) {
       setNotice({
         kind: "error",
@@ -39,18 +65,43 @@ export default function TeamPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  const loadIntelligence = useCallback(async () => {
+    try {
+      setIntelligence(await getTeamIntelligenceOverview({ currentWeekStart: currentMonday() }));
+    } catch {
+      setNotice({ kind: "info", text: "Profil gespeichert; die Übersicht wird beim nächsten Laden aktualisiert." });
+    }
+  }, []);
 
   useEffect(() => {
-    getTeam()
-      .then(setPeople)
-      .catch((error) => {
+    let active = true;
+    Promise.allSettled([
+      getTeam(),
+      getTeamIntelligenceOverview({ currentWeekStart: currentMonday() }),
+    ]).then(([teamResult, intelligenceResult]) => {
+      if (!active) return;
+      if (teamResult.status === "rejected") throw teamResult.reason;
+      setPeople(teamResult.value);
+      if (intelligenceResult.status === "fulfilled") {
+        setIntelligence(intelligenceResult.value);
+      } else {
         setNotice({
-          kind: "error",
-          text: error instanceof Error ? error.message : "Team konnte nicht geladen werden.",
+          kind: "info",
+          text: "Team ist verfügbar, die Intelligence-Auswertung konnte aber nicht geladen werden.",
         });
-      })
-      .finally(() => setLoading(false));
+      }
+    }).catch((error) => {
+      if (!active) return;
+      setNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Team konnte nicht geladen werden.",
+      });
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
   }, []);
 
   const activeCount = people.filter((person) => person.active).length;
@@ -63,6 +114,10 @@ export default function TeamPage() {
     )).sort((a, b) => a.localeCompare(b, "de")),
     [people],
   );
+  const intelligenceById = useMemo(
+    () => new Map((intelligence?.people ?? []).map((item) => [item.person_id, item])),
+    [intelligence],
+  );
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("de");
     return people
@@ -71,11 +126,26 @@ export default function TeamPage() {
         !needle || `${person.name} ${person.department ?? ""}`
           .toLocaleLowerCase("de")
           .includes(needle))
+      .filter((person) => {
+        const profile = intelligenceById.get(person.id);
+        if (intelligenceView === "ready") {
+          return profile?.data_status === "ready" && profile.planning_hint.tone !== "warning";
+        }
+        if (intelligenceView === "attention") {
+          return !profile || profile.data_status !== "ready" || profile.planning_hint.tone === "warning";
+        }
+        return true;
+      })
       .sort((a, b) => {
         const byDepartment = (a.department ?? "").localeCompare(b.department ?? "", "de");
         return byDepartment || a.name.localeCompare(b.name, "de");
       });
-  }, [people, query, view]);
+  }, [intelligenceById, intelligenceView, people, query, view]);
+
+  const intelligenceSummary = intelligence?.summary;
+  const intelligenceCoverage = activeCount
+    ? Math.round(((intelligenceSummary?.with_history ?? 0) / activeCount) * 100)
+    : 0;
 
   async function addPerson() {
     if (!name.trim()) return;
@@ -112,6 +182,7 @@ export default function TeamPage() {
       entry.id === person.id
         ? { ...entry, name: cleanName, department: cleanDepartment || null }
         : entry));
+    await loadIntelligence();
   }
 
   async function changeStatus(person: Person, active: boolean) {
@@ -135,6 +206,7 @@ export default function TeamPage() {
           ? `${person.name} ist wieder aktiv und erscheint in den Planvorschlägen.`
           : `${person.name} ist jetzt inaktiv und wird nicht mehr vorgeschlagen.`,
       });
+      await loadIntelligence();
     } catch (error) {
       setPeople((current) => current.map((entry) =>
         entry.id === person.id ? { ...entry, active: person.active } : entry));
@@ -153,6 +225,7 @@ export default function TeamPage() {
     try {
       await deletePerson(person.id);
       setPeople((current) => current.filter((entry) => entry.id !== person.id));
+      await loadIntelligence();
       setNotice({
         kind: "success",
         text: `${person.name} wurde gelöscht. Historische Dienstpläne bleiben erhalten.`,
@@ -174,7 +247,7 @@ export default function TeamPage() {
       <div className="team-page-head">
         <PageHeader
           title="Team"
-          subtitle="Aktiver Mitarbeiterpool, Abteilungen und Namensvorschläge für die Planung"
+          subtitle="Mitarbeiterpool, Skills, Historie und planungsrelevante Hinweise"
         />
         <button
           type="button"
@@ -188,21 +261,33 @@ export default function TeamPage() {
 
       <section className="team-overview" aria-label="Teamübersicht">
         <div className="team-overview-main">
-          <span className="team-eyebrow">Mitarbeiterpool</span>
-          <strong>{activeCount} aktive Mitarbeiter</strong>
-          <p>Nur aktive MA werden im Dienstplan automatisch vorgeschlagen.</p>
+          <span className="team-eyebrow">Mitarbeiter Intelligence</span>
+          <strong>{intelligenceCoverage}% Historien-Abdeckung</strong>
+          <p>Historie, Skills und Memory machen Planungsvorschläge nachvollziehbar.</p>
+          <div className="team-overview-signals">
+            <span><i className="is-positive" /> {intelligenceSummary?.current_week_assignments ?? 0} Einsätze diese Woche</span>
+            <span><i className={(intelligenceSummary?.current_week_conflicts ?? 0) ? "is-warning" : "is-positive"} /> {intelligenceSummary?.current_week_conflicts ?? 0} Konflikte</span>
+          </div>
         </div>
         <div className="team-overview-stat is-active">
-          <span>Aktiv</span>
+          <span>Aktiver Pool</span>
           <strong>{activeCount}</strong>
+          <small>für Vorschläge</small>
         </div>
         <div className="team-overview-stat">
-          <span>Inaktiv</span>
-          <strong>{inactiveCount}</strong>
+          <span>Mit Historie</span>
+          <strong>{intelligenceSummary?.with_history ?? 0}<em>/{activeCount}</em></strong>
+          <small>belegte Einsätze</small>
         </div>
         <div className="team-overview-stat">
-          <span>Abteilungen</span>
-          <strong>{departments.length}</strong>
+          <span>Mit Skills</span>
+          <strong>{intelligenceSummary?.with_skills ?? 0}<em>/{activeCount}</em></strong>
+          <small>erklärbare Stärken</small>
+        </div>
+        <div className="team-overview-stat is-attention">
+          <span>Daten prüfen</span>
+          <strong>{intelligenceSummary?.attention_people ?? 0}</strong>
+          <small>Hinweise oder Lücken</small>
         </div>
       </section>
 
@@ -290,13 +375,11 @@ export default function TeamPage() {
             {query && <button type="button" onClick={() => setQuery("")} aria-label="Suche leeren">×</button>}
           </label>
         </div>
-
-        <div className="team-directory-labels" aria-hidden="true">
-          <span>Mitarbeiter</span>
-          <span>Name</span>
-          <span>Abteilung</span>
-          <span>Historie</span>
-          <span>Status</span>
+        <div className="team-intelligence-filters" role="group" aria-label="Intelligence-Datenstatus">
+          <span>Datenstatus</span>
+          <button type="button" className={intelligenceView === "all" ? "is-active" : ""} onClick={() => setIntelligenceView("all")}>Alle</button>
+          <button type="button" className={intelligenceView === "ready" ? "is-active" : ""} onClick={() => setIntelligenceView("ready")}>Planungsbereit</button>
+          <button type="button" className={intelligenceView === "attention" ? "is-active" : ""} onClick={() => setIntelligenceView("attention")}>Daten prüfen</button>
         </div>
 
         <div className="team-member-list">
@@ -310,6 +393,7 @@ export default function TeamPage() {
             <TeamMemberRow
               key={person.id}
               person={person}
+              intelligence={intelligenceById.get(person.id)}
               departmentListId={departmentListId}
               showDelete={view === "inactive"}
               onSave={saveDetails}
@@ -348,7 +432,10 @@ export default function TeamPage() {
       {profilePersonId !== null && (
         <EmployeeIntelligenceDialog
           personId={profilePersonId}
-          onClose={() => setProfilePersonId(null)}
+          onClose={() => {
+            setProfilePersonId(null);
+            void loadIntelligence();
+          }}
         />
       )}
     </div>
@@ -357,6 +444,7 @@ export default function TeamPage() {
 
 function TeamMemberRow({
   person,
+  intelligence,
   departmentListId,
   showDelete,
   onSave,
@@ -366,6 +454,7 @@ function TeamMemberRow({
   onOpenProfile,
 }: {
   person: Person;
+  intelligence?: TeamIntelligencePerson;
   departmentListId: string;
   showDelete: boolean;
   onSave: (person: Person, name: string, department: string) => Promise<void>;
@@ -409,76 +498,110 @@ function TeamMemberRow({
     .toLocaleUpperCase("de");
 
   return (
-    <article className={`team-member-row ${person.active ? "" : "is-inactive"}`}>
-      <div className="team-member-identity">
-        <span className="team-member-avatar">{initials || "MA"}</span>
-        <span>
-          <strong>{person.name}</strong>
-          <small>{person.department || "Ohne Abteilung"}</small>
+    <article
+      className={`team-member-card ${person.active ? "" : "is-inactive"}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`Intelligence-Profil von ${person.name} öffnen`}
+      onClick={(event) => {
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.closest("button, input, select, textarea, a, label")) return;
+        onOpenProfile(person.id);
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpenProfile(person.id);
+        }
+      }}
+    >
+      <header className="team-member-card-head">
+        <div className="team-member-identity">
+          <span className="team-member-avatar">{initials || "MA"}</span>
+          <span>
+            <strong>{person.name}</strong>
+            <small>{person.department || "Ohne Abteilung"}</small>
+          </span>
+        </div>
+        <span className="team-member-card-meta">
+          <span className={`team-data-status is-${intelligence?.data_status ?? "new"}`}>
+            {intelligence?.data_status === "ready" ? "Planungsbereit" : intelligence?.data_status === "learning" ? "Lernt" : "Neue Datenbasis"}
+          </span>
+          <span className="team-member-open-cue" aria-hidden="true">›</span>
         </span>
+      </header>
+
+      <div className="team-member-intelligence">
+        <div className="team-member-metrics">
+          <span><strong>{intelligence?.current_week.assignments ?? 0}</strong><small>Diese Woche</small></span>
+          <span><strong>{intelligence?.history_assignments ?? person.total_assignments}</strong><small>Historie</small></span>
+          <span><strong>{intelligence?.memory_count ?? 0}</strong><small>Memory</small></span>
+        </div>
+        <div className="team-skill-strip">
+          {intelligence?.top_skills.length ? intelligence.top_skills.map((skill) => (
+            <span key={skill.id}>{skill.name}<small>{skill.level}★</small></span>
+          )) : <span className="is-empty">Noch keine belegten Skills</span>}
+        </div>
+        {intelligence && (
+          <div className={`team-planning-hint tone-${intelligence.planning_hint.tone}`}>
+            <i aria-hidden="true" />
+            <span><strong>{intelligence.planning_hint.label}</strong><small>{intelligence.planning_hint.text}</small></span>
+          </div>
+        )}
       </div>
 
-      <label className="team-member-field">
-        <span>Name</span>
-        <input
-          value={name}
-          disabled={saveState === "saving"}
-          onChange={(event) => {
-            setName(event.target.value);
-            setSaveState("idle");
-          }}
-          onBlur={() => void commit()}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-            if (event.key === "Escape") {
-              setName(person.name);
-              event.currentTarget.blur();
-            }
-          }}
-        />
-      </label>
+      <div className="team-member-edit-grid">
+        <label className="team-member-field">
+          <span>Name</span>
+          <input
+            value={name}
+            disabled={saveState === "saving"}
+            onChange={(event) => {
+              setName(event.target.value);
+              setSaveState("idle");
+            }}
+            onBlur={() => void commit()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+              if (event.key === "Escape") {
+                setName(person.name);
+                event.currentTarget.blur();
+              }
+            }}
+          />
+        </label>
 
-      <label className="team-member-field">
-        <span>Abteilung</span>
-        <input
-          value={department}
-          list={departmentListId}
-          disabled={saveState === "saving"}
-          placeholder="Keine Abteilung"
-          onChange={(event) => {
-            setDepartment(event.target.value);
-            setSaveState("idle");
-          }}
-          onBlur={() => void commit()}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-            if (event.key === "Escape") {
-              setDepartment(person.department ?? "");
-              event.currentTarget.blur();
-            }
-          }}
-        />
-      </label>
-
-      <div className="team-member-history">
-        <strong>{person.total_assignments}</strong>
-        <span>Zuweisungen</span>
+        <label className="team-member-field">
+          <span>Abteilung</span>
+          <input
+            value={department}
+            list={departmentListId}
+            disabled={saveState === "saving"}
+            placeholder="Keine Abteilung"
+            onChange={(event) => {
+              setDepartment(event.target.value);
+              setSaveState("idle");
+            }}
+            onBlur={() => void commit()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+              if (event.key === "Escape") {
+                setDepartment(person.department ?? "");
+                event.currentTarget.blur();
+              }
+            }}
+          />
+        </label>
       </div>
 
-      <div className="team-member-actions">
+      <footer className="team-member-actions">
         <span className={`team-save-state is-${saveState}`} aria-live="polite">
           {saveState === "saving" && "Speichert …"}
           {saveState === "saved" && "Gespeichert"}
           {saveState === "error" && "Fehler"}
           {saveState === "idle" && (person.active ? "Aktiv" : "Inaktiv")}
         </span>
-        <button
-          type="button"
-          className="team-profile-button"
-          onClick={() => onOpenProfile(person.id)}
-        >
-          Profil
-        </button>
         <button
           type="button"
           className={`team-status-button ${person.active ? "is-active" : "is-inactive"}`}
@@ -498,7 +621,7 @@ function TeamMemberRow({
             Löschen
           </button>
         )}
-      </div>
+      </footer>
     </article>
   );
 }

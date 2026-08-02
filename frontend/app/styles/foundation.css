@@ -70,6 +70,12 @@ body {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .route-transition {
+    animation: none;
+  }
+}
+
 button,
 input,
 select,
@@ -80,4 +86,3 @@ textarea {
 button {
   cursor: pointer;
 }
-

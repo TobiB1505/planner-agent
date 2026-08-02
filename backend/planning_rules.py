@@ -164,6 +164,16 @@ def active_planning_rules() -> list[dict]:
             "tone": "info",
         },
         {
+            "id": "moderation_service",
+            "title": "Moderation & Getränkedienst",
+            "description": (
+                "Moderation und Getränkedienst werden primär SPT oder Managern "
+                "zugewiesen. S&L wird dafür nicht regulär empfohlen, bleibt für "
+                "Sonderfälle aber manuell auswählbar."
+            ),
+            "tone": "info",
+        },
+        {
             "id": "departments",
             "title": "Abteilungslogik",
             "description": (
@@ -260,6 +270,8 @@ def _rule_id(category: str, subcategory: str | None) -> str | None:
         return "sport_spt"
     if category_norm == "kochdienste" and subcategory_norm.startswith("kp3"):
         return "kp3_no_sound_light"
+    if category_norm == "moderation + getränkedienst":
+        return "moderation_spt_manager"
     if category_norm.replace("/", "+").replace(" ", "") in {"ops+wp", "opswp"}:
         return "ops_managers"
     return None
@@ -358,6 +370,21 @@ def person_decision(
                 "übernehmen abends keine Dienste."
             ),
         }
+    if rule_id == "moderation_spt_manager":
+        # Weiche Abteilungspräferenz: SPT und Manager sind fachlich die erste Wahl.
+        # Insbesondere S&L soll wegen der Aufgaben im Abendprogramm nicht regulär
+        # vorgeschlagen werden, bleibt bei Sonderfällen aber jederzeit auswählbar.
+        recommended = bool(tags & {"SPT", "MANAGER"})
+        return {
+            "rule_id": rule_id,
+            "allowed": True,
+            "recommended": recommended,
+            "message": (
+                "Moderation und Getränkedienst werden primär SPT oder Managern "
+                "zugewiesen. S&L wird dafür nicht regulär empfohlen; manuelle "
+                "Ausnahmen bleiben möglich."
+            ),
+        }
     if rule_id == "ops_managers":
         # Weiche Regel: Manager werden bevorzugt, andere MA sind aber zulässig.
         # Zusätzlich wird bei der Reihenfolge bevorzugt, wer am selben Tag die
@@ -385,7 +412,7 @@ def use_all_active_for_auto(category: str, subcategory: str | None) -> bool:
     """Abteilungsregeln ziehen ihren Kandidatenpool direkt aus dem aktiven Team."""
     return _rule_id(category, subcategory) in {
         "sport_spt", "sport_guests_vs_robins", "ops_managers",
-        "aperitif_sound_light",
+        "aperitif_sound_light", "moderation_spt_manager",
     }
 
 

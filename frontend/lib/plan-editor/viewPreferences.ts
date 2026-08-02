@@ -1,35 +1,25 @@
-export type PlanViewMode = "week" | "detail";
 export type PlanDensity = "compact" | "standard" | "large";
 
 export interface PlanViewPreferences {
-  viewMode: PlanViewMode;
   density: PlanDensity;
 }
 
 const STORAGE_KEY = "planner-agent:plan-editor:view-preferences:v1";
 
 const DEFAULT_PREFERENCES: PlanViewPreferences = {
-  viewMode: "detail",
-  density: "standard",
+  density: "compact",
 };
-
-function isViewMode(value: unknown): value is PlanViewMode {
-  return value === "week" || value === "detail";
-}
 
 function isDensity(value: unknown): value is PlanDensity {
   return value === "compact" || value === "standard" || value === "large";
 }
 
-export function defaultPlanViewPreferences(viewportWidth?: number): PlanViewPreferences {
-  if (viewportWidth !== undefined && viewportWidth < 1500) {
-    return { viewMode: "week", density: "compact" };
-  }
+export function defaultPlanViewPreferences(): PlanViewPreferences {
   return DEFAULT_PREFERENCES;
 }
 
-export function loadPlanViewPreferences(viewportWidth?: number): PlanViewPreferences {
-  const fallback = defaultPlanViewPreferences(viewportWidth);
+export function loadPlanViewPreferences(): PlanViewPreferences {
+  const fallback = defaultPlanViewPreferences();
   if (typeof window === "undefined") return fallback;
 
   try {
@@ -37,7 +27,6 @@ export function loadPlanViewPreferences(viewportWidth?: number): PlanViewPrefere
     if (!stored) return fallback;
     const parsed = JSON.parse(stored) as Partial<PlanViewPreferences>;
     return {
-      viewMode: isViewMode(parsed.viewMode) ? parsed.viewMode : fallback.viewMode,
       density: isDensity(parsed.density) ? parsed.density : fallback.density,
     };
   } catch {
@@ -53,4 +42,3 @@ export function savePlanViewPreferences(preferences: PlanViewPreferences): void 
     // Der Editor bleibt auch bei deaktiviertem/vollem LocalStorage nutzbar.
   }
 }
-

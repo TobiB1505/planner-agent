@@ -41,7 +41,7 @@ from . import xlsx_template
 from .extraction import extract_dienstplan
 from .intelligence import audit as intelligence_audit
 from .intelligence import dashboard as intelligence_dashboard
-from .intelligence import employee_stats, memory_engine, plan_quality, recommendation_engine
+from .intelligence import employee_stats, memory_engine, plan_quality, recommendation_engine, team_overview
 
 load_dotenv()
 
@@ -1142,6 +1142,16 @@ def _intelligence_plan_data(payload: IntelligencePlanRequest) -> tuple[list[dict
         day_iso_by_label,
     )
     return assignments_list, absences_list, day_iso_by_label
+
+
+@app.get("/api/intelligence/employees")
+def intelligence_employee_overview(weeks: int = 12, current_week_start: Optional[str] = None):
+    conn = get_conn()
+    return clean(team_overview.build_team_overview(
+        conn,
+        weeks=max(1, min(52, weeks)),
+        current_week_start=current_week_start,
+    ))
 
 
 @app.get("/api/intelligence/employees/{person_id}")

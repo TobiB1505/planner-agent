@@ -425,6 +425,40 @@
   gap: 8px;
 }
 
+.btn.btn-excel-export {
+  border-color: #218653;
+  background: linear-gradient(180deg, #26945d 0%, #217346 100%);
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(33, 115, 70, 0.2);
+}
+
+.btn.btn-excel-export:hover:not(:disabled) {
+  border-color: #2ba968;
+  background: linear-gradient(180deg, #2ca967 0%, #258250 100%);
+  box-shadow: 0 7px 18px rgba(33, 115, 70, 0.28);
+}
+
+.btn-excel-export-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
+.btn-excel-export-icon rect {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.btn-excel-export-x {
+  stroke: #217346;
+  stroke-width: 1.45;
+}
+
 .plan-editor-toolbar .plan-view-controls {
   flex: 1 1 auto;
   min-width: 0;
@@ -825,35 +859,6 @@ button.plan-validation-summary {
   gap: 8px;
 }
 
-.plan-view-segmented {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--background);
-  padding: 2px;
-}
-
-.plan-view-segmented button {
-  min-height: 30px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  padding: 5px 11px;
-  font-size: 11.5px;
-  font-weight: 700;
-}
-
-.plan-view-segmented button:hover {
-  color: var(--foreground);
-}
-
-.plan-view-segmented button.is-active {
-  background: var(--accent-soft);
-  color: var(--accent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
-}
-
 .plan-density-select {
   display: flex;
   min-height: 34px;
@@ -981,8 +986,7 @@ button.plan-validation-summary {
   overflow: hidden;
 }
 
-.plan-grid.plan-grid-week,
-.plan-grid.plan-grid-detail {
+.plan-grid.plan-grid-week {
   min-width: 0;
 }
 
@@ -1000,10 +1004,10 @@ button.plan-validation-summary {
 }
 
 .plan-grid.plan-grid-week .ag-cell:not(.ag-cell-inline-editing) {
-  cursor: default !important;
+  cursor: text !important;
 }
 
-.plan-grid.plan-grid-detail .ag-cell:not(.ag-cell-inline-editing):hover {
+.plan-grid.plan-grid-week .ag-cell:not(.ag-cell-inline-editing):hover {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
   cursor: text;
 }
@@ -1310,11 +1314,6 @@ button.plan-validation-summary {
   .plan-preview-actions {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .plan-view-segmented {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
   }
 
   .plan-editor-toolbar-health,

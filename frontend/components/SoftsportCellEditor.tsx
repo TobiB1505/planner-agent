@@ -277,7 +277,21 @@ export default function SoftsportCellEditor({
       role="dialog"
       aria-label="Softsport zuweisen"
     >
-      <div className="person-editor-title">Softsport zuweisen</div>
+      <div className="person-editor-header">
+        <div className="person-editor-title">Softsport zuweisen</div>
+        <button
+          type="button"
+          className="person-editor-close"
+          aria-label="Softsport-Zuweisung schließen"
+          title="Schließen"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => stopEditing()}
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M5.5 5.5 14.5 14.5M14.5 5.5 5.5 14.5" />
+          </svg>
+        </button>
+      </div>
       <label className="softsport-activity-field">
         <span>Softsport-Art</span>
         <select

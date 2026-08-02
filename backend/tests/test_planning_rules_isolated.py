@@ -104,6 +104,27 @@ def test_ops_prefers_manager_without_blocking_other_departments():
     assert rule["hard_rule"] is False
 
 
+def test_moderation_prefers_spt_and_manager_without_blocking_sound_and_light():
+    rule = planning_rules.assignment_rule(
+        TEAM,
+        "Moderation + Getränkedienst",
+        None,
+    )
+
+    assert rule is not None
+    assert rule["id"] == "moderation_spt_manager"
+    assert rule["recommended_people"] == ["Sven", "Fanny"]
+    assert set(rule["allowed_people"]) == {person["name"] for person in TEAM}
+    assert rule["blocked_people"] == []
+    assert rule["hard_rule"] is False
+    assert planning_rules.hard_violation(
+        "Luca",
+        "S&L",
+        "Moderation + Getränkedienst",
+        None,
+    ) is None
+
+
 def test_kp3_avoids_sound_and_light_without_hard_blocking_it():
     rule = planning_rules.assignment_rule(TEAM, "Kochdienste", "KP3 19:00 - 21:15")
 

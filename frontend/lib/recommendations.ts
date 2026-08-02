@@ -540,6 +540,7 @@ export function recommendForCell({
         kp3_no_sound_light: "KP3 bevorzugt andere Abteilungen vor S&L",
         ops_managers: "OPS/WP bevorzugt Manager",
         aperitif_sound_light: "Aperitif bevorzugt S&L",
+        moderation_spt_manager: "Moderation und Getränkedienst bevorzugen SPT oder Manager; S&L nur im Sonderfall",
       };
       reasons.push(
         buildReason(

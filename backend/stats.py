@@ -428,38 +428,11 @@ def week_insights(conn, week_plan_id: int) -> dict:
 
     selected_start = week["start_date"]
     selected_end = week["end_date"]
-    planning_periods = [
-        dict(row)
-        for row in conn.execute(
-            """SELECT start_date, end_date FROM artist_plans
-               UNION
-               SELECT start_date, end_date FROM rehearsal_plans
-               ORDER BY start_date"""
-        ).fetchall()
-    ]
-    today_iso = date.today().isoformat()
-    if planning_periods:
-        current = [
-            period for period in planning_periods
-            if period["start_date"] <= today_iso <= period["end_date"]
-        ]
-        upcoming = [
-            period for period in planning_periods
-            if period["start_date"] > today_iso
-        ]
-        if current:
-            planning_period = max(current, key=lambda item: item["start_date"])
-        elif upcoming:
-            planning_period = min(upcoming, key=lambda item: item["start_date"])
-        else:
-            planning_period = max(
-                planning_periods, key=lambda item: item["start_date"]
-            )
-        planning_start = planning_period["start_date"]
-        planning_end = planning_period["end_date"]
-    else:
-        planning_start = selected_start
-        planning_end = selected_end
+    # Alle Dashboard-Bereiche folgen derselben vom Nutzer ausgewählten Woche.
+    # Zuvor wurden Künstler-/Probenplan unabhängig davon aus der aktuellen bzw.
+    # nächsten Kalenderwoche geladen, wodurch Header und Showtage auseinanderliefen.
+    planning_start = selected_start
+    planning_end = selected_end
 
     artist = db.get_artist_plan_by_start(conn, planning_start)
     rehearsal = db.get_rehearsal_plan_by_start(conn, planning_start)

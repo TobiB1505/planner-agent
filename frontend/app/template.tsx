@@ -1,3 +1,7 @@
-export default function Template({ children }: { children: React.ReactNode }) {
+export default function RouteTemplate({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return <div className="route-transition">{children}</div>;
 }

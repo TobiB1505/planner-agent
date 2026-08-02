@@ -11,17 +11,28 @@ import {
   type EmployeeSkill,
 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 type ProfileTab = "overview" | "skills" | "availability" | "history" | "memory" | "recommendations";
 
-const TABS: Array<{ id: ProfileTab; label: string }> = [
-  { id: "overview", label: "Übersicht" },
-  { id: "skills", label: "Fähigkeiten" },
-  { id: "availability", label: "Verfügbarkeit" },
-  { id: "history", label: "Historie" },
-  { id: "memory", label: "Memory" },
-  { id: "recommendations", label: "Planungsempfehlungen" },
+const TABS: Array<{ id: ProfileTab; label: string; hint: string; icon: string }> = [
+  { id: "overview", label: "Übersicht", hint: "Woche & Stärken", icon: "◈" },
+  { id: "skills", label: "Fähigkeiten", hint: "Belegte Skills", icon: "★" },
+  { id: "availability", label: "Verfügbarkeit", hint: "Frei-Muster", icon: "◷" },
+  { id: "history", label: "Historie", hint: "Letzte Wochen", icon: "↗" },
+  { id: "memory", label: "Memory", hint: "Hinweise & Regeln", icon: "◎" },
+  { id: "recommendations", label: "Empfehlungen", hint: "Für die Planung", icon: "✦" },
 ];
+
+function initials(name: string): string {
+  return name.trim().slice(0, 2).toLocaleUpperCase("de");
+}
+
+function trendLabel(direction: EmployeeIntelligenceProfile["trend"]["direction"]): string {
+  if (direction === "up") return "Belastung steigt";
+  if (direction === "down") return "Belastung sinkt";
+  return "Belastung stabil";
+}
 
 function sourceLabel(source: EmployeeSkill["source"] | EmployeeMemoryEntry["source"]): string {
   if (source === "manual") return "Manuell";
@@ -129,6 +140,15 @@ export default function EmployeeIntelligenceDialog({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  useEffect(() => {
+    const appMain = document.querySelector<HTMLElement>(".app-main");
+    const previousOverflow = appMain?.style.overflow;
+    if (appMain) appMain.style.overflow = "hidden";
+    return () => {
+      if (appMain) appMain.style.overflow = previousOverflow ?? "";
+    };
+  }, []);
+
   const availabilityEntries = useMemo(
     () => profile?.memory.filter((entry) => entry.type === "availability" || entry.subject === "free_weekdays") ?? [],
     [profile],
@@ -197,33 +217,64 @@ export default function EmployeeIntelligenceDialog({
     }
   }
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div className="intelligence-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <section className="employee-intelligence" role="dialog" aria-modal="true" aria-label="Intelligentes Mitarbeiterprofil">
+      <section className="employee-intelligence" role="dialog" aria-modal="true" aria-labelledby="employee-intelligence-title">
         <header className="employee-intelligence-head">
-          <div>
-            <span className="intelligence-eyebrow">Mitarbeiter Intelligence</span>
-            <h2>{profile?.person.name ?? "Profil wird geladen …"}</h2>
-            <p>{profile?.person.department || "Keine Abteilung hinterlegt"}</p>
+          <div className="employee-intelligence-identity">
+            <span className="employee-intelligence-avatar" aria-hidden="true">
+              {profile ? initials(profile.person.name) : "…"}
+            </span>
+            <div>
+              <span className="intelligence-eyebrow">Mitarbeiter Intelligence</span>
+              <h2 id="employee-intelligence-title">{profile?.person.name ?? "Profil wird geladen …"}</h2>
+              <p>{profile?.person.department || "Keine Abteilung hinterlegt"}</p>
+            </div>
           </div>
-          <button type="button" className="btn-icon" onClick={onClose} aria-label="Profil schließen">×</button>
+          <div className="employee-intelligence-head-actions">
+            {profile && (
+              <div className="employee-intelligence-status" aria-label="Datenbasis des Profils">
+                <span><strong>{profile.period.weeks_available}</strong> Wochen</span>
+                <span><strong>{profile.summary.assignments}</strong> Einsätze</span>
+                <span className={`is-${profile.trend.direction}`}>{trendLabel(profile.trend.direction)}</span>
+              </div>
+            )}
+            <button type="button" className="btn-icon employee-intelligence-close" onClick={onClose} aria-label="Profil schließen">×</button>
+          </div>
         </header>
 
-        <nav className="employee-intelligence-tabs" aria-label="Profilbereiche">
-          {TABS.map((item) => (
-            <button key={item.id} type="button" className={tab === item.id ? "is-active" : ""} onClick={() => setTab(item.id)}>
-              {item.label}
-            </button>
-          ))}
-        </nav>
+        <div className="employee-intelligence-workspace">
+          <nav className="employee-intelligence-tabs" aria-label="Profilbereiche" role="tablist">
+            <span className="employee-intelligence-nav-label">Profilbereiche</span>
+            {TABS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.id}
+                className={tab === item.id ? "is-active" : ""}
+                onClick={() => setTab(item.id)}
+              >
+                <span className="employee-intelligence-tab-icon" aria-hidden="true">{item.icon}</span>
+                <span><strong>{item.label}</strong><small>{item.hint}</small></span>
+              </button>
+            ))}
+            <p>Alle Hinweise stammen aus gespeicherten Plänen oder deinen manuellen Angaben.</p>
+          </nav>
 
-        <div className="employee-intelligence-body">
+          <div className="employee-intelligence-body" role="tabpanel">
           {loading && <div className="intelligence-empty"><span className="spinner" /> Daten werden ausgewertet …</div>}
           {error && <div className="status status-error">{error}</div>}
           {!loading && profile && tab === "overview" && (
             <>
+              <div className="employee-intelligence-section-head">
+                <div><span className="intelligence-eyebrow">Aktuelle Einordnung</span><h3>Planungsübersicht</h3></div>
+                <span className={`employee-intelligence-trend is-${profile.trend.direction}`}>{trendLabel(profile.trend.direction)}</span>
+              </div>
               <div className="intelligence-metrics">
                 <article><span>Aktuelle Woche</span><strong>{profile.current_week.assignments}</strong><small>Einsätze</small></article>
                 <article><span>Shows</span><strong>{profile.current_week.shows}</strong><small>belegte Besetzungen</small></article>
@@ -254,7 +305,7 @@ export default function EmployeeIntelligenceDialog({
 
           {!loading && profile && tab === "skills" && (
             <section className="intelligence-section">
-              <div className="intelligence-section-head"><div><h3>Fähigkeiten</h3><p>Automatische Vorschläge zeigen immer ihre Evidenz.</p></div></div>
+              <div className="intelligence-section-head"><div><h3>Fähigkeiten</h3><p>Automatisch aus Einsätzen abgeleitet oder von dir bestätigt. Jede Einstufung zeigt ihre Datenbasis.</p></div></div>
               <div className="skill-grid">{profile.skills.map((skill) => (
                 <SkillCard skill={skill} key={skill.id} onDelete={skill.source === "manual" ? () => void removeSkill(skill) : undefined} />
               ))}</div>
@@ -267,7 +318,7 @@ export default function EmployeeIntelligenceDialog({
           )}
 
           {!loading && profile && tab === "availability" && (
-            <section className="intelligence-section"><h3>Verfügbarkeit</h3>
+            <section className="intelligence-section"><div className="intelligence-section-head"><div><h3>Verfügbarkeit</h3><p>Erkannte Frei-Muster fließen nur als Vorschlag in die Planung ein.</p></div></div>
               {availabilityEntries.map((entry) => <MemoryCard entry={entry} key={entry.id} />)}
               {!availabilityEntries.length && <p className="intelligence-empty">Noch kein belastbares Verfügbarkeitsmuster erkannt.</p>}
             </section>
@@ -275,7 +326,7 @@ export default function EmployeeIntelligenceDialog({
 
           {!loading && profile && tab === "history" && (
             <section className="intelligence-section">
-              <h3>Letzte {profile.period.weeks_available} Wochen</h3>
+              <div className="intelligence-section-head"><div><h3>Letzte {profile.period.weeks_available} Wochen</h3><p>Historische Einsätze werden nur ausgewertet und niemals verändert.</p></div></div>
               <div className="intelligence-metrics history-metrics">
                 <article><span>Einsätze</span><strong>{profile.summary.assignments}</strong></article>
                 <article><span>Kochdienste</span><strong>{profile.summary.cooking}</strong></article>
@@ -290,11 +341,11 @@ export default function EmployeeIntelligenceDialog({
 
           {!loading && profile && tab === "memory" && (
             <section className="intelligence-section">
-              <h3>Strukturiertes Memory</h3>
+              <div className="intelligence-section-head"><div><h3>Strukturiertes Memory</h3><p>Nachvollziehbare Hinweise mit Quelle, Datum und Konfidenz statt freier KI-Texte.</p></div></div>
               <div className="memory-entry-grid">{profile.memory.map((entry) => <MemoryCard entry={entry} key={entry.id} onDelete={entry.editable ? () => void removeMemory(entry) : undefined} />)}</div>
               <div className="intelligence-form-row memory-form">
                 <label><span>Typ</span><select value={memoryType} onChange={(event) => setMemoryType(event.target.value)}><option value="constraint">Einschränkung</option><option value="preference">Präferenz</option><option value="note">Planungshinweis</option></select></label>
-                <label><span>Betreff</span><input value={memorySubject} onChange={(event) => setMemorySubject(event.target.value)} placeholder="z. B. night_duties" /></label>
+                <label><span>Betreff</span><input value={memorySubject} onChange={(event) => setMemorySubject(event.target.value)} placeholder="z. B. Abenddienste" /></label>
                 <label className="memory-note-field"><span>Hinweis</span><input value={memoryNote} onChange={(event) => setMemoryNote(event.target.value)} placeholder="Nicht mehrere Nachtdienste hintereinander" /></label>
                 <button type="button" className="btn btn-primary" disabled={busy || !memorySubject.trim() || !memoryNote.trim()} onClick={() => void saveMemory()}>Hinweis speichern</button>
               </div>
@@ -302,14 +353,16 @@ export default function EmployeeIntelligenceDialog({
           )}
 
           {!loading && profile && tab === "recommendations" && (
-            <section className="intelligence-section"><h3>Planungsempfehlungen</h3>
+            <section className="intelligence-section"><div className="intelligence-section-head"><div><h3>Planungsempfehlungen</h3><p>Nur datenbasierte Hinweise, die im Dienstplan erklärbar bleiben.</p></div></div>
               {profile.planning_recommendations.map((item) => <article className="intelligence-note" key={item.code}><strong>{item.label}</strong><p>{item.text}</p>{item.evidence.map((entry, index) => <small key={`${item.code}:evidence:${index}`}>{entry}</small>)}</article>)}
               {!profile.planning_recommendations.length && <p className="intelligence-empty">Aus den vorhandenen Daten entsteht noch keine sichere Empfehlung.</p>}
             </section>
           )}
+          </div>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

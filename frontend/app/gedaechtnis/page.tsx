@@ -1,13 +1,17 @@
 "use client";
 
+import EmployeeIntelligenceDialog from "@/components/EmployeeIntelligenceDialog";
 import PageHeader from "@/components/PageHeader";
 import {
   getMemory,
+  getTeamIntelligenceOverview,
   setMemoryFree,
   setMemoryShow,
   setMemoryTask,
   type MemoryOverview,
   type PersonMemory,
+  type TeamIntelligenceOverview,
+  type TeamIntelligencePerson,
 } from "@/lib/api";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -24,6 +28,14 @@ const SHOW_CHOICES = [
 ];
 
 const WEEKDAYS_SHORT = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+type MemorySection = "overview" | "shows" | "availability" | "tasks";
+
+const MEMORY_SECTIONS: Array<{ id: MemorySection; label: string }> = [
+  { id: "overview", label: "Überblick" },
+  { id: "shows", label: "Shows & Partys" },
+  { id: "availability", label: "Frei-Muster" },
+  { id: "tasks", label: "Aufgaben-Profil" },
+];
 
 function initials(name: string): string {
   return name.trim().slice(0, 2).toUpperCase();
@@ -47,9 +59,25 @@ function patternLabel(person: PersonMemory): string {
   return weekdays.map((d) => WEEKDAYS_SHORT[d]).join(", ");
 }
 
+function currentMonday(): string {
+  const now = new Date();
+  const weekday = now.getDay() || 7;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - weekday + 1, 12);
+  return monday.toLocaleDateString("sv-SE");
+}
+
+function dataStatusLabel(status?: TeamIntelligencePerson["data_status"]): string {
+  if (status === "ready") return "Datenbereit";
+  if (status === "learning") return "Lernt";
+  return "Neu";
+}
+
 export default function GedaechtnisPage() {
   const [data, setData] = useState<MemoryOverview | null>(null);
+  const [teamIntelligence, setTeamIntelligence] = useState<TeamIntelligenceOverview | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [profilePersonId, setProfilePersonId] = useState<number | null>(null);
+  const [section, setSection] = useState<MemorySection>("overview");
   const [query, setQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -58,15 +86,29 @@ export default function GedaechtnisPage() {
   const [addShow, setAddShow] = useState("");
 
   useEffect(() => {
-    getMemory()
-      .then((result) => {
-        setData(result);
-        const first = result.people.find((p) => p.active);
-        setSelectedId(first ? first.person_id : result.people[0]?.person_id ?? null);
-      })
-      .catch((reason) =>
-        setError(reason instanceof Error ? reason.message : "Gedächtnis konnte nicht geladen werden."))
-      .finally(() => setLoading(false));
+    let active = true;
+    Promise.allSettled([
+      getMemory(),
+      getTeamIntelligenceOverview({ currentWeekStart: currentMonday() }),
+    ]).then(([memoryResult, intelligenceResult]) => {
+      if (!active) return;
+      if (memoryResult.status === "fulfilled") {
+        setData(memoryResult.value);
+        const first = memoryResult.value.people.find((person) => person.active);
+        setSelectedId(first?.person_id ?? memoryResult.value.people[0]?.person_id ?? null);
+      } else {
+        setError(
+          memoryResult.reason instanceof Error
+            ? memoryResult.reason.message
+            : "Gedächtnis konnte nicht geladen werden.",
+        );
+      }
+      if (intelligenceResult.status === "fulfilled") {
+        setTeamIntelligence(intelligenceResult.value);
+      }
+      setLoading(false);
+    });
+    return () => { active = false; };
   }, []);
 
   const people = useMemo(() => data?.people ?? [], [data]);
@@ -81,16 +123,35 @@ export default function GedaechtnisPage() {
   }, [people, query, showInactive]);
 
   const selected = people.find((person) => person.person_id === selectedId) ?? null;
+  const intelligenceByPerson = useMemo(
+    () => new Map((teamIntelligence?.people ?? []).map((person) => [person.person_id, person])),
+    [teamIntelligence],
+  );
+  const selectedIntelligence = selectedId === null
+    ? null
+    : intelligenceByPerson.get(selectedId) ?? null;
 
   const summary = useMemo(() => {
     const active = people.filter((p) => p.active);
     return {
       total: active.length,
-      withPattern: active.filter((p) => p.free.weekdays.length > 0).length,
-      withShows: active.filter((p) => p.shows.length > 0).length,
+      ready: teamIntelligence?.summary.with_history ?? 0,
+      withSkills: teamIntelligence?.summary.with_skills ?? 0,
+      attention: teamIntelligence?.summary.attention_people
+        ?? active.filter((person) => person.data_quality.cold_start).length,
       coldStart: active.filter((p) => p.data_quality.cold_start).length,
     };
-  }, [people]);
+  }, [people, teamIntelligence]);
+
+  async function refreshIntelligence() {
+    try {
+      setTeamIntelligence(
+        await getTeamIntelligenceOverview({ currentWeekStart: currentMonday() }),
+      );
+    } catch {
+      // Die klassische Gedächtnis-Funktion bleibt auch bei fehlender Intelligence erreichbar.
+    }
+  }
 
   /** Alle Mutationen liefern die frische PersonMemory zurück - nie lokal nachbauen. */
   function applyUpdate(updated: PersonMemory) {
@@ -105,6 +166,7 @@ export default function GedaechtnisPage() {
     setError("");
     try {
       applyUpdate(await action());
+      void refreshIntelligence();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Änderung fehlgeschlagen.");
     } finally {
@@ -119,6 +181,14 @@ export default function GedaechtnisPage() {
     return mutate(() => setMemoryFree(person.person_id, [...current].sort((a, b) => a - b)));
   }
 
+  function choosePool(inactive: boolean) {
+    setShowInactive(inactive);
+    const first = people.find((person) => person.active === !inactive);
+    setSelectedId(first?.person_id ?? null);
+    setAddShow("");
+    setSection("overview");
+  }
+
   return (
     <div className="memory-page">
       <div className="memory-page-head">
@@ -129,21 +199,26 @@ export default function GedaechtnisPage() {
         <Link href="/team" className="btn">Zur Teamverwaltung</Link>
       </div>
 
-      <section className="planning-logic-overview" aria-label="Übersicht Gedächtnis">
-        <article>
-          <span>Im Gedächtnis</span>
+      <section className="memory-overview-grid" aria-label="Übersicht Gedächtnis">
+        <article className="memory-overview-card is-primary">
+          <span>Aktive Mitarbeiter</span>
           <strong>{loading ? "…" : summary.total}</strong>
-          <small>aktive Mitarbeiter</small>
+          <small>im Planungspool</small>
         </article>
-        <article>
-          <span>Frei-Muster</span>
-          <strong>{loading ? "…" : summary.withPattern}</strong>
-          <small>mit erkennbarem Muster</small>
+        <article className="memory-overview-card">
+          <span>Historisch belegt</span>
+          <strong>{loading ? "…" : `${summary.ready}/${summary.total}`}</strong>
+          <small>mit auswertbaren Einsätzen</small>
         </article>
-        <article>
-          <span>Show-Besetzung</span>
-          <strong>{loading ? "…" : summary.withShows}</strong>
-          <small>aus {data?.meta.rehearsal_weeks ?? 0} Probenwoche(n)</small>
+        <article className="memory-overview-card">
+          <span>Skill-Profile</span>
+          <strong>{loading ? "…" : summary.withSkills}</strong>
+          <small>automatisch oder manuell belegt</small>
+        </article>
+        <article className={`memory-overview-card ${summary.attention ? "is-warning" : "is-positive"}`}>
+          <span>Aufmerksamkeit</span>
+          <strong>{loading ? "…" : summary.attention}</strong>
+          <small>{summary.coldStart} neue Profile ohne Historie</small>
         </article>
       </section>
 
@@ -165,12 +240,12 @@ export default function GedaechtnisPage() {
               <button
                 type="button" role="tab" aria-selected={!showInactive}
                 className={!showInactive ? "is-active" : ""}
-                onClick={() => setShowInactive(false)}
+                onClick={() => choosePool(false)}
               >Aktiv</button>
               <button
                 type="button" role="tab" aria-selected={showInactive}
                 className={showInactive ? "is-active" : ""}
-                onClick={() => setShowInactive(true)}
+                onClick={() => choosePool(true)}
               >Inaktiv</button>
             </div>
           </div>
@@ -179,39 +254,62 @@ export default function GedaechtnisPage() {
           {!loading && visible.length === 0 && (
             <div className="dashboard-empty">Keine Mitarbeiter gefunden.</div>
           )}
-          {visible.map((person) => (
+          {visible.map((person) => {
+            const personIntelligence = intelligenceByPerson.get(person.person_id);
+            return (
             <button
               type="button"
               key={person.person_id}
               className={`memory-person-card ${person.person_id === selectedId ? "is-active" : ""}`}
-              onClick={() => { setSelectedId(person.person_id); setAddShow(""); }}
+              onClick={() => {
+                setSelectedId(person.person_id);
+                setAddShow("");
+                setSection("overview");
+              }}
             >
               <span className="team-member-avatar" aria-hidden="true">{initials(person.person)}</span>
               <span className="memory-person-copy">
                 <strong>{person.person}</strong>
-                <small>{person.department || "Ohne Abteilung"}</small>
+                <small>{person.department || "Ohne Abteilung"} · {person.data_quality.assignments} Dienste</small>
               </span>
               <span className="memory-person-tags">
-                {person.shows.length > 0 && (
-                  <span className="badge">{person.shows.length} Shows</span>
-                )}
-                <span className="badge">{patternLabel(person)}</span>
+                <span className={`memory-data-status is-${personIntelligence?.data_status ?? "new"}`}>
+                  {dataStatusLabel(personIntelligence?.data_status)}
+                </span>
+                <small>
+                  {personIntelligence?.skill_count ?? 0} {(personIntelligence?.skill_count ?? 0) === 1 ? "Skill" : "Skills"}
+                  {" · "}
+                  {personIntelligence?.memory_count ?? 0} {(personIntelligence?.memory_count ?? 0) === 1 ? "Signal" : "Signale"}
+                </small>
               </span>
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {selected && (
           <div className="memory-detail">
             <div className="memory-detail-head">
-              <div>
-                <span className="memory-eyebrow">Gedächtnis</span>
-                <h2>{selected.person}</h2>
-                <p>
-                  {selected.data_quality.assignments} Dienste aus{" "}
-                  {selected.data_quality.duty_weeks} Wochen
-                  {selected.department ? ` · ${selected.department}` : ""}
-                </p>
+              <div className="memory-profile-identity">
+                <span className="memory-profile-avatar" aria-hidden="true">{initials(selected.person)}</span>
+                <div>
+                  <span className="memory-eyebrow">Mitarbeiter Intelligence</span>
+                  <h2>{selected.person}</h2>
+                  <p>{selected.department || "Keine Abteilung hinterlegt"}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary memory-profile-open"
+                onClick={() => setProfilePersonId(selected.person_id)}
+              >
+                Intelligence-Profil öffnen
+              </button>
+              <div className="memory-profile-metrics" aria-label="Profildaten">
+                <span><strong>{selected.data_quality.assignments}</strong>Dienste</span>
+                <span><strong>{selected.data_quality.duty_weeks}</strong>Wochen</span>
+                <span><strong>{selectedIntelligence?.skill_count ?? 0}</strong>Skills</span>
+                <span><strong>{selectedIntelligence?.memory_count ?? 0}</strong>Signale</span>
               </div>
             </div>
 
@@ -228,8 +326,51 @@ export default function GedaechtnisPage() {
               </div>
             )}
 
+            <nav className="memory-section-tabs" aria-label="Gedächtnisbereiche">
+              {MEMORY_SECTIONS.map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  className={section === item.id ? "is-active" : ""}
+                  onClick={() => setSection(item.id)}
+                >
+                  {item.label}
+                  {item.id === "shows" && <small>{selected.shows.length}</small>}
+                  {item.id === "tasks" && <small>{selected.tasks.length}</small>}
+                </button>
+              ))}
+            </nav>
+
+            {section === "overview" && (
+              <section className="memory-summary-grid" aria-label="Profilübersicht">
+                <article className={`memory-summary-card is-${selectedIntelligence?.planning_hint.tone ?? "neutral"}`}>
+                  <span className="memory-summary-icon" aria-hidden="true">✦</span>
+                  <div>
+                    <small>Planungshinweis</small>
+                    <strong>{selectedIntelligence?.planning_hint.label ?? "Profil wird aufgebaut"}</strong>
+                    <p>{selectedIntelligence?.planning_hint.text ?? "Noch keine ausreichend belegte Empfehlung vorhanden."}</p>
+                  </div>
+                </article>
+                <button type="button" className="memory-summary-card" onClick={() => setSection("shows")}>
+                  <span className="memory-summary-icon" aria-hidden="true">◉</span>
+                  <div><small>Abendplanung</small><strong>{selected.shows.length} Shows &amp; Partys</strong><p>Beeinflusst Empfehlungen für Abenddienste.</p></div>
+                  <span className="memory-summary-arrow" aria-hidden="true">→</span>
+                </button>
+                <button type="button" className="memory-summary-card" onClick={() => setSection("availability")}>
+                  <span className="memory-summary-icon" aria-hidden="true">◷</span>
+                  <div><small>Verfügbarkeit</small><strong>{patternLabel(selected)}</strong><p>{selected.free.total_free_days} belegte Frei-Tage aus {selected.free.weeks_observed} Wochen.</p></div>
+                  <span className="memory-summary-arrow" aria-hidden="true">→</span>
+                </button>
+                <button type="button" className="memory-summary-card" onClick={() => setSection("tasks")}>
+                  <span className="memory-summary-icon" aria-hidden="true">◇</span>
+                  <div><small>Aufgabenprofil</small><strong>{selected.tasks.length} bekannte Aufgaben</strong><p>Erfahrung bricht Gleichstände, Fairness bleibt stärker.</p></div>
+                  <span className="memory-summary-arrow" aria-hidden="true">→</span>
+                </button>
+              </section>
+            )}
+
             {/* ① Shows & Partys */}
-            <section className="panel memory-card">
+            {section === "shows" && <section className="panel memory-card">
               <div className="memory-card-head">
                 <h3>Shows &amp; Partys</h3>
                 <small>Wer auf der Bühne steht, wird für Abenddienste niedriger priorisiert.</small>
@@ -327,10 +468,10 @@ export default function GedaechtnisPage() {
                   ))}
                 </details>
               )}
-            </section>
+            </section>}
 
             {/* ② Frei-Muster */}
-            <section className="panel memory-card">
+            {section === "availability" && <section className="panel memory-card">
               <div className="memory-card-head">
                 <h3>Frei-Muster</h3>
                 <small>
@@ -390,10 +531,10 @@ export default function GedaechtnisPage() {
                   onClick={() => mutate(() => setMemoryFree(selected.person_id, null))}
                 >Auf Automatik zurücksetzen</button>
               )}
-            </section>
+            </section>}
 
             {/* ③ Aufgaben-Profil */}
-            <section className="panel memory-card">
+            {section === "tasks" && <section className="panel memory-card">
               <div className="memory-card-head">
                 <h3>Aufgaben-Profil</h3>
                 <small>Bei sonst gleicher Belastung wird eine vertraute Aufgabe leicht bevorzugt.</small>
@@ -440,7 +581,7 @@ export default function GedaechtnisPage() {
                   ))}
                 </details>
               )}
-            </section>
+            </section>}
           </div>
         )}
       </section>
@@ -451,6 +592,16 @@ export default function GedaechtnisPage() {
           zugeordnet werden (meist andere Abteilungen):{" "}
           {data!.unmatched_rehearsal_names.map((entry) => entry.raw_name).join(", ")}
         </p>
+      )}
+
+      {profilePersonId !== null && (
+        <EmployeeIntelligenceDialog
+          personId={profilePersonId}
+          onClose={() => {
+            setProfilePersonId(null);
+            void refreshIntelligence();
+          }}
+        />
       )}
     </div>
   );

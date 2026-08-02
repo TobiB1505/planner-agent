@@ -234,6 +234,7 @@ def update_person(conn, person_id: int, name: str, department: str | None, activ
         "UPDATE people SET name = ?, department = ?, active = ? WHERE id = ?",
         (name, department, 1 if active else 0, person_id),
     )
+    conn.execute("DELETE FROM employee_statistics WHERE person_id = ?", (person_id,))
     conn.commit()
 
 
@@ -243,6 +244,7 @@ def delete_person(conn, person_id: int):
         "UPDATE people SET active = 0, deleted = 1 WHERE id = ?",
         (person_id,),
     )
+    conn.execute("DELETE FROM employee_statistics WHERE person_id = ?", (person_id,))
     conn.commit()
 
 
@@ -267,6 +269,10 @@ def create_person(conn, name: str, department: str | None = None) -> int:
         conn.execute(
             "UPDATE people SET department = ?, active = 1, deleted = 0 WHERE id = ?",
             (department, existing["id"]),
+        )
+        conn.execute(
+            "DELETE FROM employee_statistics WHERE person_id = ?",
+            (existing["id"],),
         )
         conn.commit()
         return existing["id"]

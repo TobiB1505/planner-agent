@@ -354,6 +354,18 @@ function PersonCellEditorInstance({
           )}
           {sectionName && <div className="person-editor-section">{sectionName}</div>}
         </div>
+        <button
+          type="button"
+          className="person-editor-close"
+          aria-label="Mitarbeiter-Zuweisung schließen"
+          title="Schließen"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={cancelEditing}
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M5.5 5.5 14.5 14.5M14.5 5.5 5.5 14.5" />
+          </svg>
+        </button>
       </div>
 
       <div className="person-editor-occupancy">
