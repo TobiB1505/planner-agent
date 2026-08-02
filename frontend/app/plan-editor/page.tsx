@@ -512,7 +512,7 @@ export default function PlanEditorPage() {
         setArtistPlans(storedArtistPlans);
         setRehearsalPlans(storedRehearsalPlans);
         setArchivedWeeks(storedWeeks);
-        if (!storedWeeks.some((week) => week.start_date === initialStart)) {
+        if (!storedWeeks.some((week) => week.start_date === mondayIso())) {
           setInitializing(false);
         }
       })
@@ -527,7 +527,7 @@ export default function PlanEditorPage() {
       window.clearTimeout(timer);
       window.removeEventListener("focus", load);
     };
-  }, [initialStart]);
+  }, []);
 
   useEffect(() => {
     rowsRef.current = rows;
