@@ -134,6 +134,7 @@ def test_plan_quality_handles_good_conflict_and_missing_data(tmp_path, monkeypat
     conn = _conn(tmp_path, monkeypatch)
     dani_id = db.create_person(conn, "Dani", "Sportstainer")
     db.create_person(conn, "Nick", "Sportstainer")
+    db.create_person(conn, "Manu", "Deko")
     week_id = _week(conn)
     db.insert_assignment(conn, week_id, "2026-07-20", "Sportprogramm", "11:00 BVB", dani_id, None)
     conn.commit()
@@ -159,10 +160,21 @@ def test_plan_quality_handles_good_conflict_and_missing_data(tmp_path, monkeypat
     missing = plan_quality.calculate_plan_quality(
         conn, start_date="2026-07-27", assignments=[], absences=[]
     )
+    relief_only = plan_quality.calculate_plan_quality(
+        conn,
+        start_date="2026-07-27",
+        assignments=[{
+            "date": "2026-07-27", "category": "Barfrei",
+            "subcategory": None, "person": "Manu",
+        }],
+        absences=[],
+    )
 
     assert good["score"] > conflict["score"]
     assert any(issue["code"] == "absence" for issue in conflict["issues"])
     assert all(dimension["neutral"] for dimension in missing["dimensions"])
+    assert all(dimension["neutral"] for dimension in relief_only["dimensions"])
+    assert relief_only["analysis"]["data_basis"]["assignments"] == 0
 
 
 def test_audit_records_change_undo_recommendation_and_save(tmp_path, monkeypatch):

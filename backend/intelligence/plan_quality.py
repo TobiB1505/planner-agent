@@ -55,6 +55,16 @@ def calculate_plan_quality(
 ) -> dict:
     people_rows = [dict(row) for row in db.get_all_people(conn, active_only=True)]
     people_by_name = {row["name"]: row for row in people_rows}
+    # Ausschlafen und Barfrei sind Entlastungen, keine Arbeitsdienste. Sie dürfen
+    # deshalb weder Belastung, Skill-Matching noch historische Plausibilität
+    # künstlich verändern (insbesondere nicht bei den 8h-Vertrags-Ausnahmen).
+    work_assignments = [
+        assignment
+        for assignment in assignments
+        if not planning_rules.is_relief_reward(
+            stats.normalize_category(assignment.get("category") or "")
+        )
+    ]
     absence_lookup = {
         (row.get("date"), (row.get("person") or "").strip()): row.get("type") or "abwesend"
         for row in absences
@@ -73,7 +83,7 @@ def calculate_plan_quality(
     for row in manual_skill_rows:
         manual_skills[row["name"]].add(row["skill_id"])
 
-    for assignment in assignments:
+    for assignment in work_assignments:
         name = (assignment.get("person") or "").strip()
         if not name or name not in people_by_name:
             continue
@@ -128,7 +138,7 @@ def calculate_plan_quality(
             })
 
     required_groups: dict[tuple[str, str, str], set[str]] = defaultdict(set)
-    for assignment in assignments:
+    for assignment in work_assignments:
         key = (assignment.get("date"), stats.normalize_category(assignment.get("category") or ""), assignment.get("subcategory") or "")
         name = (assignment.get("person") or "").strip()
         if name:
@@ -143,7 +153,7 @@ def calculate_plan_quality(
             })
 
     conflict_count = len([item for item in issues if item["severity"] == "conflict"])
-    if assignments:
+    if work_assignments:
         conflict_ratio = max(0.0, 1.0 - conflict_count * 0.2)
         conflict_explanations = [
             "Keine harten Konflikte erkannt" if conflict_count == 0 else f"{conflict_count} harte Konflikte erkannt"
@@ -153,7 +163,7 @@ def calculate_plan_quality(
         conflict_dimension = _dimension("conflicts", "Konflikte", 0.5, ["Noch keine Zuweisungen für eine belastbare Prüfung"], neutral=True)
 
     active_counts = [counts[row["name"]] for row in people_rows]
-    if assignments and len(active_counts) >= 2 and sum(active_counts) > 0:
+    if work_assignments and len(active_counts) >= 2 and sum(active_counts) > 0:
         mean = sum(active_counts) / len(active_counts)
         variation = pstdev(active_counts) / mean if mean else 1.0
         fairness_ratio = max(0.0, 1.0 - min(1.0, variation))
@@ -180,7 +190,7 @@ def calculate_plan_quality(
 
     preferences = _preference_lookup(conn)
     preference_total = preference_matches = 0
-    for assignment in assignments:
+    for assignment in work_assignments:
         name = (assignment.get("person") or "").strip()
         category = stats.normalize_category(assignment.get("category") or "")
         if preferences.get(name):
@@ -206,7 +216,7 @@ def calculate_plan_quality(
     }
     history_total = history_matches = 0
     if history_weeks >= 4:
-        for assignment in assignments:
+        for assignment in work_assignments:
             name = (assignment.get("person") or "").strip()
             if name:
                 history_total += 1
@@ -242,7 +252,7 @@ def calculate_plan_quality(
             ],
             "decisions": decisions,
             "data_basis": {
-                "assignments": len(assignments),
+                "assignments": len(work_assignments),
                 "active_people": len(people_rows),
                 "historical_weeks": history_weeks,
             },

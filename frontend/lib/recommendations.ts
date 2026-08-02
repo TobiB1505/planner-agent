@@ -538,6 +538,7 @@ export function recommendForCell({
         sport_spt: "Sportprogramm bevorzugt SPT; manuelle Ausnahme möglich",
         sport_guests_vs_robins: "Gäste vs. Robins bevorzugt SPT; manuelle Ausnahme möglich",
         kp3_no_sound_light: "KP3 bevorzugt andere Abteilungen vor S&L",
+        relief_reward: "8h-Vertrag: Ausschlafen/Barfrei ist nicht erforderlich; manuelle Ausnahme möglich",
         ops_managers: "OPS/WP bevorzugt Manager",
         aperitif_sound_light: "Aperitif bevorzugt S&L",
         moderation_spt_manager: "Moderation und Getränkedienst bevorzugen SPT oder Manager; S&L nur im Sonderfall",

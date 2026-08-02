@@ -9,7 +9,7 @@ import sqlite3
 
 import pytest
 
-from backend import db, planning_rules, rehearsal_plan
+from backend import assignment, db, planning_rules, rehearsal_plan, stats
 from backend.api import _assignment_warnings
 
 
@@ -155,6 +155,75 @@ def test_kp3_keeps_real_evening_contract_restriction():
     assert planning_rules.hard_violation(
         "Brigitte", "Entertainment", "Kochdienste", "KP3 19:00 - 21:15"
     )
+
+
+def test_eight_hour_contracts_do_not_need_relief_but_remain_manual_exceptions():
+    team = [
+        *TEAM,
+        {"name": "Brigitte", "department": "Entertainment"},
+        {"name": "Manu", "department": "Deko"},
+    ]
+    rule = planning_rules.assignment_rule(team, "Barfrei", None)
+
+    assert rule is not None
+    assert "Brigitte" in rule["allowed_people"]
+    assert "Manu" in rule["allowed_people"]
+    assert "Brigitte" not in rule["recommended_people"]
+    assert "Manu" not in rule["recommended_people"]
+    assert rule["blocked_people"] == []
+    assert rule["hard_rule"] is False
+    assert planning_rules.hard_violation(
+        "Manu", "Deko", "Ausschlafen", None
+    ) is None
+
+
+def test_automatic_relief_skips_eight_hour_contracts():
+    week_dates = [f"2026-08-{day:02d}" for day in range(3, 10)]
+    result = assignment.add_relief_rewards(
+        [],
+        [
+            {"name": "Sven", "department": "SPT"},
+            {"name": "Brigitte", "department": "Entertainment"},
+            {"name": "Manu", "department": "Deko"},
+        ],
+        week_dates,
+        {},
+    )
+
+    assert [row["person"] for row in result] == ["Sven"]
+
+
+def test_fairness_alerts_exclude_eight_hour_contracts_from_relief_quota(memory_db):
+    people = {
+        name: db.create_person(memory_db, name, department)
+        for name, department in [
+            ("Sven", "SPT"),
+            ("Brigitte", "Entertainment"),
+            ("Manu", "Deko"),
+        ]
+    }
+    week_id = db.insert_week_plan(
+        memory_db, 32, "2026-08-03", "2026-08-09", "Test"
+    )
+    for name, person_id in people.items():
+        db.insert_assignment(
+            memory_db,
+            week_id,
+            "2026-08-03",
+            "Meeting",
+            None,
+            person_id,
+            None,
+        )
+    memory_db.commit()
+
+    relief_alerts = [
+        alert
+        for alert in stats.fairness_alerts(memory_db, week_id)
+        if alert["rule"] == "barfrei_ausschlafen"
+    ]
+
+    assert [alert["person"] for alert in relief_alerts] == ["Sven"]
 
 
 def test_hour_only_service_range_matches_backend_formats():

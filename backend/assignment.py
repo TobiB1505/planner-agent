@@ -48,15 +48,21 @@ def add_relief_rewards(
     absent_by_date: dict[str, set[str]],
     show_dates: set[str] | None = None,
 ) -> list[dict]:
-    """Vergibt genau eine gemeinsame Entlastung (Ausschlafen ODER Barfrei) pro MA.
+    """Vergibt eine Entlastung pro berechtigtem MA (Ausschlafen ODER Barfrei).
 
     Ausschlafen wird nach späten Einsätzen bevorzugt. Barfrei honoriert vor allem viele
     Kochdienste bzw. eine hohe Wochen-/Tagesbelastung. Mehrere Namen dürfen in derselben
     Tageszelle stehen; das Grid fasst die einzelnen Datensätze automatisch zusammen.
+    Personen mit 8-Stunden-Vertrag sind ausgenommen, da sie diese Zusatzentlastung
+    nicht benötigen.
     """
     week_dates = set(week_dates_iso)
     show_dates = show_dates or set()
-    people = [p["name"] for p in active_people]
+    people = [
+        p["name"]
+        for p in active_people
+        if not planning_rules.relief_reward_exempt(p["name"])
+    ]
     department_by_person = {
         p["name"]: p.get("department") for p in active_people
     }

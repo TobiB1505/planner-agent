@@ -275,6 +275,11 @@ def fairness_alerts(conn, week_plan_id: int) -> list[dict]:
     alerts = []
     for person in sorted(active_people - fully_absent):
         for rule in template_spec.FAIRNESS_RULES:
+            if (
+                rule["id"] == "barfrei_ausschlafen"
+                and planning_rules.relief_reward_exempt(person)
+            ):
+                continue
             if rule.get("is_absence"):
                 count = absence_count.get(person, {}).get(rule["absence_type"], 0)
                 if count < rule["min_per_week"]:

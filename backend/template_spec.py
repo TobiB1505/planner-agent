@@ -260,7 +260,10 @@ FAIRNESS_RULES = [
         "categories": ["Barfrei", "Ausschlafen"],
         "min_per_week": 1,
         "max_per_week": 1,
-        "description": "Jeder aktive MA bekommt genau 1x Barfrei oder Ausschlafen pro Woche.",
+        "description": (
+            "Jeder aktive MA bekommt genau 1x Barfrei oder Ausschlafen pro Woche; "
+            "Manu und Brigitte sind wegen ihres 8-Stunden-Vertrags ausgenommen."
+        ),
     },
     {
         "id": "frei_quota",

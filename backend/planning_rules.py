@@ -15,7 +15,9 @@ from typing import Iterable
 RELIEF_REWARDS = {"Ausschlafen", "Barfrei"}
 
 # Auf 8-Stunden-Verträgen angestellt: nur vormittags/nachmittags einsetzbar,
-# nie abends (z.B. beim An-/Abreise-Dienst mit später Uhrzeit).
+# nie abends (z.B. beim An-/Abreise-Dienst mit später Uhrzeit). Da ihre tägliche
+# Arbeitszeit bereits vertraglich begrenzt ist, brauchen sie außerdem keine
+# zusätzliche Wochenentlastung durch Ausschlafen oder Barfrei.
 EIGHT_HOUR_CONTRACT_PEOPLE = {"Brigitte", "Manu"}
 _EIGHT_HOUR_CONTRACT_CASEFOLDED = {name.casefold() for name in EIGHT_HOUR_CONTRACT_PEOPLE}
 EXTRADIENSTE_PERSON_CATEGORIES = {"TT & Kicker wischen", "Süße Momente", "An + Abreise-Dienst"}
@@ -76,12 +78,13 @@ def active_planning_rules() -> list[dict]:
         },
         {
             "id": "extradienste_8h",
-            "title": "8h-Verträge bei Extradiensten und Kochdienst",
+            "title": "8h-Verträge: Abenddienste & Entlastung",
             "description": (
                 "Brigitte und Manu sind auf 8-Stunden-Verträgen angestellt und "
                 "übernehmen keine Abenddienste: weder Extradienste am Abend "
                 "(z.B. spätes An-/Abreise) noch den Abend-Kochdienst KP3. "
-                "Vormittags und nachmittags bleibt beides möglich."
+                "Vormittags und nachmittags bleibt beides möglich. Zusätzlich "
+                "brauchen beide kein Ausschlafen oder Barfrei."
             ),
             "tone": "warning",
         },
@@ -89,8 +92,9 @@ def active_planning_rules() -> list[dict]:
             "id": "relief",
             "title": "Entlastung",
             "description": (
-                "Jeder MA erhält einmal Barfrei oder Ausschlafen. Späte Einsätze "
-                "und viele Kochdienste erhöhen die Priorität."
+                "Alle MA außer Brigitte und Manu erhalten einmal Barfrei oder "
+                "Ausschlafen. Späte Einsätze und viele Kochdienste erhöhen die "
+                "Priorität. Manuelle Sonderfälle bleiben möglich."
             ),
             "tone": "info",
         },
@@ -187,6 +191,15 @@ def active_planning_rules() -> list[dict]:
 
 def is_relief_reward(category: str) -> bool:
     return (category or "").strip() in RELIEF_REWARDS
+
+
+def is_eight_hour_contract(name: str) -> bool:
+    return (name or "").strip().casefold() in _EIGHT_HOUR_CONTRACT_CASEFOLDED
+
+
+def relief_reward_exempt(name: str) -> bool:
+    """8h-Verträge brauchen keine zusätzliche Entlastungszeile."""
+    return is_eight_hour_contract(name)
 
 
 def is_guests_vs_robins_bvb(
@@ -290,6 +303,16 @@ def person_decision(
     tags = department_tags(department)
 
     if rule_id == "relief_reward":
+        if relief_reward_exempt(name):
+            return {
+                "rule_id": rule_id,
+                "allowed": True,
+                "recommended": False,
+                "message": (
+                    "Brigitte und Manu brauchen wegen ihres 8-Stunden-Vertrags "
+                    "kein Ausschlafen oder Barfrei. Eine manuelle Ausnahme bleibt möglich."
+                ),
+            }
         return {
             "rule_id": rule_id,
             "allowed": True,
@@ -300,7 +323,7 @@ def person_decision(
             ),
         }
     if rule_id == "extradienste_8h_evening":
-        allowed = name.strip().casefold() not in _EIGHT_HOUR_CONTRACT_CASEFOLDED
+        allowed = not is_eight_hour_contract(name)
         return {
             "rule_id": rule_id,
             "allowed": allowed,
@@ -353,7 +376,7 @@ def person_decision(
             ),
         }
     if rule_id == "kp3_no_sound_light":
-        is_8h_contract = name.strip().casefold() in _EIGHT_HOUR_CONTRACT_CASEFOLDED
+        is_8h_contract = is_eight_hour_contract(name)
         # Der 8h-Vertrag ist eine echte zeitliche Einschränkung. S&L ist dagegen
         # eine starke Einsatzpräferenz: wegen des Abendprogramms möglichst nicht
         # für KP3 wählen, aber Sonderfälle nicht hart blockieren.
