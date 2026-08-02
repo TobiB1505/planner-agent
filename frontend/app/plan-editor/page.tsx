@@ -239,20 +239,16 @@ function rowKey(row: PlanRow): string {
   return `${rowCategory(row)}::${row.Zeile}`;
 }
 
-function contrastColor(hex: string): string {
-  const color = hex.replace("#", "");
-  const r = parseInt(color.slice(0, 2), 16);
-  const g = parseInt(color.slice(2, 4), 16);
-  const b = parseInt(color.slice(4, 6), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 > 145 ? "#171717" : "#ffffff";
-}
-
 function GroupHeaderRenderer({ data }: ICellRendererParams<PlanRow>) {
   const color = data?._group_color || "#6c7bff";
   return (
     <div
-      className="flex h-full w-full items-center justify-center px-4 text-center text-sm font-extrabold tracking-[0.015em]"
-      style={{ backgroundColor: color, color: contrastColor(color) }}
+      className="plan-group-row flex h-full w-full items-center px-4 text-left text-[12.5px] font-semibold tracking-[0.02em]"
+      style={{
+        backgroundColor: hexToRgba(color, 0.14),
+        borderLeft: `3px solid ${color}`,
+        color: "var(--foreground)",
+      }}
     >
       {data?._group_label}
     </div>
@@ -843,8 +839,8 @@ export default function PlanEditorPage() {
         editable: false,
         lockPinned: true,
         cellStyle: (params) => ({
-          backgroundColor: hexToRgba(rowColor(params.data), 0.32),
-          borderLeft: `4px solid ${rowColor(params.data)}`,
+          backgroundColor: hexToRgba(rowColor(params.data), 0.16),
+          borderLeft: `3px solid ${rowColor(params.data)}`,
           fontWeight: "700",
         }),
       },
@@ -858,7 +854,7 @@ export default function PlanEditorPage() {
         wrapText: false,
         autoHeight: false,
         cellStyle: (params) => ({
-          backgroundColor: hexToRgba(rowColor(params.data), 0.18),
+          backgroundColor: hexToRgba(rowColor(params.data), 0.09),
           color: "var(--muted)",
           fontWeight: "600",
         }),
@@ -990,7 +986,7 @@ export default function PlanEditorPage() {
         };
       },
       cellStyle: (params) => ({
-        backgroundColor: hexToRgba(rowColor(params.data), 0.13),
+        backgroundColor: hexToRgba(rowColor(params.data), 0.06),
         cursor: "text",
       }),
       // Konfliktmarkierungen (Sprint 3): liest aus einem Ref statt aus einer

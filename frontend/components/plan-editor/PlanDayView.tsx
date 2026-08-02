@@ -66,11 +66,7 @@ export default function PlanDayView({
 
   return (
     <div className="plan-day-view">
-      <div className="planner-grid-meta plan-workspace-orientation">
-        <div className="plan-workspace-copy">
-          <strong>Tagesplanung</strong>
-          <span>Ein Tag im Detail · nach Dienstplan-Abschnitten gruppiert</span>
-        </div>
+      <div className="planner-grid-meta plan-workspace-orientation plan-workspace-orientation-full">
         <DayNavigator
           dayLabels={dayLabels}
           weekDates={weekDates}
