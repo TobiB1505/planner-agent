@@ -9,10 +9,12 @@ import PlanIssuesPanel from "@/components/PlanIssuesPanel";
 import PreparationStatusCard from "@/components/PreparationStatusCard";
 import SoftsportCellEditor from "@/components/SoftsportCellEditor";
 import WeekPicker from "@/components/WeekPicker";
-import DayNavigator from "@/components/plan-editor/DayNavigator";
+import DayHeaderCell from "@/components/plan-editor/DayHeaderCell";
 import EditorViewControls from "@/components/plan-editor/EditorViewControls";
+import PlanDayView from "@/components/plan-editor/PlanDayView";
 import PlanPreviewDialog from "@/components/plan-editor/PlanPreviewDialog";
 import PlanIntelligenceDialog from "@/components/plan-editor/PlanIntelligenceDialog";
+import PlanViewSwitcher from "@/components/plan-editor/PlanViewSwitcher";
 import {
   generatePlan,
   getActivePeople,
@@ -39,10 +41,12 @@ import {
 } from "@/lib/api";
 import { categoryColor, hexToRgba } from "@/lib/categoryColors";
 import { diffPlanRows, type PlanDiff } from "@/lib/plan-editor/planDiff";
+import { computeDayStatuses } from "@/lib/plan-editor/dayStatus";
 import {
   loadPlanViewPreferences,
   savePlanViewPreferences,
   type PlanDensity,
+  type PlanEditorViewMode,
   type PlanViewPreferences,
 } from "@/lib/plan-editor/viewPreferences";
 import {
@@ -335,7 +339,10 @@ export default function PlanEditorPage() {
   const [viewPreferences, setViewPreferences] = useState<PlanViewPreferences>(() =>
     loadPlanViewPreferences(),
   );
-  const { density } = viewPreferences;
+  const { density, viewMode } = viewPreferences;
+  const setViewMode = useCallback((nextMode: PlanEditorViewMode) => {
+    setViewPreferences((current) => ({ ...current, viewMode: nextMode }));
+  }, []);
   const [activeDay, setActiveDay] = useState("");
   const [automationPreview, setAutomationPreview] = useState<AutomationPreview | null>(null);
 
@@ -441,6 +448,11 @@ export default function PlanEditorPage() {
 
   const cellIssueIndex = useMemo(() => buildCellIssueIndex(validation.issues), [validation.issues]);
 
+  const dayStatuses = useMemo(
+    () => computeDayStatuses(dayLabels, weekDates, validation.issues, isDirty),
+    [dayLabels, weekDates, validation.issues, isDirty],
+  );
+
   useEffect(() => {
     if (!rows.length || !dayLabels.length) return;
     let cancelled = false;
@@ -473,28 +485,61 @@ export default function PlanEditorPage() {
     gridApiRef.current?.refreshCells({ force: true });
   }, [cellIssueIndex]);
 
-  function navigateToIssue(issue: PlanIssue, options?: { openEditor?: boolean }) {
-    const ref = issue.primaryCell;
+  /** Fokussiert eine Zelle im (immer gemounteten) AG-Grid der Wochenübersicht -
+   * gemeinsam genutzt von der Planprüfung (navigateToIssue) und der
+   * Tagesplanung (editDayRow), damit es nur einen Code-Pfad fürs
+   * Zell-Bearbeiten gibt. */
+  function focusGridCell(
+    rowId: string,
+    columnId: string,
+    options?: { openEditor?: boolean; onMissing?: () => void },
+  ) {
     const api = gridApiRef.current;
-    if (!ref || !api) return;
-    const node = api.getRowNode(ref.rowId);
+    if (!api) return;
+    const node = api.getRowNode(rowId);
     if (!node || node.rowIndex == null) {
-      setIssuesPanelOpen(false);
-      setMessage({
-        kind: "error",
-        text: "Diese Stelle gibt es im aktuellen Plan nicht mehr - die Planprüfung wird aktualisiert.",
-      });
+      options?.onMissing?.();
       return;
     }
-    setIssuesPanelOpen(false);
-    api.ensureIndexVisible(node.rowIndex, "middle");
-    api.ensureColumnVisible(ref.columnId);
-    api.setFocusedCell(node.rowIndex, ref.columnId);
-    api.flashCells({ rowNodes: [node], columns: [ref.columnId], flashDuration: 1200, fadeDuration: 800 });
+    const rowIndex = node.rowIndex;
+    api.ensureIndexVisible(rowIndex, "middle");
+    api.ensureColumnVisible(columnId);
+    api.setFocusedCell(rowIndex, columnId);
+    api.flashCells({ rowNodes: [node], columns: [columnId], flashDuration: 1200, fadeDuration: 800 });
     if (options?.openEditor) {
-      const rowIndex = node.rowIndex;
-      window.setTimeout(() => api.startEditingCell({ rowIndex, colKey: ref.columnId }), 80);
+      window.setTimeout(() => api.startEditingCell({ rowIndex, colKey: columnId }), 80);
     }
+  }
+
+  function editDayRow(row: PlanRow, dayLabel: string) {
+    setViewMode("week");
+    window.setTimeout(() => {
+      focusGridCell(rowKey(row), dayLabel, {
+        openEditor: true,
+        onMissing: () =>
+          setMessage({
+            kind: "error",
+            text: "Diese Zeile gibt es im aktuellen Plan nicht mehr.",
+          }),
+      });
+    }, 60);
+  }
+
+  function navigateToIssue(issue: PlanIssue, options?: { openEditor?: boolean }) {
+    const ref = issue.primaryCell;
+    if (!ref) return;
+    setIssuesPanelOpen(false);
+    setViewMode("week");
+    window.setTimeout(() => {
+      focusGridCell(ref.rowId, ref.columnId, {
+        openEditor: options?.openEditor,
+        onMissing: () =>
+          setMessage({
+            kind: "error",
+            text: "Diese Stelle gibt es im aktuellen Plan nicht mehr - die Planprüfung wird aktualisiert.",
+          }),
+      });
+    }, 60);
   }
 
   useEffect(() => {
@@ -687,11 +732,21 @@ export default function PlanEditorPage() {
         }),
       },
     ];
-    const days = dayLabels.map<ColDef<PlanRow>>((label) => ({
+    const todayIso = new Date().toLocaleDateString("sv-SE");
+    const days = dayLabels.map<ColDef<PlanRow>>((label, index) => ({
       field: label,
-      headerName: weekDates[dayLabels.indexOf(label)] === new Date().toLocaleDateString("sv-SE")
-        ? `${label} · Heute`
-        : label,
+      headerName: label,
+      // Die Tageskachel (Wochentag, Datum, "Heute", Status-Punkte) ersetzt den
+      // Standard-Spaltenkopf komplett - dadurch gibt es nur noch eine einzige
+      // Tagesnavigation statt einer Kachel-Leiste plus separater Spaltenköpfe.
+      headerComponent: DayHeaderCell,
+      headerComponentParams: {
+        dayLabel: label,
+        isToday: weekDates[index] === todayIso,
+        isActive: label === effectiveActiveDay,
+        status: dayStatuses[label],
+        onSelect: selectDay,
+      },
       minWidth: 94,
       flex: 1,
       editable: true,
@@ -871,6 +926,8 @@ export default function PlanEditorPage() {
     startDate,
     weekDates,
     effectiveActiveDay,
+    dayStatuses,
+    selectDay,
   ]);
 
   async function buildGeneratedPlan(recalculate: boolean) {
@@ -1333,13 +1390,6 @@ export default function PlanEditorPage() {
 
   const gridSection = rows.length > 0 && (
     <>
-      <div className="planner-grid-meta plan-workspace-orientation">
-        <div className="plan-workspace-copy">
-          <strong>Wochenübersicht</strong>
-          <span>Alle sieben Tage direkt bearbeiten · Namen auswählen und Infozeilen als Klartext eintragen</span>
-        </div>
-        <DayNavigator dayLabels={dayLabels} weekDates={weekDates} activeDay={effectiveActiveDay} onSelect={selectDay} />
-      </div>
       <section className="panel plan-grid-shell overflow-hidden">
         <div className="plan-grid-scroll-shell">
           <div className={`plan-grid plan-grid-week plan-density-${density} ${hasExistingPlan ? "h-[calc(100vh-244px)]" : "h-[calc(100vh-300px)]"} min-h-[520px]`}>
@@ -1348,6 +1398,9 @@ export default function PlanEditorPage() {
               rowData={rows}
               columnDefs={columnDefs}
               suppressFieldDotNotation
+              // Höher als der Standard, damit die Tageskacheln (Wochentag, Datum,
+              // "Heute", Status-Punkte) als Spaltenkopf Platz haben.
+              headerHeight={54}
               defaultColDef={{ sortable: false, resizable: true }}
               isFullWidthRow={(params) => params.rowNode.data?._row_type === "group"}
               fullWidthCellRenderer={GroupHeaderRenderer}
@@ -1582,7 +1635,24 @@ export default function PlanEditorPage() {
           {rows.length > 0 ? (
             <>
               {toolbar}
-              {gridSection}
+              <PlanViewSwitcher mode={viewMode} onChange={setViewMode} />
+              <div style={viewMode === "day" ? undefined : { display: "none" }}>
+                <PlanDayView
+                  rows={rows}
+                  dayLabels={dayLabels}
+                  weekDates={weekDates}
+                  activeDay={effectiveActiveDay}
+                  onSelectDay={selectDay}
+                  statuses={dayStatuses}
+                  issues={validation.issues}
+                  onEditRow={editDayRow}
+                />
+              </div>
+              {/* AG Grid bleibt beim Moduswechsel gemountet (nur per CSS versteckt) -
+                  ein Remount würde Undo/Redo-Historie und Scrollposition verlieren. */}
+              <div style={viewMode === "week" ? undefined : { display: "none" }}>
+                {gridSection}
+              </div>
             </>
           ) : (
             <section className="planner-empty-state">

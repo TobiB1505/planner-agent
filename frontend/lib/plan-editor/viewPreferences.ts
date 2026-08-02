@@ -1,17 +1,24 @@
 export type PlanDensity = "compact" | "standard" | "large";
+export type PlanEditorViewMode = "day" | "week";
 
 export interface PlanViewPreferences {
   density: PlanDensity;
+  viewMode: PlanEditorViewMode;
 }
 
 const STORAGE_KEY = "planner-agent:plan-editor:view-preferences:v1";
 
 const DEFAULT_PREFERENCES: PlanViewPreferences = {
   density: "compact",
+  viewMode: "week",
 };
 
 function isDensity(value: unknown): value is PlanDensity {
   return value === "compact" || value === "standard" || value === "large";
+}
+
+function isViewMode(value: unknown): value is PlanEditorViewMode {
+  return value === "day" || value === "week";
 }
 
 export function defaultPlanViewPreferences(): PlanViewPreferences {
@@ -28,6 +35,7 @@ export function loadPlanViewPreferences(): PlanViewPreferences {
     const parsed = JSON.parse(stored) as Partial<PlanViewPreferences>;
     return {
       density: isDensity(parsed.density) ? parsed.density : fallback.density,
+      viewMode: isViewMode(parsed.viewMode) ? parsed.viewMode : fallback.viewMode,
     };
   } catch {
     return fallback;
