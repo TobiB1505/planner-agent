@@ -5,6 +5,7 @@ import PlanDaySectionCard from "@/components/plan-editor/PlanDaySectionCard";
 import { buildDaySections, type PlanRowLike } from "@/lib/plan-editor/daySections";
 import type { DayStatus } from "@/lib/plan-editor/dayStatus";
 import type { PlanIssue } from "@/lib/planValidation";
+import type { CandidateInfo } from "@/lib/recommendations";
 import { useMemo } from "react";
 
 export default function PlanDayView({
@@ -15,7 +16,12 @@ export default function PlanDayView({
   onSelectDay,
   statuses,
   issues,
-  onEditRow,
+  people,
+  isPersonSection,
+  isAbsenceSection,
+  getCandidates,
+  getSuggestions,
+  onCommitEntry,
 }: {
   rows: PlanRowLike[];
   dayLabels: string[];
@@ -24,7 +30,12 @@ export default function PlanDayView({
   onSelectDay: (dayLabel: string) => void;
   statuses: Record<string, DayStatus>;
   issues: PlanIssue[];
-  onEditRow: (row: PlanRowLike, dayLabel: string) => void;
+  people: string[];
+  isPersonSection: (category: string) => boolean;
+  isAbsenceSection: (category: string) => boolean;
+  getCandidates: (row: PlanRowLike, dayLabel: string) => CandidateInfo[];
+  getSuggestions: (category: string) => string[];
+  onCommitEntry: (row: PlanRowLike, dayLabel: string, nextValue: string) => void;
 }) {
   const sections = useMemo(() => buildDaySections(rows), [rows]);
   const dayIndex = dayLabels.indexOf(activeDay);
@@ -56,8 +67,14 @@ export default function PlanDayView({
             key={section.key}
             section={section}
             dayLabel={activeDay}
+            dayLabels={dayLabels}
             issues={issues}
-            onEditRow={onEditRow}
+            people={people}
+            isPersonSection={isPersonSection}
+            isAbsenceSection={isAbsenceSection}
+            getCandidates={getCandidates}
+            getSuggestions={getSuggestions}
+            onCommitEntry={onCommitEntry}
           />
         ))}
       </div>

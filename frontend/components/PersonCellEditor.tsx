@@ -71,7 +71,7 @@ function backendCandidate(candidate: IntelligentCandidate): CandidateInfo {
   };
 }
 
-function parseCell(value: string): { prefix: string; names: string[] } {
+export function parseCell(value: string): { prefix: string; names: string[] } {
   const lines = value.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   const firstPipeLine = lines.findIndex((line) => line.includes("|"));
   const prefixLines =
@@ -98,7 +98,7 @@ function parseCell(value: string): { prefix: string; names: string[] } {
   return { prefix: prefixLines.join("\n"), names };
 }
 
-function composeCell(prefix: string, names: string[]): string {
+export function composeCell(prefix: string, names: string[]): string {
   const joined = names.join(", ");
   // Ein vorhandener Präfix (z.B. Ort/Uhrzeit/Künstler beim Aperitif) bleibt auch
   // erhalten, wenn kein MA (mehr) zugewiesen ist - sonst geht die Info beim

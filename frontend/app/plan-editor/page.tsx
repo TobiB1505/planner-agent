@@ -42,6 +42,7 @@ import {
 import { categoryColor, hexToRgba } from "@/lib/categoryColors";
 import { diffPlanRows, type PlanDiff } from "@/lib/plan-editor/planDiff";
 import { computeDayStatuses } from "@/lib/plan-editor/dayStatus";
+import { collectCategorySuggestions } from "@/lib/plan-editor/entryFieldType";
 import {
   loadPlanViewPreferences,
   savePlanViewPreferences,
@@ -486,9 +487,8 @@ export default function PlanEditorPage() {
   }, [cellIssueIndex]);
 
   /** Fokussiert eine Zelle im (immer gemounteten) AG-Grid der Wochenübersicht -
-   * gemeinsam genutzt von der Planprüfung (navigateToIssue) und der
-   * Tagesplanung (editDayRow), damit es nur einen Code-Pfad fürs
-   * Zell-Bearbeiten gibt. */
+   * genutzt von der Planprüfung (navigateToIssue), um bei einem Konflikt direkt
+   * an die betroffene Stelle in der Wochenübersicht zu springen. */
   function focusGridCell(
     rowId: string,
     columnId: string,
@@ -511,19 +511,85 @@ export default function PlanEditorPage() {
     }
   }
 
-  function editDayRow(row: PlanRow, dayLabel: string) {
-    setViewMode("week");
-    window.setTimeout(() => {
-      focusGridCell(rowKey(row), dayLabel, {
-        openEditor: true,
-        onMissing: () =>
-          setMessage({
-            kind: "error",
-            text: "Diese Zeile gibt es im aktuellen Plan nicht mehr.",
-          }),
+  /** Übernimmt eine Tagesplanung-Inline-Bearbeitung in dieselbe `rows`-Struktur
+   * und dieselbe Buchführung (dirty/Audit/Konfliktmarkierung), die
+   * onCellValueChanged für Bearbeitungen in der Wochenübersicht nutzt - ein
+   * einziger Bearbeitungs-"Motor" für beide Ansichten, keine zweite
+   * Speicherlogik. */
+  const isPersonSection = useCallback(
+    (category: string) => personCategories.has(category) || ABSENCE_SECTIONS.has(category),
+    [personCategories],
+  );
+  const isAbsenceSection = useCallback((category: string) => ABSENCE_SECTIONS.has(category), []);
+
+  const commitDayEntry = useCallback((row: PlanRow, dayLabel: string, rawNextValue: string) => {
+    const previousValue = row[dayLabel] ?? null;
+    const nextValue = rawNextValue.trim() ? rawNextValue : null;
+    if (previousValue === nextValue) return;
+    row[dayLabel] = nextValue;
+    const key = cellIssueKey(rowKey(row), dayLabel);
+    manuallyEditedCellsRef.current.add(key);
+    auditEventsRef.current.push({
+      event_type: "cell_changed",
+      cause: "manual_edit",
+      cell_key: key,
+      previous_value: previousValue,
+      new_value: nextValue,
+      metadata: { section: row.Abschnitt, row: row.Zeile, day: dayLabel },
+    });
+    const node = gridApiRef.current?.getRowNode(rowKey(row));
+    if (node) {
+      gridApiRef.current?.refreshCells({ rowNodes: [node], columns: [dayLabel], force: true });
+    }
+    markDirty(1);
+  }, [markDirty]);
+
+  /** Dieselbe Empfehlungslogik (recommendForCell), die die Wochenübersicht in
+   * ihrem cellEditorSelector nutzt - für die Kandidatenliste in der
+   * Tagesplanung-Inline-Bearbeitung. */
+  const getCandidatesFor = useCallback(
+    (row: PlanRow, dayLabel: string) => {
+      const category = rowCategory(row);
+      if (!isPersonSection(category) || ABSENCE_SECTIONS.has(category)) return [];
+      const rule = assignmentRules[rowKey(row)];
+      const recommendation = recommendForCell({
+        targetRow: row,
+        dayLabel,
+        rows: rowsRef.current,
+        dayLabels,
+        people,
+        personCategories,
+        rule,
+        weekDates,
+        rehearsalIntervals,
+        showDates,
+        onStageByDate,
+        onStageShowsByDate,
+        dekoPeople,
+        previousWeekWorkload,
       });
-    }, 60);
-  }
+      return recommendation?.candidates ?? [];
+    },
+    [
+      isPersonSection,
+      assignmentRules,
+      dayLabels,
+      people,
+      personCategories,
+      weekDates,
+      rehearsalIntervals,
+      showDates,
+      onStageByDate,
+      onStageShowsByDate,
+      dekoPeople,
+      previousWeekWorkload,
+    ],
+  );
+
+  const getSuggestionsFor = useCallback(
+    (category: string) => collectCategorySuggestions(rowsRef.current, category, dayLabels),
+    [dayLabels],
+  );
 
   function navigateToIssue(issue: PlanIssue, options?: { openEditor?: boolean }) {
     const ref = issue.primaryCell;
@@ -681,10 +747,6 @@ export default function PlanEditorPage() {
     },
   ];
 
-  const isPersonSection = useCallback(
-    (category: string) => personCategories.has(category) || ABSENCE_SECTIONS.has(category),
-    [personCategories],
-  );
 
   const handleDensityChange = useCallback((nextDensity: PlanDensity) => {
     setViewPreferences((current) => ({ ...current, density: nextDensity }));
@@ -1645,7 +1707,12 @@ export default function PlanEditorPage() {
                   onSelectDay={selectDay}
                   statuses={dayStatuses}
                   issues={validation.issues}
-                  onEditRow={editDayRow}
+                  people={people}
+                  isPersonSection={isPersonSection}
+                  isAbsenceSection={isAbsenceSection}
+                  getCandidates={getCandidatesFor}
+                  getSuggestions={getSuggestionsFor}
+                  onCommitEntry={commitDayEntry}
                 />
               </div>
               {/* AG Grid bleibt beim Moduswechsel gemountet (nur per CSS versteckt) -
