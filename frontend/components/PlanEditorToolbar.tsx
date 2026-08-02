@@ -99,12 +99,34 @@ export default function PlanEditorToolbar({
   })();
 
   const statusTone = saveState === "error" ? "is-error" : isDirty ? "is-dirty" : "is-clean";
+  const shortStatusText = (() => {
+    if (saveState === "saving") return "Speichert …";
+    if (saveState === "error") return "Speicherfehler";
+    if (isDirty) return `${changeCount} ungespeichert`;
+    if (lastSavedAt) {
+      return `Gespeichert · ${lastSavedAt.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`;
+    }
+    return "Gespeichert";
+  })();
 
   return (
     <div className="plan-editor-toolbar" role="toolbar" aria-label="Dienstplan-Werkzeuge">
       <div className="plan-editor-toolbar-primary">
-        <div className="plan-editor-toolbar-info">
-          <span className="plan-editor-toolbar-week">{weekLabel}</span>
+        <div className="plan-editor-toolbar-context">
+          <div className="plan-editor-toolbar-identity">
+            <span className="plan-editor-toolbar-week">{weekLabel}</span>
+            <span className="plan-editor-toolbar-count">{rowCount} Planzeilen</span>
+          </div>
+          <span className={`plan-editor-save-status ${statusTone}`} role="status">
+            <span className="plan-editor-save-status-long">{statusText}</span>
+            <span className="plan-editor-save-status-short">{shortStatusText}</span>
+          </span>
+          {saveState === "error" && saveError && (
+            <span className="plan-editor-save-error">{saveError}</span>
+          )}
+        </div>
+
+        <div className="plan-editor-toolbar-actions">
           <div className="plan-editor-toolbar-undo">
             <button
               type="button"
@@ -127,9 +149,6 @@ export default function PlanEditorToolbar({
               ↷
             </button>
           </div>
-        </div>
-
-        <div className="plan-editor-toolbar-actions">
           <button
             type="button"
             className="btn btn-primary"
@@ -138,11 +157,32 @@ export default function PlanEditorToolbar({
             onClick={onSave}
           >
             {saveState === "saving" && <span className="spinner" />}
-            {saveLabel}
+            <span className="plan-toolbar-label-long">{saveLabel}</span>
+            <span className="plan-toolbar-label-short">Speichern</span>
           </button>
-          <button type="button" className="btn" disabled={busy || exportDisabled} onClick={onExport}>
-            {exportLabel}
-          </button>
+          {onOpenIntelligence && (
+            <button
+              type="button"
+              className={`plan-quality-toolbar is-${qualityStatus ?? "loading"}`}
+              onClick={onOpenIntelligence}
+              aria-label="Planqualität und Begründungen öffnen"
+            >
+              <span>Planqualität</span>
+              <strong>{qualityLoading || qualityScore === undefined ? "…" : `${qualityScore}/100`}</strong>
+            </button>
+          )}
+          <PlanValidationSummary
+            summary={validationSummary}
+            status={validationStatus}
+            onOpen={onOpenValidation}
+            compact
+          />
+        </div>
+      </div>
+
+      <div className="plan-editor-toolbar-view">
+        {viewControls}
+        <div className="plan-editor-toolbar-secondary-actions">
           {tools.length > 0 && (
             <div ref={toolsRef} className="plan-editor-tools-menu">
               <button
@@ -152,7 +192,9 @@ export default function PlanEditorToolbar({
                 aria-expanded={toolsOpen}
                 onClick={() => setToolsOpen((current) => !current)}
               >
-                Plan optimieren <span aria-hidden="true">▾</span>
+                <span className="plan-toolbar-label-long">Plan optimieren</span>
+                <span className="plan-toolbar-label-short">Optimieren</span>
+                <span aria-hidden="true">▾</span>
               </button>
               {toolsOpen && (
                 <div role="menu" aria-label="Plan optimieren">
@@ -176,32 +218,11 @@ export default function PlanEditorToolbar({
               )}
             </div>
           )}
+          <button type="button" className="btn" disabled={busy || exportDisabled} onClick={onExport}>
+            <span className="plan-toolbar-label-long">{exportLabel}</span>
+            <span className="plan-toolbar-label-short">Excel</span>
+          </button>
         </div>
-      </div>
-
-      <div className="plan-editor-toolbar-view">
-        <div className="plan-editor-toolbar-health">
-          <span className={`plan-editor-save-status ${statusTone}`} role="status">
-            {statusText}
-          </span>
-          {saveState === "error" && saveError && (
-            <span className="plan-editor-save-error">{saveError}</span>
-          )}
-          <span className="plan-editor-toolbar-count">{rowCount} Planzeilen</span>
-          <PlanValidationSummary summary={validationSummary} status={validationStatus} onOpen={onOpenValidation} />
-          {onOpenIntelligence && (
-            <button
-              type="button"
-              className={`plan-quality-toolbar is-${qualityStatus ?? "loading"}`}
-              onClick={onOpenIntelligence}
-              aria-label="Planqualität und Begründungen öffnen"
-            >
-              <span>Planqualität</span>
-              <strong>{qualityLoading || qualityScore === undefined ? "…" : `${qualityScore}/100`}</strong>
-            </button>
-          )}
-        </div>
-        {viewControls}
       </div>
     </div>
   );

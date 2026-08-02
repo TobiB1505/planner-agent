@@ -8,15 +8,17 @@ export default function PlanValidationSummary({
   summary,
   status,
   onOpen,
+  compact = false,
 }: {
   summary: Summary;
   status: ValidationStatus;
   onOpen: () => void;
+  compact?: boolean;
 }) {
   if (status === "checking") {
     return (
-      <span className="plan-validation-summary is-checking" role="status">
-        Plan wird geprüft …
+      <span className={`plan-validation-summary is-checking ${compact ? "is-compact" : ""}`} role="status">
+        {compact ? "Prüft …" : "Plan wird geprüft …"}
       </span>
     );
   }
@@ -25,11 +27,11 @@ export default function PlanValidationSummary({
     return (
       <button
         type="button"
-        className="plan-validation-summary is-failed"
+        className={`plan-validation-summary is-failed ${compact ? "is-compact" : ""}`}
         onClick={onOpen}
       >
         <span aria-hidden="true">⚠</span>
-        Planprüfung fehlgeschlagen
+        {compact ? "Prüfung fehlgeschlagen" : "Planprüfung fehlgeschlagen"}
       </button>
     );
   }
@@ -40,9 +42,9 @@ export default function PlanValidationSummary({
 
   if (!hasIssues) {
     return (
-      <button type="button" className="plan-validation-summary is-clean" onClick={onOpen}>
+      <button type="button" className={`plan-validation-summary is-clean ${compact ? "is-compact" : ""}`} onClick={onOpen}>
         <span aria-hidden="true">✓</span>
-        Planprüfung ohne Konflikte
+        {compact ? "Keine Konflikte" : "Planprüfung ohne Konflikte"}
       </button>
     );
   }
@@ -57,13 +59,19 @@ export default function PlanValidationSummary({
   return (
     <button
       type="button"
-      className={`plan-validation-summary ${hasErrors ? "is-error" : "is-warning"}`}
+      className={`plan-validation-summary ${hasErrors ? "is-error" : "is-warning"} ${compact ? "is-compact" : ""}`}
       onClick={onOpen}
       aria-label={`Planprüfung öffnen: ${parts.join(", ")}`}
     >
       <span aria-hidden="true">{hasErrors ? "●" : "⚠"}</span>
-      {parts.join(" · ")}
-      <span className="plan-validation-summary-cta">Prüfung öffnen</span>
+      {compact
+        ? hasErrors
+          ? `${summary.errors} ${summary.errors === 1 ? "Konflikt" : "Konflikte"}`
+          : hasWarnings
+            ? `${summary.warnings} ${summary.warnings === 1 ? "Hinweis" : "Hinweise"}`
+            : `${summary.info} ${summary.info === 1 ? "Info" : "Infos"}`
+        : parts.join(" · ")}
+      {!compact && <span className="plan-validation-summary-cta">Prüfung öffnen</span>}
     </button>
   );
 }
