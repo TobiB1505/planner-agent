@@ -243,6 +243,60 @@ function GroupHeaderRenderer({ data }: ICellRendererParams<PlanRow>) {
   );
 }
 
+function PlanEditorInitialLoading({ startDate }: { startDate: string }) {
+  return (
+    <div className="plan-editor-initial-loading" role="status" aria-live="polite">
+      <section className="panel plan-editor-loading-summary">
+        <div className="plan-editor-loading-copy">
+          <span>Aktiver Dienstplan</span>
+          <strong>KW {isoWeek(startDate)} wird geöffnet</strong>
+          <small>
+            {formatDateRange(startDate, addDays(startDate, 6))} · Gespeicherte Planung wird wiederhergestellt
+          </small>
+        </div>
+        <div className="plan-editor-loading-indicator">
+          <span className="spinner" aria-hidden="true" />
+          Plan wird geladen
+        </div>
+      </section>
+
+      <div className="plan-editor-loading-toolbar" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+        <i />
+      </div>
+
+      <section className="panel plan-editor-loading-grid" aria-hidden="true">
+        <div className="plan-editor-loading-grid-head">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
+        {Array.from({ length: 9 }, (_, index) => (
+          <div className="plan-editor-loading-grid-row" key={index}>
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
+
 export default function PlanEditorPage() {
   const initialStart = useMemo(() => mondayIso(), []);
   const [templates, setTemplates] = useState<PlanTemplate[]>([]);
@@ -256,6 +310,7 @@ export default function PlanEditorPage() {
   const [weekDates, setWeekDates] = useState<string[]>([]);
   const [personCategories, setPersonCategories] = useState<Set<string>>(new Set());
   const [assignmentRules, setAssignmentRules] = useState<Record<string, AssignmentRule>>({});
+  const [initializing, setInitializing] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
   const [xlsxSheet, setXlsxSheet] = useState("");
@@ -457,8 +512,14 @@ export default function PlanEditorPage() {
         setArtistPlans(storedArtistPlans);
         setRehearsalPlans(storedRehearsalPlans);
         setArchivedWeeks(storedWeeks);
+        if (!storedWeeks.some((week) => week.start_date === initialStart)) {
+          setInitializing(false);
+        }
       })
-      .catch((error) => setMessage({ kind: "error", text: error.message }));
+      .catch((error) => {
+        setInitializing(false);
+        setMessage({ kind: "error", text: error.message });
+      });
     };
     const timer = window.setTimeout(load, 0);
     window.addEventListener("focus", load);
@@ -466,7 +527,7 @@ export default function PlanEditorPage() {
       window.clearTimeout(timer);
       window.removeEventListener("focus", load);
     };
-  }, []);
+  }, [initialStart]);
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -506,10 +567,12 @@ export default function PlanEditorPage() {
         clearDirty();
         setSaveState("idle");
         setLastSavedAt(null);
+        setInitializing(false);
       })
       .catch((error) => {
         if (!active) return;
         loadedArchiveKeyRef.current = null;
+        setInitializing(false);
         setMessage({
           kind: "error",
           text: error instanceof Error
@@ -1187,6 +1250,14 @@ export default function PlanEditorPage() {
 
   const weekLabel = `KW ${isoWeek(startDate)} · ${selectedTemplate?.name ?? `Woche ${templateCode}`}`;
   const visibleRowCount = rows.filter((row) => row._row_type !== "group").length;
+
+  if (initializing) {
+    return (
+      <div className="mx-auto max-w-[1900px] plan-editor-page">
+        <PlanEditorInitialLoading startDate={startDate} />
+      </div>
+    );
+  }
 
   const toolbar = rows.length > 0 && (
     <PlanEditorToolbar
