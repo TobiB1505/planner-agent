@@ -35,6 +35,10 @@ export default function PlanEditorToolbar({
   validationSummary,
   validationStatus,
   onOpenValidation,
+  qualityScore,
+  qualityStatus,
+  qualityLoading = false,
+  onOpenIntelligence,
   viewControls,
 }: {
   weekLabel: string;
@@ -58,6 +62,10 @@ export default function PlanEditorToolbar({
   validationSummary: ValidationSummaryData;
   validationStatus: ValidationStatus;
   onOpenValidation: () => void;
+  qualityScore?: number;
+  qualityStatus?: "good" | "warning" | "critical";
+  qualityLoading?: boolean;
+  onOpenIntelligence?: () => void;
   viewControls: ReactNode;
 }) {
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -127,6 +135,17 @@ export default function PlanEditorToolbar({
           )}
           <span className="plan-editor-toolbar-count">{rowCount} Planzeilen</span>
           <PlanValidationSummary summary={validationSummary} status={validationStatus} onOpen={onOpenValidation} />
+          {onOpenIntelligence && (
+            <button
+              type="button"
+              className={`plan-quality-toolbar is-${qualityStatus ?? "loading"}`}
+              onClick={onOpenIntelligence}
+              aria-label="Planqualität und Begründungen öffnen"
+            >
+              <span>Planqualität</span>
+              <strong>{qualityLoading || qualityScore === undefined ? "…" : `${qualityScore}/100`}</strong>
+            </button>
+          )}
         </div>
 
         <div className="plan-editor-toolbar-actions">

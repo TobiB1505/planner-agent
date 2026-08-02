@@ -160,7 +160,15 @@ export type RecommendationReasonCode =
   | "day_lead"
   | "fairness_balance"
   | "no_rehearsal"
-  | "no_show_conflict";
+  | "no_show_conflict"
+  | "skill_match"
+  | "experience"
+  | "low_workload"
+  | "fairness"
+  | "availability"
+  | "previous_success"
+  | "preference"
+  | "conflict_free";
 
 export type ConflictReasonCode =
   | "absence"
@@ -193,6 +201,14 @@ const REASON_PRIORITY: ReasonCode[] = [
   "high_weekly_load",
   "repeated_task",
   "department_preference",
+  "availability",
+  "conflict_free",
+  "skill_match",
+  "experience",
+  "low_workload",
+  "fairness",
+  "preference",
+  "previous_success",
   "fairness_balance",
   "day_lead",
   "matching_experience",

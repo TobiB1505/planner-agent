@@ -12,6 +12,7 @@ import WeekPicker from "@/components/WeekPicker";
 import DayNavigator from "@/components/plan-editor/DayNavigator";
 import EditorViewControls from "@/components/plan-editor/EditorViewControls";
 import PlanPreviewDialog from "@/components/plan-editor/PlanPreviewDialog";
+import PlanIntelligenceDialog from "@/components/plan-editor/PlanIntelligenceDialog";
 import {
   generatePlan,
   getActivePeople,
@@ -19,6 +20,7 @@ import {
   getArtistPlans,
   getFreeSuggestion,
   getPlanTemplates,
+  getPlanQuality,
   getRehearsalPlans,
   getWeeks,
   savePlan,
@@ -27,6 +29,8 @@ import {
   type ExtractedAbsence,
   type PlanTemplate,
   type PlanGenerateResult,
+  type PlanAuditEventInput,
+  type PlanQualityResult,
   type PreviousWeekWorkload,
   type RehearsalInterval,
   type RehearsalPlanSummary,
@@ -281,6 +285,12 @@ export default function PlanEditorPage() {
   const [activeDay, setActiveDay] = useState("");
   const [automationPreview, setAutomationPreview] = useState<AutomationPreview | null>(null);
 
+  // ---------- Sprint 5: Intelligence & Audit ----------
+  const [planQuality, setPlanQuality] = useState<PlanQualityResult | null>(null);
+  const [qualityLoading, setQualityLoading] = useState(false);
+  const [intelligenceOpen, setIntelligenceOpen] = useState(false);
+  const auditEventsRef = useRef<PlanAuditEventInput[]>([]);
+
   // ---------- Änderungsstatus (Aufgabe 3) ----------
   const [isDirty, setIsDirty] = useState(false);
   const [changeCount, setChangeCount] = useState(0);
@@ -331,6 +341,7 @@ export default function PlanEditorPage() {
     setIsDirty(false);
     setChangeCount(0);
     manuallyEditedCellsRef.current.clear();
+    auditEventsRef.current = [];
     gridApiRef.current?.refreshCells({ force: true });
   }, []);
 
@@ -375,6 +386,33 @@ export default function PlanEditorPage() {
   );
 
   const cellIssueIndex = useMemo(() => buildCellIssueIndex(validation.issues), [validation.issues]);
+
+  useEffect(() => {
+    if (!rows.length || !dayLabels.length) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setQualityLoading(true);
+      getPlanQuality({
+        start_date: startDate,
+        day_labels: dayLabels,
+        rows: rows.map((row) => ({ ...row })),
+      })
+        .then((result) => {
+          if (!cancelled) setPlanQuality(result);
+        })
+        .catch(() => {
+          if (!cancelled) setPlanQuality(null);
+        })
+        .finally(() => {
+          if (!cancelled) setQualityLoading(false);
+        });
+    }, 500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // changeCount ist nötig, weil AG Grid Zeilenobjekte direkt mutiert.
+  }, [rows, changeCount, startDate, dayLabels]);
 
   useEffect(() => {
     cellIssueIndexRef.current = cellIssueIndex;
@@ -694,6 +732,24 @@ export default function PlanEditorPage() {
             weekdayLabel: weekdayLabelFor(targetDate),
             dateLabel: shortDateLabelFor(targetDate),
             timeLabel: targetInterval ? serviceIntervalLabel(targetInterval) : undefined,
+            intelligenceRequest: {
+              start_date: startDate,
+              day_labels: dayLabels,
+              rows: rowsRef.current.map((row) => ({ ...row })),
+              day_label: dayLabel,
+              category,
+              subcategory: params.data?.Zeile ?? null,
+            },
+            onRecommendationSelected: (name: string) => {
+              if (!params.data) return;
+              auditEventsRef.current.push({
+                event_type: "recommendation_applied",
+                cause: "recommendation",
+                cell_key: cellIssueKey(rowKey(params.data), dayLabel),
+                new_value: name,
+                metadata: { category, subcategory: params.data.Zeile, day: dayLabel },
+              });
+            },
           },
           popup: true,
           popupPosition: "under",
@@ -758,6 +814,7 @@ export default function PlanEditorPage() {
     onStageShowsByDate,
     dekoPeople,
     previousWeekWorkload,
+    startDate,
     weekDates,
     viewMode,
     effectiveActiveDay,
@@ -933,6 +990,15 @@ export default function PlanEditorPage() {
     if (!automationPreview) return;
     const preview = automationPreview;
     setAutomationPreview(null);
+    auditEventsRef.current.push({
+      event_type: "automation_applied",
+      cause: "automation",
+      metadata: {
+        kind: preview.kind,
+        title: preview.title,
+        changed_cells: preview.diff.changes.length,
+      },
+    });
     if (preview.result) {
       applyGeneratedPlan(preview.result, preview.nextRows, preview.kind === "recalculate");
       return;
@@ -959,6 +1025,7 @@ export default function PlanEditorPage() {
         existing_week_id: loadedArchivedWeek?.id,
         day_labels: dayLabels,
         rows,
+        audit_events: auditEventsRef.current,
       });
       const savedEndDate = addDays(startDate, 6);
       const fallbackWeek: WeekSummary = {
@@ -1118,11 +1185,13 @@ export default function PlanEditorPage() {
 
   function handleUndo() {
     gridApiRef.current?.undoCellEditing();
+    auditEventsRef.current.push({ event_type: "undo", cause: "undo" });
     refreshGridHistory();
   }
 
   function handleRedo() {
     gridApiRef.current?.redoCellEditing();
+    auditEventsRef.current.push({ event_type: "redo", cause: "redo" });
     refreshGridHistory();
   }
 
@@ -1169,6 +1238,10 @@ export default function PlanEditorPage() {
       validationSummary={validation.summary}
       validationStatus={validation.failed ? "failed" : "idle"}
       onOpenValidation={() => setIssuesPanelOpen(true)}
+      qualityScore={planQuality?.score}
+      qualityStatus={planQuality?.status}
+      qualityLoading={qualityLoading}
+      onOpenIntelligence={() => setIntelligenceOpen(true)}
       viewControls={
         <EditorViewControls
           viewMode={viewMode}
@@ -1181,44 +1254,22 @@ export default function PlanEditorPage() {
   );
 
   const preparationDetails = (
-    <>
-      <PreparationStatusCard
-        ready={Boolean(artistPlanForWeek)}
-        readyLabel={artistPlanForWeek?.sheet_name || artistPlanForWeek?.source_filename || "Künstlerplan"}
-        readyDetail={`${artistPlanForWeek?.filled_entries ?? 0} Programmeinträge`}
-        emptyIcon="K"
-        emptyTitle="Künstlerplan hochladen"
-        emptyDescription="Excel-Datei auswählen, Woche prüfen und für den Dienstplan aktivieren."
-        href="/artist-plan"
-        openLabel="Künstlerplan öffnen"
-      />
-      <PreparationStatusCard
-        ready={Boolean(rehearsalPlanForWeek)}
-        readyLabel={rehearsalPlanForWeek?.source_filename || "Probenplan"}
-        readyDetail={`${rehearsalPlanForWeek?.rehearsal_count ?? 0} Proben`}
-        emptyIcon="P"
-        emptyTitle="Probenplan hochladen"
-        emptyDescription="PDF lokal auswerten, erkannte Zeiten prüfen und für diese Woche aktivieren."
-        href="/rehearsal-plan"
-        openLabel="Probenplan öffnen"
-      />
-      <div className="field field-grow min-w-[280px]">
-        <div className="template-choice-grid">
-          {templates.map((template) => (
-            <button
-              key={template.code}
-              type="button"
-              className={`template-choice ${templateCode === template.code ? "is-selected" : ""}`}
-              onClick={() => setTemplateCode(template.code)}
-            >
-              <span>{template.name}</span>
-              <strong>{template.program}</strong>
-              <small>{template.code === "A" ? "Ungerade Kalenderwochen" : "Gerade Kalenderwochen"}</small>
-            </button>
-          ))}
-        </div>
+    <div className="field field-grow planner-template-field">
+      <div className="template-choice-grid">
+        {templates.map((template) => (
+          <button
+            key={template.code}
+            type="button"
+            className={`template-choice ${templateCode === template.code ? "is-selected" : ""}`}
+            onClick={() => setTemplateCode(template.code)}
+          >
+            <span>{template.name}</span>
+            <strong>{template.program}</strong>
+            <small>{template.code === "A" ? "Ungerade Kalenderwochen" : "Gerade Kalenderwochen"}</small>
+          </button>
+        ))}
       </div>
-    </>
+    </div>
   );
 
   const gridSection = rows.length > 0 && (
@@ -1268,7 +1319,20 @@ export default function PlanEditorPage() {
                 if (event.oldValue !== event.newValue) {
                   const field = event.colDef.field;
                   if (field && event.data) {
-                    manuallyEditedCellsRef.current.add(cellIssueKey(rowKey(event.data), field));
+                    const key = cellIssueKey(rowKey(event.data), field);
+                    manuallyEditedCellsRef.current.add(key);
+                    auditEventsRef.current.push({
+                      event_type: "cell_changed",
+                      cause: "manual_edit",
+                      cell_key: key,
+                      previous_value: event.oldValue == null ? null : String(event.oldValue),
+                      new_value: event.newValue == null ? null : String(event.newValue),
+                      metadata: {
+                        section: event.data.Abschnitt,
+                        row: event.data.Zeile,
+                        day: field,
+                      },
+                    });
                     event.api.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
                   }
                   markDirty(1);
@@ -1431,7 +1495,7 @@ export default function PlanEditorPage() {
                 </div>
               </div>
               <div className="planner-config">
-                <div className="field field-grow min-w-[360px]">
+                <div className="field field-grow planner-template-field">
                   <span className="field-label">Programm-Rhythmus</span>
                   <div className="template-choice-grid">
                     {templates.map((template) => (
@@ -1662,6 +1726,13 @@ export default function PlanEditorPage() {
         onNavigate={(issue) => navigateToIssue(issue)}
         onEdit={(issue) => navigateToIssue(issue, { openEditor: true })}
         onRefresh={() => setRevalidateNonce((current) => current + 1)}
+      />
+      <PlanIntelligenceDialog
+        open={intelligenceOpen}
+        quality={planQuality}
+        weekPlanId={loadedArchivedWeek?.id}
+        startDate={startDate}
+        onClose={() => setIntelligenceOpen(false)}
       />
     </div>
   );

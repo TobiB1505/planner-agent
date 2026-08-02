@@ -271,12 +271,160 @@ export interface PlanSavePayload {
   existing_week_id?: number;
   day_labels: string[];
   rows: Record<string, string | null>[];
+  audit_events?: PlanAuditEventInput[];
 }
 
 export interface PlanSaveResult {
   week_plan_id: number;
   warnings?: string[];
   week?: WeekSummary;
+}
+
+export type IntelligenceReasonCode =
+  | "skill_match"
+  | "experience"
+  | "low_workload"
+  | "fairness"
+  | "availability"
+  | "previous_success"
+  | "preference"
+  | "conflict_free";
+
+export interface EmployeeSkill {
+  id: string;
+  name: string;
+  level: number;
+  source: "manual" | "historical_data" | "department";
+  evidence: string[];
+  updated_at: string | null;
+  editable: boolean;
+}
+
+export interface EmployeeMemoryEntry {
+  id: string;
+  type: string;
+  subject: string;
+  value: unknown;
+  confidence: number;
+  source: "manual" | "historical_data" | "manual_override";
+  source_date: string | null;
+  editable: boolean;
+  note: string | null;
+  updated_at?: string;
+}
+
+export interface EmployeeIntelligenceProfile {
+  person: { id: number; name: string; department: string | null; active: boolean };
+  period: {
+    weeks_requested: number;
+    weeks_available: number;
+    start_date: string | null;
+    end_date: string | null;
+  };
+  summary: {
+    assignments: number;
+    cooking: number;
+    sport: number;
+    moderation: number;
+    early_duties: number;
+    late_duties: number;
+    weighted_load: number;
+  };
+  current_week: { assignments: number; shows: number; moderation: number; conflicts: number };
+  categories: Array<{ category: string; count: number }>;
+  weekly_load: Array<{ start_date: string; assignments: number }>;
+  trend: {
+    recent_average: number;
+    previous_average: number;
+    delta: number;
+    direction: "up" | "down" | "stable";
+  };
+  skills: EmployeeSkill[];
+  memory: EmployeeMemoryEntry[];
+  planning_recommendations: Array<{
+    code: string;
+    label: string;
+    text: string;
+    evidence: string[];
+  }>;
+  cache: { data_version: string; hit: boolean };
+}
+
+export interface IntelligenceReason {
+  code: IntelligenceReasonCode;
+  label: string;
+  weight: number;
+  evidence: string;
+}
+
+export interface IntelligentCandidate {
+  employee_id: number;
+  employee: string;
+  department: string | null;
+  score: number;
+  rank: number;
+  status: "recommended" | "available" | "warning" | "unavailable";
+  reasons: IntelligenceReason[];
+  warnings: Array<{ code: string; label: string }>;
+}
+
+export interface IntelligentRecommendationResult {
+  target: { date: string; category: string; subcategory: string | null };
+  candidates: IntelligentCandidate[];
+  reason_weights: Record<IntelligenceReasonCode, number>;
+  data_basis: {
+    historical_assignments: number;
+    active_people: number;
+    uses_rehearsals: boolean;
+  };
+}
+
+export interface PlanQualityDimension {
+  key: "conflicts" | "fairness" | "skill_matching" | "preferences" | "historical_quality";
+  label: string;
+  score: number;
+  max_score: number;
+  status: "good" | "warning" | "critical" | "neutral";
+  neutral: boolean;
+  explanations: string[];
+}
+
+export interface PlanQualityResult {
+  score: number;
+  max_score: number;
+  status: "good" | "warning" | "critical";
+  dimensions: PlanQualityDimension[];
+  issues: Array<{ severity: string; code: string; message: string }>;
+  weights: Record<PlanQualityDimension["key"], number>;
+  analysis: {
+    title: string;
+    optimization_goals: Array<{ key: string; label: string; weight: number }>;
+    decisions: Array<{
+      employee: string;
+      date: string;
+      category: string;
+      subcategory: string | null;
+      reasons: string[];
+    }>;
+    data_basis: { assignments: number; active_people: number; historical_weeks: number };
+  };
+}
+
+export interface PlanAuditEventInput {
+  event_type: "cell_changed" | "recommendation_applied" | "automation_applied" | "undo" | "redo";
+  cause: string;
+  cell_key?: string;
+  previous_value?: string | null;
+  new_value?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PlanAuditEvent extends PlanAuditEventInput {
+  id: number;
+  week_plan_id: number | null;
+  start_date: string;
+  user: string;
+  created_at: string;
 }
 
 export interface ArtistPlanRow {
@@ -588,6 +736,67 @@ export const getArchivedPlan = (startDate: string) =>
 
 export const savePlan = (payload: PlanSavePayload) =>
   post<PlanSaveResult>("/plan/save", payload);
+
+// ---------- Planner Intelligence Layer ----------
+export const getEmployeeIntelligence = (
+  personId: number,
+  options?: { weeks?: number; currentWeekStart?: string },
+) => {
+  const params = new URLSearchParams();
+  if (options?.weeks) params.set("weeks", String(options.weeks));
+  if (options?.currentWeekStart) params.set("current_week_start", options.currentWeekStart);
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return get<EmployeeIntelligenceProfile>(`/intelligence/employees/${personId}${suffix}`);
+};
+
+export const setEmployeeSkill = (
+  personId: number,
+  skill: { id: string; name: string; level: number; evidence?: string[] },
+) => put<unknown>(
+  `/intelligence/employees/${personId}/skills`,
+  { ...skill, evidence: skill.evidence ?? [] },
+);
+
+export const deleteEmployeeSkill = (personId: number, skillId: string) =>
+  del<{ ok: boolean }>(`/intelligence/employees/${personId}/skills/${encodeURIComponent(skillId)}`);
+
+export const setEmployeeIntelligenceMemory = (
+  personId: number,
+  entry: {
+    type: string;
+    subject: string;
+    value: unknown;
+    confidence?: number;
+    note?: string;
+    source_date?: string;
+  },
+) => post<EmployeeMemoryEntry[]>(`/intelligence/employees/${personId}/memory`, entry);
+
+export const deleteEmployeeIntelligenceMemory = (personId: number, entryId: number) =>
+  del<EmployeeMemoryEntry[]>(`/intelligence/employees/${personId}/memory/${entryId}`);
+
+export const getIntelligentRecommendations = (payload: {
+  start_date: string;
+  day_labels: string[];
+  rows: Record<string, string | null>[];
+  day_label: string;
+  category: string;
+  subcategory?: string | null;
+}) => post<IntelligentRecommendationResult>("/intelligence/recommendations", payload);
+
+export const getPlanQuality = (payload: {
+  start_date: string;
+  day_labels: string[];
+  rows: Record<string, string | null>[];
+}) => post<PlanQualityResult>("/intelligence/plan-quality", payload);
+
+export const getPlanAudit = (options: { weekPlanId?: number; startDate?: string; limit?: number }) => {
+  const params = new URLSearchParams();
+  if (options.weekPlanId) params.set("week_plan_id", String(options.weekPlanId));
+  if (options.startDate) params.set("start_date", options.startDate);
+  if (options.limit) params.set("limit", String(options.limit));
+  return get<PlanAuditEvent[]>(`/intelligence/audit?${params.toString()}`);
+};
 
 // ---------- Excel-Vorlage ----------
 export function xlsxGenerateUrl(): string {

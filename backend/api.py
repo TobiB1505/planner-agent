@@ -39,6 +39,8 @@ from . import template_spec
 from . import util
 from . import xlsx_template
 from .extraction import extract_dienstplan
+from .intelligence import audit as intelligence_audit
+from .intelligence import employee_stats, memory_engine, plan_quality, recommendation_engine
 
 load_dotenv()
 
@@ -1091,10 +1093,178 @@ class PlanSaveRequest(BaseModel):
     existing_week_id: Optional[int] = None
     day_labels: list[str]
     rows: list[dict[str, Any]]  # {Abschnitt, Zeile, <day_label columns>...}
+    audit_events: list[dict[str, Any]] = []
 
 
 def _grid_df_from_rows(rows: list[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(rows)
+
+
+# ---------- Sprint 5: Planner Intelligence Layer ----------
+
+class EmployeeSkillUpdate(BaseModel):
+    id: str
+    name: str
+    level: int
+    evidence: list[str] = []
+
+
+class EmployeeMemoryUpdate(BaseModel):
+    type: str
+    subject: str
+    value: Any
+    confidence: float = 1.0
+    note: Optional[str] = None
+    source_date: Optional[str] = None
+
+
+class IntelligencePlanRequest(BaseModel):
+    start_date: str
+    day_labels: list[str]
+    rows: list[dict[str, Any]]
+
+
+class IntelligenceRecommendationRequest(IntelligencePlanRequest):
+    day_label: str
+    category: str
+    subcategory: Optional[str] = None
+
+
+def _intelligence_plan_data(payload: IntelligencePlanRequest) -> tuple[list[dict], list[dict], dict[str, str]]:
+    dates = _week_dates(payload.start_date)
+    day_iso_by_label = {label: iso for label, iso in zip(payload.day_labels, dates)}
+    assignments_list, absences_list = grid.parse_grid(
+        _grid_df_from_rows(payload.rows),
+        day_iso_by_label,
+    )
+    return assignments_list, absences_list, day_iso_by_label
+
+
+@app.get("/api/intelligence/employees/{person_id}")
+def intelligence_employee_profile(person_id: int, weeks: int = 12, current_week_start: Optional[str] = None):
+    conn = get_conn()
+    try:
+        statistics = employee_stats.calculate_employee_statistics(
+            conn,
+            person_id,
+            weeks=max(1, min(52, weeks)),
+            current_week_start=current_week_start,
+        )
+        structured_memory = memory_engine.entries_for_person(conn, person_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    top_skills = statistics["skills"][:3]
+    planning_notes = []
+    if top_skills:
+        planning_notes.append({
+            "code": "strong_skills",
+            "label": "Belegte Stärken",
+            "text": ", ".join(skill["name"] for skill in top_skills),
+            "evidence": [evidence for skill in top_skills for evidence in skill["evidence"][:1]],
+        })
+    if statistics["trend"]["direction"] == "up":
+        planning_notes.append({
+            "code": "rising_load",
+            "label": "Belastung steigt",
+            "text": "Die durchschnittlichen Einsätze liegen zuletzt über dem vorherigen Zeitraum.",
+            "evidence": [
+                f"zuletzt {statistics['trend']['recent_average']} statt {statistics['trend']['previous_average']} Einsätze/Woche"
+            ],
+        })
+    return clean({
+        **statistics,
+        "memory": structured_memory,
+        "planning_recommendations": planning_notes,
+    })
+
+
+@app.put("/api/intelligence/employees/{person_id}/skills")
+def intelligence_employee_skill_set(person_id: int, payload: EmployeeSkillUpdate):
+    conn = get_conn()
+    try:
+        return clean(employee_stats.upsert_skill(
+            conn, person_id, payload.id, payload.name, payload.level, payload.evidence
+        ))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.delete("/api/intelligence/employees/{person_id}/skills/{skill_id}")
+def intelligence_employee_skill_delete(person_id: int, skill_id: str):
+    conn = get_conn()
+    employee_stats.delete_skill(conn, person_id, skill_id)
+    return {"ok": True}
+
+
+@app.post("/api/intelligence/employees/{person_id}/memory")
+def intelligence_employee_memory_set(person_id: int, payload: EmployeeMemoryUpdate):
+    conn = get_conn()
+    try:
+        return clean(memory_engine.upsert_manual_entry(
+            conn,
+            person_id,
+            entry_type=payload.type,
+            subject=payload.subject,
+            value=payload.value,
+            confidence=payload.confidence,
+            note=payload.note,
+            source_date=payload.source_date,
+        ))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.delete("/api/intelligence/employees/{person_id}/memory/{entry_id}")
+def intelligence_employee_memory_delete(person_id: int, entry_id: int):
+    return clean(memory_engine.delete_manual_entry(get_conn(), person_id, entry_id))
+
+
+@app.post("/api/intelligence/recommendations")
+def intelligence_recommendations(payload: IntelligenceRecommendationRequest):
+    assignments_list, absences_list, day_map = _intelligence_plan_data(payload)
+    target_date = day_map.get(payload.day_label)
+    if not target_date:
+        raise HTTPException(400, "Der gewählte Wochentag ist ungültig.")
+    target_category = stats.normalize_category(payload.category)
+    assignments_without_target = [
+        assignment for assignment in assignments_list
+        if not (
+            assignment.get("date") == target_date
+            and stats.normalize_category(assignment.get("category") or "") == target_category
+            and (assignment.get("subcategory") or "") == (payload.subcategory or "")
+        )
+    ]
+    return clean(recommendation_engine.recommend(
+        get_conn(),
+        target_date=target_date,
+        category=payload.category,
+        subcategory=payload.subcategory,
+        assignments=assignments_without_target,
+        absences=absences_list,
+    ))
+
+
+@app.post("/api/intelligence/plan-quality")
+def intelligence_plan_quality(payload: IntelligencePlanRequest):
+    assignments_list, absences_list, _ = _intelligence_plan_data(payload)
+    return clean(plan_quality.calculate_plan_quality(
+        get_conn(),
+        start_date=payload.start_date,
+        assignments=assignments_list,
+        absences=absences_list,
+    ))
+
+
+@app.get("/api/intelligence/audit")
+def intelligence_audit_log(week_plan_id: Optional[int] = None, start_date: Optional[str] = None, limit: int = 100):
+    if week_plan_id is None and start_date is None:
+        raise HTTPException(400, "week_plan_id oder start_date wird benötigt.")
+    return clean(intelligence_audit.list_events(
+        get_conn(),
+        week_plan_id=week_plan_id,
+        start_date=start_date,
+        limit=max(1, min(500, limit)),
+    ))
 
 
 def _assignment_warnings(
@@ -1277,6 +1447,18 @@ def plan_save(payload: PlanSaveRequest):
     for a in absences_list:
         person_id = _resolve_or_create(conn, a["person"])
         db.insert_absence(conn, week_plan_id, a["date"], person_id, a["type"])
+    intelligence_audit.record_events(
+        conn,
+        week_plan_id=week_plan_id,
+        start_date=payload.start_date,
+        events=payload.audit_events,
+    )
+    intelligence_audit.record_plan_saved(
+        conn,
+        week_plan_id=week_plan_id,
+        start_date=payload.start_date,
+        assignments=len(assignments_list),
+    )
     conn.commit()
     week_row = conn.execute(
         """SELECT wp.*,
