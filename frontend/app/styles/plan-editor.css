@@ -59,14 +59,39 @@
   margin-top: 18px;
 }
 
-/* Kompakter Bearbeitungsmodus-Header (Aufgabe 1) */
+/* Responsiver Bearbeitungsmodus-Header ----------------------------------- */
+
+.plan-editor-summary {
+  display: block;
+  width: 100%;
+  margin: 14px 0 10px;
+  overflow: visible;
+  padding: 0;
+}
 
 .plan-editor-summary-main {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(330px, 470px);
   align-items: center;
-  gap: 16px;
-  padding: 16px 20px;
+  gap: 20px 28px;
+  width: 100%;
+  padding: 17px 20px;
+}
+
+.plan-editor-summary-identity {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.plan-editor-summary-eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
 
 .plan-editor-summary-copy h1 {
@@ -77,42 +102,89 @@
 }
 
 .plan-editor-summary-copy p {
+  overflow: hidden;
   margin: 3px 0 0;
   color: var(--muted);
   font-size: 12.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .plan-editor-summary-checks {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
-  margin-left: auto;
+  gap: 6px;
+  margin: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 650;
 }
 
-.plan-editor-summary-checks .is-ready {
+.plan-editor-summary-checks > span {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--background);
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.plan-editor-summary-checks > span.is-ready {
+  border-color: color-mix(in srgb, #2da970 22%, var(--border));
+  background: color-mix(in srgb, #2da970 8%, var(--background));
   color: #2da970;
 }
 
+.plan-editor-summary-controls {
+  display: grid;
+  min-width: 0;
+  justify-items: end;
+  gap: 8px;
+}
+
 .plan-editor-summary-status {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  font-weight: 650;
+  gap: 6px;
+  border-radius: 999px;
+  background: var(--background);
+  padding: 4px 9px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.plan-editor-summary-status > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.plan-editor-summary-status.is-saved {
+  color: #2da970;
+}
+
+.plan-editor-summary-status.is-dirty {
+  color: #d7952b;
 }
 
 .plan-editor-summary-header-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(220px, 250px);
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
+  width: 100%;
 }
 
 .plan-editor-summary-week-picker {
-  min-width: 200px;
-  margin-left: auto;
+  width: 100%;
+  min-width: 0;
 }
 
 .plan-editor-summary-week-picker .field-label {
@@ -120,6 +192,7 @@
 }
 
 .plan-editor-summary-week-picker .week-picker-control {
+  width: 100%;
   min-height: 40px;
 }
 
@@ -141,6 +214,10 @@
   background: var(--accent-soft);
 }
 
+.plan-editor-summary-toggle-short {
+  display: none;
+}
+
 .plan-editor-summary-details {
   display: flex;
   flex-wrap: wrap;
@@ -150,15 +227,100 @@
   padding: 16px 20px 20px;
 }
 
-.plan-editor-summary-details > .preparation-card {
-  flex: 1 1 380px;
-  min-width: 340px;
-}
-
 .plan-editor-summary-details > .field {
   flex: 1 1 260px;
-  min-width: 380px;
+  min-width: 0;
   padding: 16px 0;
+}
+
+.plan-editor-summary-details .template-choice-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+  width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .plan-editor-summary-main {
+    gap: 18px;
+  }
+
+  .plan-editor-summary-header-actions {
+    grid-template-columns: max-content minmax(210px, 240px);
+  }
+
+  .plan-editor-summary-toggle-long {
+    display: none;
+  }
+
+  .plan-editor-summary-toggle-short {
+    display: inline;
+  }
+}
+
+@media (max-width: 820px) {
+  .plan-editor-summary-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .plan-editor-summary-controls {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .plan-editor-summary-header-actions {
+    width: auto;
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .plan-editor-summary-main {
+    gap: 13px;
+    padding: 15px;
+  }
+
+  .plan-editor-summary-copy p {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .plan-editor-summary-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: stretch;
+  }
+
+  .plan-editor-summary-status {
+    justify-self: start;
+  }
+
+  .plan-editor-summary-header-actions {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .plan-editor-summary-toggle {
+    width: 100%;
+    justify-content: center;
+    order: 2;
+  }
+
+  .plan-editor-summary-toggle-long {
+    display: none;
+  }
+
+  .plan-editor-summary-toggle-short {
+    display: inline;
+  }
+
+  .plan-editor-summary-details {
+    display: grid;
+    padding: 14px 15px 16px;
+  }
 }
 
 /* Feste Werkzeugleiste (Aufgabe 4) */
@@ -746,12 +908,16 @@ button.plan-validation-summary {
 .plan-day-navigator button {
   position: relative;
   display: grid;
-  min-height: 34px;
+  grid-template-rows: auto auto;
+  min-height: 42px;
   place-items: center;
+  align-content: center;
+  gap: 2px;
   border: 0;
   border-right: 1px solid var(--border);
   background: transparent;
   color: var(--muted);
+  padding: 4px 2px 7px;
   font-size: 10.5px;
   font-weight: 700;
 }
@@ -778,9 +944,11 @@ button.plan-validation-summary {
 }
 
 .plan-day-navigator small {
+  display: block;
   color: #2da970;
   font-size: 8px;
-  line-height: 1;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .plan-grid-shell {

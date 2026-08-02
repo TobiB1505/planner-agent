@@ -26,25 +26,35 @@ export default function PlanEditorSummary({
   details: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const statusTone = statusLabel.toLocaleLowerCase("de").includes("ungespeichert")
+    ? "is-dirty"
+    : "is-saved";
 
   return (
     <section className="panel plan-editor-summary">
       <div className="plan-editor-summary-main">
-        <div className="plan-editor-summary-copy">
-          <h1>Dienstplan KW {kw}</h1>
-          <p>{dateRange} · {programLabel}</p>
+        <div className="plan-editor-summary-identity">
+          <div className="plan-editor-summary-copy">
+            <span className="plan-editor-summary-eyebrow">Aktiver Dienstplan</span>
+            <h1>Dienstplan KW {kw}</h1>
+            <p>{dateRange} · {programLabel}</p>
+          </div>
+          <div className="plan-editor-summary-checks" aria-label="Vorbereitungsstatus">
+            <span className={artistPlanReady ? "is-ready" : "is-pending"}>
+              {artistPlanReady ? "✓" : "–"} Künstlerplan
+            </span>
+            <span className={rehearsalPlanReady ? "is-ready" : "is-pending"}>
+              {rehearsalPlanReady ? "✓" : "–"} Probenplan
+            </span>
+            <span className="is-ready">✓ {peopleCount} aktive MA</span>
+          </div>
         </div>
-        <div className="plan-editor-summary-checks">
-          <span className={artistPlanReady ? "is-ready" : ""}>
-            {artistPlanReady ? "✓" : "–"} Künstlerplan
+
+        <div className="plan-editor-summary-controls">
+          <span className={`plan-editor-summary-status ${statusTone}`}>
+            <span aria-hidden="true" />
+            {statusLabel}
           </span>
-          <span className={rehearsalPlanReady ? "is-ready" : ""}>
-            {rehearsalPlanReady ? "✓" : "–"} Probenplan
-          </span>
-          <span className="is-ready">✓ {peopleCount} aktive Mitarbeiter</span>
-        </div>
-        <div className="plan-editor-summary-status">
-          <span>Status: {statusLabel}</span>
           <div className="plan-editor-summary-header-actions">
             <button
               type="button"
@@ -52,7 +62,10 @@ export default function PlanEditorSummary({
               aria-expanded={expanded}
               onClick={() => setExpanded((current) => !current)}
             >
-              {expanded ? "Vorbereitungsdetails ausblenden" : "Vorbereitungsdetails anzeigen"}
+              <span className="plan-editor-summary-toggle-long">
+                {expanded ? "Vorbereitungsdetails ausblenden" : "Vorbereitungsdetails anzeigen"}
+              </span>
+              <span className="plan-editor-summary-toggle-short">Details</span>
               <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
             </button>
             {weekPicker}

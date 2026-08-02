@@ -120,6 +120,84 @@ CREATE TABLE IF NOT EXISTS person_memory_overrides (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(person_id, facet, item_key)
 );
+
+-- Sprint 5: Manuell gepflegte, strukturierte Fähigkeiten. Automatisch erkannte
+-- Vorschläge werden weiterhin reproduzierbar aus der Historie berechnet.
+CREATE TABLE IF NOT EXISTS employee_skills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id INTEGER NOT NULL REFERENCES people(id),
+    skill_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    level INTEGER NOT NULL CHECK(level BETWEEN 1 AND 5),
+    source TEXT NOT NULL DEFAULT 'manual',
+    evidence_json TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(person_id, skill_id)
+);
+
+-- Freie, aber strukturierte Hinweise: kein Chat-Text, sondern Typ + Betreff +
+-- Wert mit Quelle, Datum und Konfidenz. Historisch abgeleitete Einträge werden
+-- nicht festgeschrieben, sondern bei jedem Lesen nachvollziehbar neu erzeugt.
+CREATE TABLE IF NOT EXISTS employee_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id INTEGER NOT NULL REFERENCES people(id),
+    type TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    value TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence BETWEEN 0 AND 1),
+    source TEXT NOT NULL DEFAULT 'manual',
+    source_date TEXT NOT NULL,
+    editable INTEGER NOT NULL DEFAULT 1,
+    note TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(person_id, type, subject, source)
+);
+
+-- Materialisierter Cache. data_version ist ein Fingerabdruck der unveränderten
+-- historischen Quelltabellen; bei jeder relevanten Änderung wird neu gerechnet.
+CREATE TABLE IF NOT EXISTS employee_statistics (
+    person_id INTEGER PRIMARY KEY REFERENCES people(id),
+    data_version TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    calculated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS plan_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_plan_id INTEGER REFERENCES week_plans(id),
+    start_date TEXT NOT NULL,
+    user_name TEXT NOT NULL DEFAULT 'Planer',
+    event_type TEXT NOT NULL,
+    cause TEXT NOT NULL,
+    cell_key TEXT,
+    previous_value TEXT,
+    new_value TEXT,
+    metadata_json TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS recommendation_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_plan_id INTEGER REFERENCES week_plans(id),
+    start_date TEXT NOT NULL,
+    date TEXT,
+    category TEXT,
+    subcategory TEXT,
+    person_id INTEGER REFERENCES people(id),
+    score REAL,
+    reasons_json TEXT,
+    accepted INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_assignments_person_date
+    ON assignments(person_id, date);
+CREATE INDEX IF NOT EXISTS idx_absences_person_date
+    ON absences(person_id, date);
+CREATE INDEX IF NOT EXISTS idx_audit_week_created
+    ON plan_audit_log(week_plan_id, created_at DESC);
 """
 
 

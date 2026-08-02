@@ -1734,12 +1734,18 @@ button.person-candidate {
 
 .template-choice-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  grid-auto-rows: 1fr;
+  align-items: stretch;
   gap: 8px;
 }
 
 .template-choice {
   display: grid;
+  grid-template-rows: auto minmax(2.6em, auto) auto;
+  min-width: 0;
+  height: 100%;
+  align-content: start;
   border: 1px solid var(--border);
   border-radius: 13px;
   background: var(--background);
@@ -1769,12 +1775,21 @@ button.person-candidate {
 .template-choice strong {
   margin-top: 1px;
   font-size: 13px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .template-choice small {
+  align-self: end;
   margin-top: 3px;
   color: var(--muted);
   font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.planner-template-field {
+  min-width: 0;
+  flex: 1 1 420px;
 }
 
 .planner-config-actions {
@@ -2103,4 +2118,3 @@ button.person-candidate {
     transition-duration: 0.01ms !important;
   }
 }
-

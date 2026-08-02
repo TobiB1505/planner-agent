@@ -1,6 +1,7 @@
 "use client";
 
 import PageHeader from "@/components/PageHeader";
+import EmployeeIntelligenceDialog from "@/components/EmployeeIntelligenceDialog";
 import {
   createPerson,
   deletePerson,
@@ -24,6 +25,7 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [profilePersonId, setProfilePersonId] = useState<number | null>(null);
 
   async function load() {
     setLoading(true);
@@ -314,6 +316,7 @@ export default function TeamPage() {
               onStatusChange={changeStatus}
               onDelete={remove}
               onNotice={setNotice}
+              onOpenProfile={(personId) => setProfilePersonId(personId)}
             />
           ))}
           {!loading && filtered.length === 0 && (
@@ -342,6 +345,12 @@ export default function TeamPage() {
           <span>Änderungen an Name und Abteilung speichern automatisch</span>
         </div>
       </section>
+      {profilePersonId !== null && (
+        <EmployeeIntelligenceDialog
+          personId={profilePersonId}
+          onClose={() => setProfilePersonId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -354,6 +363,7 @@ function TeamMemberRow({
   onStatusChange,
   onDelete,
   onNotice,
+  onOpenProfile,
 }: {
   person: Person;
   departmentListId: string;
@@ -362,6 +372,7 @@ function TeamMemberRow({
   onStatusChange: (person: Person, active: boolean) => Promise<void>;
   onDelete: (person: Person) => Promise<void>;
   onNotice: (notice: Notice) => void;
+  onOpenProfile: (personId: number) => void;
 }) {
   const [name, setName] = useState(person.name);
   const [department, setDepartment] = useState(person.department ?? "");
@@ -461,6 +472,13 @@ function TeamMemberRow({
           {saveState === "error" && "Fehler"}
           {saveState === "idle" && (person.active ? "Aktiv" : "Inaktiv")}
         </span>
+        <button
+          type="button"
+          className="team-profile-button"
+          onClick={() => onOpenProfile(person.id)}
+        >
+          Profil
+        </button>
         <button
           type="button"
           className={`team-status-button ${person.active ? "is-active" : "is-inactive"}`}

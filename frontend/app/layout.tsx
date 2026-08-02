@@ -13,6 +13,7 @@ import "./styles/planning-logic.css";
 import "./styles/memory.css";
 import "./styles/system.css";
 import "./styles/plan-editor.css";
+import "./styles/intelligence.css";
 
 export const metadata: Metadata = {
   title: {

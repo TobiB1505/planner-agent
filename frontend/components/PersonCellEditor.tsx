@@ -1,6 +1,7 @@
 "use client";
 
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { getIntelligentRecommendations, type IntelligentCandidate } from "@/lib/api";
 import type { CandidateAvailability, CandidateInfo } from "@/lib/recommendations";
 import type { CustomCellEditorProps } from "ag-grid-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,6 +18,15 @@ type EditorProps = CustomCellEditorProps<Record<string, string | null>, string> 
   weekdayLabel?: string;
   dateLabel?: string;
   timeLabel?: string;
+  intelligenceRequest?: {
+    start_date: string;
+    day_labels: string[];
+    rows: Record<string, string | null>[];
+    day_label: string;
+    category: string;
+    subcategory?: string | null;
+  };
+  onRecommendationSelected?: (name: string) => void;
 };
 
 const GROUP_ORDER: CandidateAvailability[] = ["recommended", "available", "warning", "unavailable"];
@@ -42,6 +52,24 @@ const GROUP_ICON: Record<CandidateAvailability, string> = {
 const CRITICAL_WARNING_CODES = new Set(["show_conflict", "rehearsal_nearby"]);
 
 const UNAVAILABLE_COLLAPSE_THRESHOLD = 8;
+
+function backendCandidate(candidate: IntelligentCandidate): CandidateInfo {
+  const warningReasons = candidate.warnings.map((warning) => ({
+    code: (["absence", "time_conflict", "rehearsal_overlap", "rule_blocked", "department_preference"] as const)
+      .find((code) => code === warning.code) ?? "rule_blocked",
+    text: warning.label,
+  }));
+  const positiveReasons = candidate.reasons.map((reason) => ({
+    code: reason.code,
+    text: `${reason.label}: ${reason.evidence}`,
+  }));
+  return {
+    name: candidate.employee,
+    status: candidate.status,
+    reasons: [...warningReasons, ...positiveReasons],
+    score: candidate.rank,
+  };
+}
 
 function parseCell(value: string): { prefix: string; names: string[] } {
   const lines = value.split(/\n+/).map((line) => line.trim()).filter(Boolean);
@@ -78,7 +106,12 @@ function composeCell(prefix: string, names: string[]): string {
   return prefix ? `${prefix} | ${joined}` : joined;
 }
 
-export default function PersonCellEditor({
+export default function PersonCellEditor(props: EditorProps) {
+  const editorKey = `${props.node?.id ?? "row"}:${props.column?.getColId() ?? "column"}:${props.value ?? ""}`;
+  return <PersonCellEditorInstance key={editorKey} {...props} />;
+}
+
+function PersonCellEditorInstance({
   value,
   onValueChange,
   stopEditing,
@@ -91,6 +124,8 @@ export default function PersonCellEditor({
   weekdayLabel,
   dateLabel,
   timeLabel,
+  intelligenceRequest,
+  onRecommendationSelected,
 }: EditorProps) {
   const initial = useMemo(() => parseCell(value ?? ""), [value]);
   // Lokaler Entwurf: Änderungen landen erst mit "Auswahl übernehmen" in der
@@ -105,8 +140,12 @@ export default function PersonCellEditor({
   const [pendingWarning, setPendingWarning] = useState<CandidateInfo | null>(null);
   const [pendingClearAll, setPendingClearAll] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [intelligenceCandidates, setIntelligenceCandidates] = useState<CandidateInfo[] | null>(null);
+  const [intelligenceLoading, setIntelligenceLoading] = useState(Boolean(intelligenceRequest));
+  const [interactionReady, setInteractionReady] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const recommendedSelectionsRef = useRef<Set<string>>(new Set());
   const cellPrefix =
     initial.prefix || (minimumPeople > 1 ? "(Gäste vs Robins BVB)" : "");
   const normalizedQuery = query.trim().toLocaleLowerCase("de");
@@ -114,14 +153,31 @@ export default function PersonCellEditor({
     () => new Set(draftNames.map((name) => name.toLocaleLowerCase("de"))),
     [draftNames],
   );
+  const effectiveCandidates = intelligenceCandidates ?? candidates;
+
+  useEffect(() => {
+    if (!intelligenceRequest) return;
+    let activeRequest = true;
+    getIntelligentRecommendations(intelligenceRequest)
+      .then((result) => {
+        if (activeRequest) setIntelligenceCandidates(result.candidates.map(backendCandidate));
+      })
+      .catch(() => {
+        // Lokale Sprint-2-Empfehlungen bleiben als ausfallsicherer Fallback sichtbar.
+      })
+      .finally(() => {
+        if (activeRequest) setIntelligenceLoading(false);
+      });
+    return () => { activeRequest = false; };
+  }, [intelligenceRequest]);
 
   const candidateByName = useMemo(() => {
     const map = new Map<string, CandidateInfo>();
-    for (const candidate of candidates) {
+    for (const candidate of effectiveCandidates) {
       map.set(candidate.name.toLocaleLowerCase("de"), candidate);
     }
     return map;
-  }, [candidates]);
+  }, [effectiveCandidates]);
 
   function candidateFor(name: string): CandidateInfo | undefined {
     return candidateByName.get(name.toLocaleLowerCase("de"));
@@ -130,7 +186,7 @@ export default function PersonCellEditor({
   const groups = useMemo(() => {
     const byGroup = new Map<CandidateAvailability, CandidateInfo[]>();
     for (const status of GROUP_ORDER) byGroup.set(status, []);
-    for (const candidate of candidates) {
+    for (const candidate of effectiveCandidates) {
       if (selectedLower.has(candidate.name.toLocaleLowerCase("de"))) continue;
       if (
         normalizedQuery &&
@@ -143,7 +199,7 @@ export default function PersonCellEditor({
     // Fallback für Personen ohne Klassifizierung (z.B. wenn candidates leer
     // bleibt, weil die Zelle keine dynamische Empfehlung hat): einfach als
     // "verfügbar" ohne Begründung einsortieren, damit die Auswahl nie leer ist.
-    if (candidates.length === 0) {
+    if (effectiveCandidates.length === 0) {
       for (const name of people) {
         if (selectedLower.has(name.toLocaleLowerCase("de"))) continue;
         if (normalizedQuery && !name.toLocaleLowerCase("de").includes(normalizedQuery)) continue;
@@ -157,7 +213,7 @@ export default function PersonCellEditor({
       ?.sort((a, b) => a.reasons.length - b.reasons.length || a.score - b.score);
     byGroup.get("unavailable")?.sort((a, b) => a.name.localeCompare(b.name, "de"));
     return byGroup;
-  }, [candidates, people, selectedLower, normalizedQuery]);
+  }, [effectiveCandidates, people, selectedLower, normalizedQuery]);
 
   const interactiveCandidates = useMemo(
     () => [
@@ -175,6 +231,14 @@ export default function PersonCellEditor({
 
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  // AG Grid öffnet die Zelle bereits beim ersten Klick. Bei einem gewohnten
+  // Doppelklick darf der zweite Klick deshalb nicht versehentlich den ersten
+  // Kandidaten im gerade erschienenen Popup auswählen.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setInteractionReady(true), 240);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const target = minimumPeople > 1 ? minimumPeople : undefined;
@@ -211,6 +275,9 @@ export default function PersonCellEditor({
     setError("");
     setQuery("");
     setActive(0);
+    if (candidateFor(canonical)?.status === "recommended") {
+      recommendedSelectionsRef.current.add(canonical);
+    }
     queueMicrotask(() => inputRef.current?.focus());
   }
 
@@ -230,6 +297,7 @@ export default function PersonCellEditor({
   }
 
   function removeName(name: string) {
+    recommendedSelectionsRef.current.delete(name);
     setDraftNames((current) => current.filter((selected) => selected !== name));
     queueMicrotask(() => inputRef.current?.focus());
   }
@@ -241,6 +309,11 @@ export default function PersonCellEditor({
       return;
     }
     setSubmitting(true);
+    for (const name of draftNames) {
+      if (recommendedSelectionsRef.current.has(name)) {
+        onRecommendationSelected?.(name);
+      }
+    }
     onValueChange(composeCell(cellPrefix, draftNames));
     stopEditing();
   }
@@ -259,9 +332,15 @@ export default function PersonCellEditor({
   return (
     <div
       ref={rootRef}
-      className="person-editor person-editor-wide"
+      className={`person-editor person-editor-wide ${interactionReady ? "" : "is-arming"}`}
       role="dialog"
       aria-label="Mitarbeiter zuweisen"
+      onClickCapture={(event) => {
+        if (!interactionReady) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
     >
       <div className="person-editor-header">
         <div className="person-editor-header-copy">
@@ -292,6 +371,12 @@ export default function PersonCellEditor({
           </span>
         )}
       </div>
+
+      {intelligenceLoading && (
+        <div className="person-intelligence-loading" role="status">
+          <span className="spinner" /> Historie und Planlogik werden abgeglichen …
+        </div>
+      )}
 
       {draftNames.length > 0 && (
         <div className="person-chips">
