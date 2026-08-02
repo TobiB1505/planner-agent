@@ -14,7 +14,7 @@ type EditorProps = CustomCellEditorProps<Record<string, string | null>, string> 
   ruleHint?: string;
 };
 
-const SOFTSPORT_OPTIONS = [
+export const SOFTSPORT_OPTIONS = [
   "Boccia",
   "Darts",
   "Freegolf",
@@ -45,7 +45,7 @@ const GROUP_ICON: Record<CandidateAvailability, string> = {
   unavailable: "🔒",
 };
 
-function parseValue(value: string): { activity: string; names: string[] } {
+export function parseValue(value: string): { activity: string; names: string[] } {
   if (!value.includes("|")) {
     const clean = value.trim();
     return SOFTSPORT_OPTIONS.includes(clean)
@@ -69,7 +69,7 @@ function parseValue(value: string): { activity: string; names: string[] } {
   return { activity, names };
 }
 
-function composeValue(activity: string, names: string[]): string {
+export function composeValue(activity: string, names: string[]): string {
   if (!activity && names.length === 0) return "";
   return `${activity} | ${names.join(", ")}`;
 }
