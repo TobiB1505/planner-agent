@@ -16,8 +16,11 @@ def _show(date: str, activity: str) -> dict:
 
 
 def test_dashboard_show_days_follow_selected_week(tmp_path, monkeypatch):
+    # AP4: get_conn() legt das Schema nicht mehr implizit an - deshalb hier
+    # einmalig explizit initialize_database() aufrufen (siehe backend/db.py).
     monkeypatch.setattr(db, "DATABASE_PATH", tmp_path / "dashboard-week.db")
     monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
+    db.initialize_database()
     conn = db.get_conn()
     selected_week_id = db.insert_week_plan(
         conn, 31, "2026-07-27", "2026-08-02", "KW31"

@@ -276,10 +276,9 @@ def _configure_connection(conn: sqlite3.Connection) -> None:
 
     journal_mode ist eine dateipersistente Eigenschaft der Datenbankdatei selbst (bleibt
     auch über Neustarts erhalten), busy_timeout dagegen gilt nur für diese eine Verbindung
-    und muss deshalb bei jedem get_conn()-Aufruf neu gesetzt werden. Der Connection-
-    Lifecycle (eine Verbindung pro get_conn()-Aufruf) bleibt hier bewusst unverändert -
-    das ist AP4 vorbehalten; ist die Datei bereits im WAL-Modus, ist der PRAGMA-Aufruf ein
-    günstiger No-Op.
+    und muss deshalb bei jeder neu erzeugten Verbindung neu gesetzt werden (siehe
+    create_connection() unten). Ist die Datei bereits im WAL-Modus, ist der PRAGMA-Aufruf
+    ein günstiger No-Op.
     """
     row = conn.execute("PRAGMA journal_mode=WAL;").fetchone()
     resulting_mode = str(row[0]).lower() if row else ""
@@ -295,14 +294,65 @@ def _configure_connection(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA busy_timeout = 5000;")
 
 
-def get_conn():
-    ensure_runtime_directories()
+def create_connection() -> sqlite3.Connection:
+    """Öffnet ausschließlich eine neue, verbindungsseitig konfigurierte SQLite-Verbindung
+    (AP4 - Verbindungs-/Schema-Lifecycle).
+
+    Führt bewusst KEIN Schema, KEINE Migration und KEINE Runtime-Verzeichnis-Erstellung
+    aus - dafür ist einmalig initialize_database() zuständig. Jeder Aufruf öffnet eine
+    eigene, unabhängige Verbindung; kein Connection-Objekt wird zwischen Aufrufern geteilt.
+    """
     conn = sqlite3.connect(str(DATABASE_PATH))
     conn.row_factory = sqlite3.Row
     _configure_connection(conn)
-    conn.executescript(SCHEMA)
-    _migrate(conn)
     return conn
+
+
+def initialize_database() -> None:
+    """Einmalige Initialisierung: Laufzeitverzeichnisse, Schema, Migration (AP4).
+
+    Idempotent - kann beliebig oft aufgerufen werden (CREATE TABLE/INDEX IF NOT EXISTS,
+    additive Spaltenprüfungen in _migrate()), ändert an einer bereits initialisierten
+    Datenbank nichts mehr. Wird genau einmal beim FastAPI-Lifespan-Start ausgeführt
+    (siehe api.py) sowie explizit von Tests/CLI-Aufrufern vor der ersten Nutzung. Ein
+    Fehler beim Anlegen von Schema/Migration wird nicht verschluckt - die Initialisierungs-
+    Connection wird in jedem Fall (auch bei einer Exception) wieder geschlossen.
+    """
+    ensure_runtime_directories()
+    conn = create_connection()
+    try:
+        conn.executescript(SCHEMA)
+        _migrate(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_conn() -> sqlite3.Connection:
+    """Kompatibler Zugriffspunkt für nicht request-gebundene Aufrufer (Tests, CLI-/
+    Offline-Skripte): öffnet nur eine konfigurierte Verbindung, OHNE Schema oder Migration
+    erneut auszuführen (AP4 - vorher lief das bei jedem Aufruf mit). Setzt voraus, dass
+    zuvor einmal initialize_database() gelaufen ist (z.B. über den FastAPI-Lifespan-Start
+    oder - für Tests/Skripte, die keinen App-Start durchlaufen - durch einen expliziten
+    eigenen Aufruf von initialize_database()).
+    """
+    return create_connection()
+
+
+def get_db_connection():
+    """FastAPI-Dependency (AP4): genau eine Verbindung pro Request.
+
+    Wird über Depends(get_db_connection) in die Endpunkte injiziert und nach Abschluss des
+    Requests zuverlässig geschlossen - auch wenn der Endpunkt eine Exception wirft, da das
+    schließende finally in jedem Fall durchlaufen wird, bevor FastAPI die Exception weiter
+    nach oben reicht. Keine Verbindung wird zwischen Requests geteilt, kein globales
+    Connection-Objekt.
+    """
+    conn = create_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def get_all_people(conn, active_only: bool = False):

@@ -20,16 +20,19 @@ EXPECTED_TABLES = {
 
 @pytest.fixture
 def isolated_db(tmp_path, monkeypatch):
-    """Leitet db.get_conn() auf eine frische Datei in tmp_path um."""
+    """Leitet die Datenbank auf eine frische Datei in tmp_path um und
+    initialisiert Schema/Migrationen einmalig explizit (AP4: get_conn() legt
+    das Schema nicht mehr implizit an - das übernimmt initialize_database())."""
     test_db_path = tmp_path / "test_dienstplaene.db"
     monkeypatch.setattr(db_module, "DATABASE_PATH", test_db_path)
     # Die echten Laufzeitordner sollen für diesen isolierten Test nicht
     # angefasst werden - tmp_path existiert bereits, das reicht für sqlite3.
     monkeypatch.setattr(db_module, "ensure_runtime_directories", lambda: None)
+    db_module.initialize_database()
     return test_db_path
 
 
-def test_get_conn_opens_and_creates_expected_tables(isolated_db):
+def test_initialize_database_creates_expected_tables(isolated_db):
     conn = db_module.get_conn()
     try:
         tables = {

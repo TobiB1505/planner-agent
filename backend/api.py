@@ -13,13 +13,14 @@ import sys
 import tempfile
 import threading
 import time
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -49,7 +50,19 @@ logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="Planner-Agent API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Führt die einmalige DB-Initialisierung (Schema, Migration, Laufzeitordner)
+    genau einmal beim Start dieses App-Prozesses aus (AP4 - Verbindungs-/Schema-
+    Lifecycle). Schlägt initialize_database() fehl, wird die Exception nicht
+    abgefangen - ein fehlgeschlagener DB-Start soll den App-Start sichtbar
+    verhindern, statt eine scheinbar laufende App ohne nutzbare Datenbank zu
+    hinterlassen."""
+    db.initialize_database()
+    yield
+
+
+app = FastAPI(title="Planner-Agent API", lifespan=lifespan)
 _PROCESS_STARTED_AT = time.monotonic()
 KNOWN_DEPARTMENT_TOKENS = {
     "S&L", "SPT", "NM", "KÜCHE", "COCINA", "TC", "DEKO", "LIVE-ENT",
@@ -74,10 +87,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-def get_conn():
-    return db.get_conn()
 
 
 def clean(obj):
@@ -111,8 +120,7 @@ class PersonUpdate(BaseModel):
 
 
 @app.get("/api/team")
-def get_team():
-    conn = get_conn()
+def get_team(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     people = db.get_all_people(conn)
     totals = stats.person_totals(conn)
     total_lookup = dict(zip(totals["person"], totals["total"])) if not totals.empty else {}
@@ -126,37 +134,36 @@ def get_team():
 
 
 @app.post("/api/team")
-def create_person(payload: PersonIn):
-    conn = get_conn()
+def create_person(payload: PersonIn, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     person_id = db.create_person(conn, payload.name.strip(), (payload.department or "").strip() or None)
     return {"id": person_id}
 
 
 @app.put("/api/team/{person_id}")
-def update_person(person_id: int, payload: PersonUpdate):
-    conn = get_conn()
+def update_person(
+    person_id: int,
+    payload: PersonUpdate,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     db.update_person(conn, person_id, payload.name.strip(), (payload.department or "").strip() or None, payload.active)
     return {"ok": True}
 
 
 @app.delete("/api/team/{person_id}")
-def delete_person(person_id: int):
-    conn = get_conn()
+def delete_person(person_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     db.delete_person(conn, person_id)
     return {"ok": True}
 
 
 @app.get("/api/people/active")
-def people_active():
-    conn = get_conn()
+def people_active(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     return [p["name"] for p in db.get_all_people(conn, active_only=True)]
 
 
 # ---------- Weeks / Archiv ----------
 
 @app.get("/api/weeks")
-def get_weeks():
-    conn = get_conn()
+def get_weeks(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     weeks = db.get_week_plans(conn)
     result = []
     for w in weeks:
@@ -173,16 +180,14 @@ def get_weeks():
 
 
 @app.get("/api/weeks/{week_id}")
-def get_week_detail(week_id: int):
-    conn = get_conn()
+def get_week_detail(week_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     assignments = [dict(a) for a in db.get_assignments_for_week(conn, week_id)]
     absences = [dict(a) for a in db.get_absences_for_week(conn, week_id)]
     return {"assignments": clean(assignments), "absences": clean(absences)}
 
 
 @app.delete("/api/weeks/{week_id}")
-def delete_week(week_id: int):
-    conn = get_conn()
+def delete_week(week_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     db.delete_week_plan(conn, week_id)
     return {"ok": True}
 
@@ -190,20 +195,17 @@ def delete_week(week_id: int):
 # ---------- Dashboard ----------
 
 @app.get("/api/dashboard/overview")
-def dashboard_overview():
-    conn = get_conn()
+def dashboard_overview(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     return clean(stats.overview_stats(conn))
 
 
 @app.get("/api/dashboard/person-totals")
-def dashboard_person_totals():
-    conn = get_conn()
+def dashboard_person_totals(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     return records(stats.person_totals(conn))
 
 
 @app.get("/api/dashboard/category-matrix")
-def dashboard_category_matrix():
-    conn = get_conn()
+def dashboard_category_matrix(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     matrix = stats.person_category_matrix(conn)
     if matrix.empty:
         return {"columns": [], "rows": []}
@@ -215,14 +217,12 @@ def dashboard_category_matrix():
 
 
 @app.get("/api/dashboard/department-activity")
-def dashboard_department_activity():
-    conn = get_conn()
+def dashboard_department_activity(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     return records(stats.department_activity(conn))
 
 
 @app.get("/api/dashboard/fairness-alerts")
-def dashboard_fairness_alerts(week_id: int):
-    conn = get_conn()
+def dashboard_fairness_alerts(week_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     return stats.fairness_alerts(conn, week_id)
 
 
@@ -234,13 +234,13 @@ def planning_rule_list():
 # ---------- MA-Gedächtnis ----------
 
 @app.get("/api/memory")
-def memory_overview():
-    return clean(memory.build_memory(get_conn()))
+def memory_overview(conn: sqlite3.Connection = Depends(db.get_db_connection)):
+    return clean(memory.build_memory(conn))
 
 
 @app.get("/api/memory/{person_id}")
-def memory_person(person_id: int):
-    entry = memory.memory_for_person(get_conn(), person_id)
+def memory_person(person_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
+    entry = memory.memory_for_person(conn, person_id)
     if entry is None:
         raise HTTPException(404, "Mitarbeiter wurde nicht gefunden.")
     return clean(entry)
@@ -259,8 +259,12 @@ class MemoryShowUpdate(BaseModel):
 
 
 @app.put("/api/memory/{person_id}/show/{show_key}")
-def memory_set_show(person_id: int, show_key: str, payload: MemoryShowUpdate):
-    conn = get_conn()
+def memory_set_show(
+    person_id: int,
+    show_key: str,
+    payload: MemoryShowUpdate,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     key = show_key.strip().upper()
     if payload.state is None:
         db.clear_memory_override(conn, person_id, "show", key)
@@ -277,8 +281,11 @@ class MemoryFreeUpdate(BaseModel):
 
 
 @app.put("/api/memory/{person_id}/free")
-def memory_set_free(person_id: int, payload: MemoryFreeUpdate):
-    conn = get_conn()
+def memory_set_free(
+    person_id: int,
+    payload: MemoryFreeUpdate,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     if payload.weekdays is None:
         db.clear_memory_override(conn, person_id, "free", "weekdays")
     else:
@@ -300,8 +307,11 @@ class MemoryTaskUpdate(BaseModel):
 
 
 @app.put("/api/memory/{person_id}/task")
-def memory_set_task(person_id: int, payload: MemoryTaskUpdate):
-    conn = get_conn()
+def memory_set_task(
+    person_id: int,
+    payload: MemoryTaskUpdate,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     # Immer normalisiert speichern, sonst werden "OPS / WP" und "OPS + WP" zwei Zeilen
     # für denselben Dienst.
     key = stats.normalize_category(payload.category)
@@ -316,8 +326,7 @@ def memory_set_task(person_id: int, payload: MemoryTaskUpdate):
 
 
 @app.get("/api/dashboard/insights")
-def dashboard_insights(week_id: int):
-    conn = get_conn()
+def dashboard_insights(week_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     try:
         return clean({
             **stats.week_insights(conn, week_id),
@@ -414,8 +423,10 @@ class ArtistPlanSaveRequest(BaseModel):
 
 
 @app.post("/api/artist-plans")
-def artist_plan_save(payload: ArtistPlanSaveRequest):
-    conn = get_conn()
+def artist_plan_save(
+    payload: ArtistPlanSaveRequest,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     entries = artist_plan.rows_to_entries(
         payload.rows,
         payload.day_labels,
@@ -433,8 +444,7 @@ def artist_plan_save(payload: ArtistPlanSaveRequest):
 
 
 @app.get("/api/artist-plans")
-def artist_plan_list():
-    conn = get_conn()
+def artist_plan_list(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     result = []
     for row in db.get_artist_plans(conn):
         start = datetime.strptime(row["start_date"], "%Y-%m-%d").date()
@@ -454,8 +464,10 @@ def artist_plan_list():
 
 
 @app.get("/api/artist-plans/{artist_plan_id}")
-def artist_plan_detail(artist_plan_id: int):
-    conn = get_conn()
+def artist_plan_detail(
+    artist_plan_id: int,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     row = db.get_artist_plan(conn, artist_plan_id)
     if row is None:
         raise HTTPException(404, "Künstlerplan wurde nicht gefunden.")
@@ -463,8 +475,10 @@ def artist_plan_detail(artist_plan_id: int):
 
 
 @app.delete("/api/artist-plans/{artist_plan_id}")
-def artist_plan_delete(artist_plan_id: int):
-    conn = get_conn()
+def artist_plan_delete(
+    artist_plan_id: int,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     if db.get_artist_plan(conn, artist_plan_id) is None:
         raise HTTPException(404, "Künstlerplan wurde nicht gefunden.")
     db.delete_artist_plan(conn, artist_plan_id)
@@ -472,8 +486,10 @@ def artist_plan_delete(artist_plan_id: int):
 
 
 @app.get("/api/artist-plans/{artist_plan_id}/export")
-def artist_plan_export(artist_plan_id: int):
-    conn = get_conn()
+def artist_plan_export(
+    artist_plan_id: int,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     row = db.get_artist_plan(conn, artist_plan_id)
     if row is None:
         raise HTTPException(404, "Künstlerplan wurde nicht gefunden.")
@@ -520,12 +536,12 @@ async def rehearsal_plan_sheets(file: UploadFile = File(...)):
 async def rehearsal_plan_import(
     file: UploadFile = File(...),
     sheet_name: Optional[str] = None,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
 ):
     filename = (file.filename or "").casefold()
     if not filename.endswith((".pdf", ".xlsx")):
         raise HTTPException(400, "Bitte eine Probenplan-PDF oder -Excel auswählen.")
     content = await file.read()
-    conn = get_conn()
     active_people = [
         row["name"] for row in db.get_all_people(conn, active_only=True)
     ]
@@ -577,8 +593,10 @@ class RehearsalPlanSaveRequest(BaseModel):
 
 
 @app.post("/api/rehearsal-plans")
-def rehearsal_plan_save(payload: RehearsalPlanSaveRequest):
-    conn = get_conn()
+def rehearsal_plan_save(
+    payload: RehearsalPlanSaveRequest,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     active_people = [
         row["name"] for row in db.get_all_people(conn, active_only=True)
     ]
@@ -599,8 +617,7 @@ def rehearsal_plan_save(payload: RehearsalPlanSaveRequest):
 
 
 @app.get("/api/rehearsal-plans")
-def rehearsal_plan_list():
-    conn = get_conn()
+def rehearsal_plan_list(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     result = []
     for row in db.get_rehearsal_plans(conn):
         start = datetime.strptime(row["start_date"], "%Y-%m-%d").date()
@@ -619,8 +636,10 @@ def rehearsal_plan_list():
 
 
 @app.get("/api/rehearsal-plans/{rehearsal_plan_id}")
-def rehearsal_plan_detail(rehearsal_plan_id: int):
-    conn = get_conn()
+def rehearsal_plan_detail(
+    rehearsal_plan_id: int,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     plan = db.get_rehearsal_plan(conn, rehearsal_plan_id)
     if plan is None:
         raise HTTPException(404, "Probenplan wurde nicht gefunden.")
@@ -642,8 +661,10 @@ def rehearsal_plan_detail(rehearsal_plan_id: int):
 
 
 @app.delete("/api/rehearsal-plans/{rehearsal_plan_id}")
-def rehearsal_plan_delete(rehearsal_plan_id: int):
-    conn = get_conn()
+def rehearsal_plan_delete(
+    rehearsal_plan_id: int,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     if db.get_rehearsal_plan(conn, rehearsal_plan_id) is None:
         raise HTTPException(404, "Probenplan wurde nicht gefunden.")
     db.delete_rehearsal_plan(conn, rehearsal_plan_id)
@@ -701,8 +722,7 @@ def _resolve_with_choices(conn, raw_name: str, resolutions: dict[str, str]) -> O
 
 
 @app.post("/api/import/save")
-def import_save(payload: ImportSave):
-    conn = get_conn()
+def import_save(payload: ImportSave, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     week_plan_id = db.insert_week_plan(conn, payload.kw, payload.start_date, payload.end_date, payload.filename)
 
     for a in payload.assignments:
@@ -755,8 +775,10 @@ class FreeSuggestionRequest(BaseModel):
 
 
 @app.post("/api/plan/free-suggestion")
-def plan_free_suggestion(payload: FreeSuggestionRequest):
-    conn = get_conn()
+def plan_free_suggestion(
+    payload: FreeSuggestionRequest,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     return clean(memory.suggest_free_days(
         conn,
         _week_dates(payload.new_start),
@@ -793,8 +815,7 @@ def _rotation_week_id(conn, template_code: str | None, explicit_week_id: int | N
 
 
 @app.get("/api/plan/templates")
-def plan_template_list():
-    conn = get_conn()
+def plan_template_list(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     try:
         return plan_templates.public_templates(conn)
     except (FileNotFoundError, ValueError) as exc:
@@ -833,14 +854,16 @@ def _archived_assignment_for_grid(row: dict) -> dict:
 
 
 @app.get("/api/plan/existing")
-def plan_existing(start_date: str):
+def plan_existing(
+    start_date: str,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     """Lädt einen bereits archivierten/fertig hochgeladenen Dienstplan in den Editor."""
     try:
         start = datetime.strptime(start_date, "%Y-%m-%d").date()
     except ValueError as exc:
         raise HTTPException(400, "Ungültiger Wochenbeginn.") from exc
 
-    conn = get_conn()
     week = conn.execute(
         """SELECT wp.*,
                   (SELECT COUNT(*) FROM assignments a
@@ -970,8 +993,10 @@ def plan_existing(start_date: str):
 
 
 @app.post("/api/plan/generate")
-def plan_generate(payload: PlanGenerateRequest):
-    conn = get_conn()
+def plan_generate(
+    payload: PlanGenerateRequest,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     new_start = datetime.strptime(payload.new_start, "%Y-%m-%d").date()
     absent_by_date: dict[str, set[str]] = {}
     for a in payload.absences:
@@ -1145,8 +1170,11 @@ def _intelligence_plan_data(payload: IntelligencePlanRequest) -> tuple[list[dict
 
 
 @app.get("/api/intelligence/employees")
-def intelligence_employee_overview(weeks: int = 12, current_week_start: Optional[str] = None):
-    conn = get_conn()
+def intelligence_employee_overview(
+    weeks: int = 12,
+    current_week_start: Optional[str] = None,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     return clean(team_overview.build_team_overview(
         conn,
         weeks=max(1, min(52, weeks)),
@@ -1155,8 +1183,12 @@ def intelligence_employee_overview(weeks: int = 12, current_week_start: Optional
 
 
 @app.get("/api/intelligence/employees/{person_id}")
-def intelligence_employee_profile(person_id: int, weeks: int = 12, current_week_start: Optional[str] = None):
-    conn = get_conn()
+def intelligence_employee_profile(
+    person_id: int,
+    weeks: int = 12,
+    current_week_start: Optional[str] = None,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     try:
         statistics = employee_stats.calculate_employee_statistics(
             conn,
@@ -1193,8 +1225,11 @@ def intelligence_employee_profile(person_id: int, weeks: int = 12, current_week_
 
 
 @app.put("/api/intelligence/employees/{person_id}/skills")
-def intelligence_employee_skill_set(person_id: int, payload: EmployeeSkillUpdate):
-    conn = get_conn()
+def intelligence_employee_skill_set(
+    person_id: int,
+    payload: EmployeeSkillUpdate,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     try:
         return clean(employee_stats.upsert_skill(
             conn, person_id, payload.id, payload.name, payload.level, payload.evidence
@@ -1204,15 +1239,21 @@ def intelligence_employee_skill_set(person_id: int, payload: EmployeeSkillUpdate
 
 
 @app.delete("/api/intelligence/employees/{person_id}/skills/{skill_id}")
-def intelligence_employee_skill_delete(person_id: int, skill_id: str):
-    conn = get_conn()
+def intelligence_employee_skill_delete(
+    person_id: int,
+    skill_id: str,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     employee_stats.delete_skill(conn, person_id, skill_id)
     return {"ok": True}
 
 
 @app.post("/api/intelligence/employees/{person_id}/memory")
-def intelligence_employee_memory_set(person_id: int, payload: EmployeeMemoryUpdate):
-    conn = get_conn()
+def intelligence_employee_memory_set(
+    person_id: int,
+    payload: EmployeeMemoryUpdate,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     try:
         return clean(memory_engine.upsert_manual_entry(
             conn,
@@ -1229,12 +1270,19 @@ def intelligence_employee_memory_set(person_id: int, payload: EmployeeMemoryUpda
 
 
 @app.delete("/api/intelligence/employees/{person_id}/memory/{entry_id}")
-def intelligence_employee_memory_delete(person_id: int, entry_id: int):
-    return clean(memory_engine.delete_manual_entry(get_conn(), person_id, entry_id))
+def intelligence_employee_memory_delete(
+    person_id: int,
+    entry_id: int,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
+    return clean(memory_engine.delete_manual_entry(conn, person_id, entry_id))
 
 
 @app.post("/api/intelligence/recommendations")
-def intelligence_recommendations(payload: IntelligenceRecommendationRequest):
+def intelligence_recommendations(
+    payload: IntelligenceRecommendationRequest,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     assignments_list, absences_list, day_map = _intelligence_plan_data(payload)
     target_date = day_map.get(payload.day_label)
     if not target_date:
@@ -1257,7 +1305,7 @@ def intelligence_recommendations(payload: IntelligenceRecommendationRequest):
         if not (absence.get("date") == target_date and absence.get("type") == payload.category)
     ]
     return clean(recommendation_engine.recommend(
-        get_conn(),
+        conn,
         target_date=target_date,
         category=payload.category,
         subcategory=payload.subcategory,
@@ -1267,10 +1315,13 @@ def intelligence_recommendations(payload: IntelligenceRecommendationRequest):
 
 
 @app.post("/api/intelligence/plan-quality")
-def intelligence_plan_quality(payload: IntelligencePlanRequest):
+def intelligence_plan_quality(
+    payload: IntelligencePlanRequest,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     assignments_list, absences_list, _ = _intelligence_plan_data(payload)
     return clean(plan_quality.calculate_plan_quality(
-        get_conn(),
+        conn,
         start_date=payload.start_date,
         assignments=assignments_list,
         absences=absences_list,
@@ -1278,11 +1329,16 @@ def intelligence_plan_quality(payload: IntelligencePlanRequest):
 
 
 @app.get("/api/intelligence/audit")
-def intelligence_audit_log(week_plan_id: Optional[int] = None, start_date: Optional[str] = None, limit: int = 100):
+def intelligence_audit_log(
+    week_plan_id: Optional[int] = None,
+    start_date: Optional[str] = None,
+    limit: int = 100,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     if week_plan_id is None and start_date is None:
         raise HTTPException(400, "week_plan_id oder start_date wird benötigt.")
     return clean(intelligence_audit.list_events(
-        get_conn(),
+        conn,
         week_plan_id=week_plan_id,
         start_date=start_date,
         limit=max(1, min(500, limit)),
@@ -1421,8 +1477,10 @@ def _assignment_warnings(
 
 
 @app.post("/api/plan/save")
-def plan_save(payload: PlanSaveRequest):
-    conn = get_conn()
+def plan_save(
+    payload: PlanSaveRequest,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     day_iso_by_label = {
         lbl: iso for lbl, iso in zip(payload.day_labels, _week_dates(payload.start_date))
     }
@@ -1530,8 +1588,10 @@ class XlsxGenerateRequest(BaseModel):
 
 
 @app.post("/api/xlsx/generate")
-def xlsx_generate(payload: XlsxGenerateRequest):
-    conn = get_conn()
+def xlsx_generate(
+    payload: XlsxGenerateRequest,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     try:
         spec = plan_templates.get_template(conn, payload.template_code)
     except (KeyError, FileNotFoundError, ValueError) as exc:
@@ -1560,8 +1620,7 @@ def xlsx_generate(payload: XlsxGenerateRequest):
 # ---------- Settings ----------
 
 @app.get("/api/settings/{key}")
-def get_setting(key: str):
-    conn = get_conn()
+def get_setting(key: str, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     return {"value": db.get_setting(conn, key)}
 
 
@@ -1570,8 +1629,11 @@ class SettingValue(BaseModel):
 
 
 @app.put("/api/settings/{key}")
-def set_setting(key: str, payload: SettingValue):
-    conn = get_conn()
+def set_setting(
+    key: str,
+    payload: SettingValue,
+    conn: sqlite3.Connection = Depends(db.get_db_connection),
+):
     db.set_setting(conn, key, payload.value)
     return {"ok": True}
 

@@ -42,10 +42,11 @@ def check_runtime_directories() -> list[str]:
 def check_database() -> list[str]:
     """Prüft, dass die SQLite-Datenbank erreichbar ist und intakt ist.
 
-    Öffnet dieselbe Datei, die db.get_conn() später auch verwendet - legt sie
+    Öffnet dieselbe Datei, die die Anwendung später auch verwendet - legt sie
     aber nicht selbst an. Existiert sie noch nicht, wird das nur als Hinweis
-    ausgegeben (get_conn() legt beim ersten echten Zugriff automatisch das
-    Schema an), nicht als Fehler, der den Start verhindert.
+    ausgegeben (der FastAPI-Lifespan-Start ruft beim eigentlichen Programmstart
+    db.initialize_database() auf und legt das Schema dabei automatisch an -
+    siehe backend/api.py), nicht als Fehler, der den Start verhindert.
     """
     problems: list[str] = []
     if not paths.DATABASE_PATH.exists():
