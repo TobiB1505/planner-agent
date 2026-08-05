@@ -1718,11 +1718,17 @@ def set_setting(
 
 @app.get("/api/health")
 def health():
-    """Reiner Lesezugriff - verändert nie Daten, legt auch keine Datenbank an."""
+    """Reiner Lesezugriff - verändert nie Daten, legt auch keine Datenbank an.
+
+    Safety Fix: liest db.DATABASE_PATH statt config_paths.DATABASE_PATH, damit
+    dieser Endpunkt in Tests denselben Monkeypatch-Mechanismus respektiert wie
+    jede andere DB-Nutzung (Depends(db.get_db_connection) etc.) - in Produktion
+    identischer Wert, da db.DATABASE_PATH von dort importiert wird.
+    """
     database_status = "missing"
-    if config_paths.DATABASE_PATH.exists():
+    if db.DATABASE_PATH.exists():
         try:
-            conn = sqlite3.connect(str(config_paths.DATABASE_PATH))
+            conn = sqlite3.connect(str(db.DATABASE_PATH))
             conn.execute("SELECT 1")
             conn.close()
             database_status = "connected"
@@ -1731,7 +1737,7 @@ def health():
     return {
         "status": "ok",
         "database": database_status,
-        "database_path": config_paths.relative_to_project(config_paths.DATABASE_PATH),
+        "database_path": config_paths.relative_to_project(db.DATABASE_PATH),
     }
 
 
@@ -1758,13 +1764,17 @@ def system_diagnostics():
     """Reiner Lesezugriff für den Service Manager - prüft denselben Zustand
     wie backend/run_local.py beim Start, aber strukturiert für die UI statt
     als Konsolenausgabe. Verändert nichts, legt nichts an (bis auf eine
-    sofort wieder gelöschte Prüfdatei je Ordner, um "beschreibbar" zu testen)."""
-    database_exists = config_paths.DATABASE_PATH.exists()
+    sofort wieder gelöschte Prüfdatei je Ordner, um "beschreibbar" zu testen).
+
+    Safety Fix: liest db.DATABASE_PATH statt config_paths.DATABASE_PATH (siehe
+    health() oben) - in Produktion identischer Wert.
+    """
+    database_exists = db.DATABASE_PATH.exists()
     integrity: Optional[str] = None
     database_status = "missing"
     if database_exists:
         try:
-            conn = sqlite3.connect(str(config_paths.DATABASE_PATH))
+            conn = sqlite3.connect(str(db.DATABASE_PATH))
             integrity = conn.execute("PRAGMA integrity_check;").fetchone()[0]
             conn.close()
             database_status = "connected" if integrity == "ok" else "error"
@@ -1794,7 +1804,7 @@ def system_diagnostics():
         "database": {
             "status": database_status,
             "integrity_check": integrity,
-            "path": config_paths.relative_to_project(config_paths.DATABASE_PATH),
+            "path": config_paths.relative_to_project(db.DATABASE_PATH),
         },
         "templates": templates,
         "directories": directories,

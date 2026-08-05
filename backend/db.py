@@ -313,7 +313,10 @@ def create_connection() -> sqlite3.Connection:
     gleichzeitig von zwei Threads), sqlite3 verbietet mit seinem Default
     check_same_thread=True aber bereits den bloßen Thread-Wechsel. Ohne dieses Flag schlägt
     jeder Request unter Last mit "SQLite objects created in a thread can only be used in
-    that same thread" fehl (siehe backend/tests/test_uvicorn_real_concurrency.py).
+    that same thread" fehl (siehe backend/tests/test_uvicorn_real_concurrency.py und
+    backend/tests/test_sqlite_thread_safety.py - zwei unabhängig entstandene, sich
+    ergänzende Regressionstests: einer gegen einen echten uvicorn-Prozess, einer über
+    TestClient mit echter Thread-Parallelität).
     """
     conn = sqlite3.connect(str(DATABASE_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
