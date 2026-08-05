@@ -112,28 +112,50 @@ def match_show_text(text: object) -> dict | None:
     return {"key": key, **{k: SHOWS[key][k] for k in ("label", "kind")}}
 
 
-def _resolve_person_id(conn, stored_name: object, raw_name: object) -> int | None:
+def _resolve_person_id(
+    conn,
+    stored_name: object,
+    raw_name: object,
+    person_lookup: db.PersonLookup | None = None,
+) -> int | None:
     """Namen aus dem Probenplan auf eine person_id abbilden.
 
     Beide Wege sind nötig (Phase-0-Baseline): das gespeicherte `person_name` fängt den beim
     Import per difflib gematchten "Killian" -> Kilian, der Alias-Fallback fängt Sarah/Krissi
     (soft-gelöscht) sowie Tim und "Celina" -> Selina (echte Alias-Zeile).
+
+    AP5a: nutzt bei Bedarf eine vorab geladene PersonLookup statt pro Aufruf eigene
+    SQL-Queries auszuführen - Auflösungsreihenfolge und Ergebnis bleiben identisch
+    zu find_person_by_alias() (siehe db.PersonLookup.resolve()).
     """
     for candidate in (stored_name, raw_name):
         if not candidate:
             continue
-        person_id = db.find_person_by_alias(conn, str(candidate))
+        if person_lookup is not None:
+            entry = person_lookup.resolve(str(candidate))
+            person_id = entry.person_id if entry else None
+        else:
+            person_id = db.find_person_by_alias(conn, str(candidate))
         if person_id is not None:
             return person_id
     return None
 
 
-def derive_show_cast(conn) -> tuple[dict[int, dict[str, dict]], list[dict]]:
+def derive_show_cast(
+    conn,
+    person_lookup: db.PersonLookup | None = None,
+) -> tuple[dict[int, dict[str, dict]], list[dict]]:
     """-> ({person_id: {show_key: {...}}}, unmatched_names).
 
     `appearances` zählt DISTINCT Probentage, nicht Probenzeilen - an einem Tag finden oft
     Durchlauf und Show als getrennte Zeilen statt.
+
+    AP5a: löst Personen über eine einmalig geladene PersonLookup auf, statt pro
+    rehearsal_people-Zeile eigene Alias-/Namensqueries auszuführen. Wird keine
+    `person_lookup` übergeben, wird intern genau einmal eine geladen - bestehende
+    Aufrufer (z.B. build_memory) funktionieren unverändert ohne den neuen Parameter.
     """
+    lookup = person_lookup if person_lookup is not None else db.load_person_lookup(conn)
     rows = conn.execute(
         """SELECT rp.raw_name, rp.person_name, rp.role,
                   r.date, r.show_code, r.activity, r.rehearsal_plan_id
@@ -144,7 +166,7 @@ def derive_show_cast(conn) -> tuple[dict[int, dict[str, dict]], list[dict]]:
     cast: dict[int, dict[str, dict]] = defaultdict(dict)
     unmatched: dict[str, int] = defaultdict(int)
     for row in rows:
-        person_id = _resolve_person_id(conn, row["person_name"], row["raw_name"])
+        person_id = _resolve_person_id(conn, row["person_name"], row["raw_name"], lookup)
         if person_id is None:
             unmatched[str(row["raw_name"] or "").strip() or "?"] += 1
             continue

@@ -1349,7 +1349,12 @@ def _assignment_warnings(
     conn,
     assignments_list: list[dict],
     start_date: str | None = None,
+    person_lookup: db.PersonLookup | None = None,
 ) -> list[str]:
+    """AP5a: löst Personen über eine einmalig geladene PersonLookup auf, statt pro
+    Zuweisung eigene Alias-/Namens- und Abteilungs-Queries auszuführen. Ohne
+    übergebene `person_lookup` wird intern genau einmal eine geladen."""
+    lookup = person_lookup if person_lookup is not None else db.load_person_lookup(conn)
     violations: list[str] = []
     relief_counts: dict[str, int] = {}
     minimum_staff: dict[tuple[str, str, str], set[str]] = {}
@@ -1376,15 +1381,9 @@ def _assignment_warnings(
             continue
         if planning_rules.is_relief_reward(assignment_row["category"]):
             relief_counts[name.casefold()] = relief_counts.get(name.casefold(), 0) + 1
-        person_id = db.find_person_by_alias(conn, name)
-        person = (
-            conn.execute(
-                "SELECT name, department FROM people WHERE id = ?", (person_id,)
-            ).fetchone()
-            if person_id is not None
-            else None
-        )
-        department = person["department"] if person else None
+        person_entry = lookup.resolve(name)
+        person_id = person_entry.person_id if person_entry else None
+        department = person_entry.department if person_entry else None
         required = planning_rules.required_people(
             assignment_row["category"],
             assignment_row.get("subcategory"),
@@ -1462,7 +1461,8 @@ def _assignment_warnings(
             ):
                 continue
             name = (assignment_row.get("person") or "").strip()
-            person_id = db.find_person_by_alias(conn, name) if name else None
+            resolved = lookup.resolve(name) if name else None
+            person_id = resolved.person_id if resolved else None
             special_people.add(
                 f"id:{person_id}" if person_id is not None else name.casefold()
             )
@@ -1486,7 +1486,12 @@ def plan_save(
     }
     grid_df = _grid_df_from_rows(payload.rows)
     assignments_list, absences_list = grid.parse_grid(grid_df, day_iso_by_label)
-    warnings = _assignment_warnings(conn, assignments_list, payload.start_date)
+    # AP5a: eine Lookup für die gesamte Speicheroperation - Warnungsberechnung UND
+    # Zuweisungs-/Abwesenheits-Schleife teilen sich dieselbe Map. Neuanlagen in der
+    # Schleife unten aktualisieren dieselbe Instanz sofort (siehe _resolve_or_create),
+    # sodass spätere Zeilen desselben Saves keine erneute Vollabfrage brauchen.
+    person_lookup = db.load_person_lookup(conn)
+    warnings = _assignment_warnings(conn, assignments_list, payload.start_date, person_lookup)
 
     existing_week_id = payload.existing_week_id
     if existing_week_id is None:
@@ -1522,10 +1527,10 @@ def plan_save(
         )
     for a in assignments_list:
         person_name = (a.get("person") or "").strip()
-        person_id = _resolve_or_create(conn, person_name) if person_name else None
+        person_id = _resolve_or_create(conn, person_name, person_lookup) if person_name else None
         db.insert_assignment(conn, week_plan_id, a["date"], a["category"], a.get("subcategory"), person_id, a.get("raw_text"))
     for a in absences_list:
-        person_id = _resolve_or_create(conn, a["person"])
+        person_id = _resolve_or_create(conn, a["person"], person_lookup)
         db.insert_absence(conn, week_plan_id, a["date"], person_id, a["type"])
     intelligence_audit.record_events(
         conn,
@@ -1566,7 +1571,19 @@ def plan_save(
     }
 
 
-def _resolve_or_create(conn, name: str) -> int:
+def _resolve_or_create(conn, name: str, person_lookup: db.PersonLookup | None = None) -> int:
+    """AP5a: löst über eine vorab geladene PersonLookup auf, statt bei jedem Aufruf
+    erneut zu fragen. Legt exakt wie bisher eine neue Person an, wenn keine Auflösung
+    gefunden wird - und trägt die Neuanlage sofort in dieselbe Lookup-Instanz ein,
+    damit spätere Zeilen desselben Saves sie ohne erneute Datenbankabfrage finden
+    (keine doppelte Personenerstellung innerhalb desselben Saves)."""
+    if person_lookup is not None:
+        entry = person_lookup.resolve(name)
+        if entry is not None:
+            return entry.person_id
+        person_id = db.create_person(conn, name)
+        person_lookup.register_person(person_id, name)
+        return person_id
     person_id = db.find_person_by_alias(conn, name)
     if person_id is None:
         person_id = db.create_person(conn, name)

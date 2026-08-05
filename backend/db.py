@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from dataclasses import dataclass, field
 
 from .config.paths import DATABASE_PATH, ensure_runtime_directories
 
@@ -392,6 +393,99 @@ def find_person_by_alias(conn, alias: str):
         "SELECT id FROM people WHERE name = ? COLLATE NOCASE", (alias,)
     ).fetchone()
     return row["id"] if row else None
+
+
+# --- AP5a: gebündelte Alias-/Personenauflösung ---------------------------------
+#
+# find_person_by_alias() oben führt bis zu zwei Einzelqueries PRO AUFRUF aus. In
+# Schleifen über viele Probenteilnehmer oder Zuweisungen (derive_show_cast,
+# _assignment_warnings, plan_save) summiert sich das linear mit der Datenmenge.
+# PersonLookup lädt Personen und Aliasse EINMAL pro fachlichem Vorgang und bietet
+# denselben Auflösungsweg (erst Alias, dann Personenname) als reinen
+# In-Memory-Lookup an.
+
+# SQLites eingebaute NOCASE-Kollation faltet laut eigener Dokumentation bewusst
+# NUR ASCII-Buchstaben (A-Z/a-z) - kein volles Unicode-Case-Folding. Python
+# str.casefold()/str.lower() würden z.B. 'Ü' -> 'ü' oder 'ß' -> 'ss' faltet und
+# damit Namen als gleich behandeln, die SQLite als unterschiedlich einstuft
+# (verifiziert u.a. an echten Namen wie "René"). Diese Übersetzungstabelle
+# repliziert exakt SQLites Verhalten, um die bestehende Auflösungssemantik nicht
+# stillschweigend zu verändern.
+_ASCII_UPPER_TO_LOWER = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
+)
+
+
+def _nocase_fold(value: str) -> str:
+    """Bildet SQLites `COLLATE NOCASE` nach (nur ASCII wird gefaltet)."""
+    return value.translate(_ASCII_UPPER_TO_LOWER)
+
+
+@dataclass(frozen=True)
+class PersonLookupEntry:
+    person_id: int
+    name: str
+    department: str | None
+
+
+@dataclass
+class PersonLookup:
+    """Einmal pro Vorgang geladene Alias-/Namensauflösung.
+
+    by_alias/by_name sind nach _nocase_fold() geschlüsselt - dieselbe Semantik
+    wie `alias = ? COLLATE NOCASE` bzw. `name = ? COLLATE NOCASE`. Enthält
+    bewusst auch soft-gelöschte Personen (deleted=1) und deren Aliasse, weil
+    find_person_by_alias() ebenfalls nicht danach filtert; eine Filterung hier
+    würde eine bestehende Auflösung stillschweigend verändern.
+    """
+
+    by_alias: dict[str, PersonLookupEntry] = field(default_factory=dict)
+    by_name: dict[str, PersonLookupEntry] = field(default_factory=dict)
+
+    def resolve(self, value: str) -> PersonLookupEntry | None:
+        """Repliziert find_person_by_alias(): erst Alias-Tabelle, dann Personenname."""
+        folded = _nocase_fold(value)
+        return self.by_alias.get(folded) or self.by_name.get(folded)
+
+    def register_person(self, person_id: int, name: str, department: str | None = None) -> None:
+        """Nach einer echten Neuanlage (create_person) sofort in die Map übernehmen,
+        damit spätere Zeilen desselben Vorgangs sie ohne erneute Datenbankabfrage
+        finden (siehe api._resolve_or_create)."""
+        self.by_name[_nocase_fold(name)] = PersonLookupEntry(person_id, name, department)
+
+    def register_alias(self, alias: str, person_id: int, name: str, department: str | None = None) -> None:
+        """Nach einer echten Alias-Neuanlage (add_alias) sofort in die Map übernehmen."""
+        self.by_alias[_nocase_fold(alias)] = PersonLookupEntry(person_id, name, department)
+
+
+def load_person_lookup(conn: sqlite3.Connection) -> PersonLookup:
+    """Lädt Personen und Aliasse mit zwei Queries in eine PersonLookup-Struktur.
+
+    Öffnet keine eigene Verbindung, committet nicht, legt kein Schema an und
+    schreibt nichts - reiner Lesevorgang auf der übergebenen Connection.
+    Absichtlich OHNE "WHERE deleted = 0"-Filter (siehe PersonLookup-Docstring).
+    ORDER BY id sorgt für ein deterministisches Ergebnis, falls zwei aktive
+    Namen/Aliasse zufällig auf denselben NOCASE-Schlüssel fallen (in der Praxis
+    bislang nicht beobachtet).
+    """
+    by_name: dict[str, PersonLookupEntry] = {}
+    for row in conn.execute("SELECT id, name, department FROM people ORDER BY id"):
+        by_name[_nocase_fold(row["name"])] = PersonLookupEntry(
+            person_id=row["id"], name=row["name"], department=row["department"],
+        )
+
+    by_alias: dict[str, PersonLookupEntry] = {}
+    for row in conn.execute(
+        """SELECT pa.id AS alias_id, pa.alias, p.id AS person_id, p.name, p.department
+           FROM people_aliases pa
+           JOIN people p ON p.id = pa.person_id
+           ORDER BY pa.id"""
+    ):
+        by_alias[_nocase_fold(row["alias"])] = PersonLookupEntry(
+            person_id=row["person_id"], name=row["name"], department=row["department"],
+        )
+
+    return PersonLookup(by_alias=by_alias, by_name=by_name)
 
 
 def create_person(conn, name: str, department: str | None = None) -> int:
