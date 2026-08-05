@@ -1,9 +1,12 @@
 """SQLite storage for extracted Dienstpläne."""
 from __future__ import annotations
 
+import logging
 import sqlite3
 
 from .config.paths import DATABASE_PATH, ensure_runtime_directories
+
+logger = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS people (
@@ -198,6 +201,61 @@ CREATE INDEX IF NOT EXISTS idx_absences_person_date
     ON absences(person_id, date);
 CREATE INDEX IF NOT EXISTS idx_audit_week_created
     ON plan_audit_log(week_plan_id, created_at DESC);
+
+-- AP3 (SQLite-Fundament): rein additive Indizes für Lookups, die laut
+-- EXPLAIN QUERY PLAN bislang einen vollen SCAN statt einer gezielten SEARCH
+-- ausgelöst haben. Kein Tabellen-/Spaltenschema geändert, keine bestehenden
+-- Indizes entfernt oder umbenannt.
+--
+-- people_aliases.alias und people.name tragen zwar bereits UNIQUE-Indizes,
+-- die sind aber case-sensitiv angelegt. find_person_by_alias() (siehe unten)
+-- vergleicht mit COLLATE NOCASE, wofür SQLite den case-sensitiven Index nicht
+-- als SEARCH nutzen kann (bestätigt per EXPLAIN QUERY PLAN: SCAN statt
+-- SEARCH). Ein zusätzlicher, auf COLLATE NOCASE angelegter Index behebt das,
+-- ohne die case-sensitive UNIQUE-Prüfung anzutasten.
+CREATE INDEX IF NOT EXISTS idx_people_aliases_alias_nocase
+    ON people_aliases(alias COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_people_name_nocase
+    ON people(name COLLATE NOCASE);
+
+-- assignments/absences werden an mehreren Stellen ausschließlich nach
+-- week_plan_id gefiltert (get_assignments_for_week, get_absences_for_week,
+-- delete_week_plan, die Zähl-Subqueries in get_week_plans) - dafür existierte
+-- bislang kein Index (nur der zusammengesetzte idx_*_person_date, dessen
+-- führende Spalte person_id ist und für eine reine week_plan_id-Suche nicht
+-- nutzbar ist).
+CREATE INDEX IF NOT EXISTS idx_assignments_week_plan_id
+    ON assignments(week_plan_id);
+CREATE INDEX IF NOT EXISTS idx_absences_week_plan_id
+    ON absences(week_plan_id);
+
+-- rehearsals wird sowohl nach date (get_rehearsal_events, get_rehearsal_intervals
+-- über einen JOIN) als auch nach rehearsal_plan_id (get_rehearsals, upsert/delete_
+-- rehearsal_plan) gefiltert - beides bislang ohne Index.
+CREATE INDEX IF NOT EXISTS idx_rehearsals_date
+    ON rehearsals(date);
+CREATE INDEX IF NOT EXISTS idx_rehearsals_rehearsal_plan_id
+    ON rehearsals(rehearsal_plan_id);
+
+-- rehearsal_people wird über rehearsal_id nachgeladen (get_rehearsals) bzw.
+-- beim Neuaufbau eines Probenplans per IN (...) gelöscht (upsert_rehearsal_plan) -
+-- bislang ohne Index auf rehearsal_id.
+CREATE INDEX IF NOT EXISTS idx_rehearsal_people_rehearsal_id
+    ON rehearsal_people(rehearsal_id);
+
+-- plan_audit_log wird von intelligence/audit.list_events() auch rein nach
+-- start_date gefiltert (wenn kein week_plan_id übergeben wird) - der
+-- vorhandene Index idx_audit_week_created deckt das nicht ab, weil seine
+-- führende Spalte week_plan_id ist.
+CREATE INDEX IF NOT EXISTS idx_plan_audit_log_start_date
+    ON plan_audit_log(start_date);
+
+-- Bewusst NICHT angelegt: ein separater Index auf
+-- artist_plan_entries(artist_plan_id). Der bestehende
+-- UNIQUE(artist_plan_id, date, field_key) legt bereits einen Index an, dessen
+-- führende Spalte artist_plan_id ist - EXPLAIN QUERY PLAN bestätigt dafür
+-- bereits "SEARCH ... USING INDEX sqlite_autoindex_artist_plan_entries_1
+-- (artist_plan_id=?)". Ein zusätzlicher Index wäre redundant.
 """
 
 
@@ -212,10 +270,36 @@ def _migrate(conn):
     conn.commit()
 
 
+def _configure_connection(conn: sqlite3.Connection) -> None:
+    """Setzt verbindungsseitige PRAGMAs für WAL-Parallelzugriff und kurzfristige Sperren
+    (AP3 - SQLite-Fundament).
+
+    journal_mode ist eine dateipersistente Eigenschaft der Datenbankdatei selbst (bleibt
+    auch über Neustarts erhalten), busy_timeout dagegen gilt nur für diese eine Verbindung
+    und muss deshalb bei jedem get_conn()-Aufruf neu gesetzt werden. Der Connection-
+    Lifecycle (eine Verbindung pro get_conn()-Aufruf) bleibt hier bewusst unverändert -
+    das ist AP4 vorbehalten; ist die Datei bereits im WAL-Modus, ist der PRAGMA-Aufruf ein
+    günstiger No-Op.
+    """
+    row = conn.execute("PRAGMA journal_mode=WAL;").fetchone()
+    resulting_mode = str(row[0]).lower() if row else ""
+    if resulting_mode != "wal":
+        # Kann z.B. bei :memory:-Datenbanken oder eingeschränkten Dateisystemen passieren
+        # (WAL braucht eine echte Datei) - kein Abbruch, aber niemals stillschweigend als
+        # Erfolg behandeln.
+        logger.warning(
+            "SQLite läuft nicht im WAL-Modus (aktueller journal_mode: %s) - "
+            "paralleler Lese-/Schreibzugriff ist dadurch weniger robust.",
+            resulting_mode or "unbekannt",
+        )
+    conn.execute("PRAGMA busy_timeout = 5000;")
+
+
 def get_conn():
     ensure_runtime_directories()
     conn = sqlite3.connect(str(DATABASE_PATH))
     conn.row_factory = sqlite3.Row
+    _configure_connection(conn)
     conn.executescript(SCHEMA)
     _migrate(conn)
     return conn
