@@ -100,8 +100,16 @@ def _manual_entries(conn, person_id: int) -> list[dict]:
     return result
 
 
-def entries_for_person(conn, person_id: int) -> list[dict]:
-    profile = memory.memory_for_person(conn, person_id)
+def entries_for_person(
+    conn,
+    person_id: int,
+    *,
+    memory_data: memory.MemoryData | None = None,
+) -> list[dict]:
+    """AP5b: reicht bereits berechnetes Memory an memory_for_person() weiter, statt
+    es erneut aufzubauen. `memory_data=None` (Standard) entspricht exakt dem
+    bisherigen Verhalten."""
+    profile = memory.memory_for_person(conn, person_id, memory_data=memory_data)
     if profile is None:
         raise ValueError("Mitarbeiter wurde nicht gefunden.")
     entries = _manual_entries(conn, person_id) + _automatic_entries(profile)

@@ -1190,13 +1190,18 @@ def intelligence_employee_profile(
     conn: sqlite3.Connection = Depends(db.get_db_connection),
 ):
     try:
+        # AP5b: einmal berechnen und an beide Funktionen weiterreichen - entries_for_person
+        # benötigt Memory in jedem Fall, calculate_employee_statistics nur bei einem
+        # Statistik-Cache-Miss (dort sonst ungenutzt, kein zusätzlicher Aufwand).
+        memory_data = memory.build_memory(conn)
         statistics = employee_stats.calculate_employee_statistics(
             conn,
             person_id,
             weeks=max(1, min(52, weeks)),
             current_week_start=current_week_start,
+            memory_data=memory_data,
         )
-        structured_memory = memory_engine.entries_for_person(conn, person_id)
+        structured_memory = memory_engine.entries_for_person(conn, person_id, memory_data=memory_data)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
     top_skills = statistics["skills"][:3]

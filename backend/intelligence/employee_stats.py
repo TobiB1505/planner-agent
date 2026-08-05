@@ -209,7 +209,12 @@ def calculate_employee_statistics(
     weeks: int = 12,
     current_week_start: str | None = None,
     use_cache: bool = True,
+    memory_data: memory.MemoryData | None = None,
 ) -> dict:
+    """AP5b: `memory_data` wird nur auf einem Cache-Miss überhaupt benötigt (siehe
+    unten) - bei einem Cache-Hit bleibt der Parameter wirkungslos, es entsteht also
+    nie ein zusätzlicher build_memory()-Aufruf. `memory_data=None` (Standard)
+    entspricht exakt dem bisherigen Verhalten."""
     person_row = conn.execute(
         "SELECT id, name, department, active FROM people WHERE id = ? AND deleted = 0",
         (person_id,),
@@ -289,7 +294,7 @@ def calculate_employee_statistics(
         else _empty_current_week()
     )
 
-    profile_memory = memory.memory_for_person(conn, person_id)
+    profile_memory = memory.memory_for_person(conn, person_id, memory_data=memory_data)
 
     manual = _manual_skills(conn, person_id)
     manual_ids = {item["id"] for item in manual}

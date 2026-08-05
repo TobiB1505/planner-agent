@@ -37,9 +37,17 @@ def _dimension(key: str, label: str, ratio: float, explanations: list[str], *, n
     }
 
 
-def _preference_lookup(conn) -> dict[str, set[str]]:
+def _preference_lookup(
+    conn,
+    *,
+    memory_data: memory.MemoryData | None = None,
+) -> dict[str, set[str]]:
+    """AP5b: nutzt bereits berechnetes Memory, wenn übergeben, statt erneut
+    build_memory() aufzurufen. `memory_data=None` (Standard) entspricht exakt dem
+    bisherigen Verhalten."""
+    resolved = memory_data if memory_data is not None else memory.build_memory(conn)
     result: dict[str, set[str]] = defaultdict(set)
-    for person in memory.build_memory(conn)["people"]:
+    for person in resolved["people"]:
         for task in person.get("tasks", []):
             if float(task.get("affinity") or 0) > 0.15 or task.get("state") in {"added", "confirmed"}:
                 result[person["person"]].add(task["category"])
@@ -52,6 +60,7 @@ def calculate_plan_quality(
     start_date: str,
     assignments: list[dict],
     absences: list[dict],
+    memory_data: memory.MemoryData | None = None,
 ) -> dict:
     people_rows = [dict(row) for row in db.get_all_people(conn, active_only=True)]
     people_by_name = {row["name"]: row for row in people_rows}
@@ -188,7 +197,7 @@ def calculate_plan_quality(
         neutral=skill_total == 0,
     )
 
-    preferences = _preference_lookup(conn)
+    preferences = _preference_lookup(conn, memory_data=memory_data)
     preference_total = preference_matches = 0
     for assignment in work_assignments:
         name = (assignment.get("person") or "").strip()

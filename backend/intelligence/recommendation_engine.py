@@ -45,9 +45,16 @@ def _stored_interval(start: str, end: str) -> tuple[int, int]:
     return start_minute, end_minute
 
 
-def _task_preferences(conn) -> dict[str, set[str]]:
+def _task_preferences(
+    conn,
+    *,
+    memory_data: memory.MemoryData | None = None,
+) -> dict[str, set[str]]:
+    """AP5b: nutzt bereits berechnetes Memory, wenn übergeben, statt erneut
+    build_memory() aufzurufen. `memory_data=None` (Standard) entspricht exakt dem
+    bisherigen Verhalten."""
     result: dict[str, set[str]] = {}
-    built = memory.build_memory(conn)
+    built = memory_data if memory_data is not None else memory.build_memory(conn)
     for person in built["people"]:
         preferred = {
             task["category"]

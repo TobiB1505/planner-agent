@@ -20,6 +20,7 @@ import logging
 import math
 from collections import defaultdict
 from datetime import date, timedelta
+from typing import Any
 
 from . import db
 from . import grid
@@ -30,6 +31,13 @@ from . import template_spec
 from . import xlsx_template
 
 logger = logging.getLogger(__name__)
+
+# AP5b: Rückgabetyp von build_memory() - {"people": list[dict], "unmatched_rehearsal_names":
+# list[dict], "meta": dict}. "people" ist bewusst eine nach (nicht aktiv, Name) sortierte LISTE,
+# nicht nach person_id indiziert - memory_for_person() durchsucht sie linear. Kein TypedDict/keine
+# Restrukturierung, um das bestehende Memory-Datenmodell nicht zu verändern (außerhalb des
+# AP5b-Scopes). Rein lesend verwendet - keiner der untersuchten Aufrufer mutiert die Struktur.
+MemoryData = dict[str, Any]
 
 # --- Shows -------------------------------------------------------------------
 
@@ -695,8 +703,18 @@ def suggest_free_days(conn, week_dates_iso: list[str], existing_absences: list[d
     return {"quota": quota, "suggestions": suggestions, "needs_manual": needs_manual}
 
 
-def memory_for_person(conn, person_id: int) -> dict | None:
-    for entry in build_memory(conn)["people"]:
+def memory_for_person(
+    conn,
+    person_id: int,
+    *,
+    memory_data: MemoryData | None = None,
+) -> dict | None:
+    """AP5b: nutzt bereits berechnetes Memory, wenn übergeben, statt erneut
+    build_memory() aufzurufen. `memory_data=None` (Standard) entspricht exakt dem
+    bisherigen Verhalten. Eine leere, aber übergebene Struktur (z.B. {"people": []})
+    ist explizit ungleich `None` und löst deshalb bewusst KEINEN Fallback aus."""
+    resolved = memory_data if memory_data is not None else build_memory(conn)
+    for entry in resolved["people"]:
         if entry["person_id"] == person_id:
             return entry
     return None

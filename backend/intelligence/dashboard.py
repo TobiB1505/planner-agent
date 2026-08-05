@@ -39,16 +39,20 @@ def dashboard_snapshot(conn, week_plan_id: int) -> dict:
             (week_plan_id,),
         ).fetchall()
     ]
+    # AP5b: einmal berechnen und an calculate_plan_quality weiterreichen - vorher
+    # baute calculate_plan_quality (über _preference_lookup) das Memory einmal
+    # selbst auf und dashboard_snapshot direkt danach ein zweites Mal.
+    memory_data = memory.build_memory(conn)
     quality = plan_quality.calculate_plan_quality(
         conn,
         start_date=week["start_date"],
         assignments=assignments,
         absences=absences,
+        memory_data=memory_data,
     )
 
     active_people = [dict(row) for row in db.get_all_people(conn, active_only=True)]
     active_ids = {person["id"] for person in active_people}
-    memory_data = memory.build_memory(conn)
     active_memory = [
         person for person in memory_data["people"]
         if person["person_id"] in active_ids
