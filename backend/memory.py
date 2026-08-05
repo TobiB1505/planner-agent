@@ -575,12 +575,23 @@ def on_stage_by_date(
     start_iso: str,
     end_iso: str,
     template_code: str | None = None,
+    *,
+    schedule: dict[str, dict] | None = None,
+    memory_data: MemoryData | None = None,
 ) -> dict[str, list[str]]:
-    """{datum: [MA-Namen]} - wer laut Gedächtnis an dem Abend auf der Bühne steht."""
-    schedule = show_schedule(conn, start_iso, end_iso, template_code)
-    if not schedule:
+    """{datum: [MA-Namen]} - wer laut Gedächtnis an dem Abend auf der Bühne steht.
+
+    AP6: nutzt bereits berechnete `schedule`/`memory_data`, wenn übergeben, statt
+    show_schedule()/build_memory() erneut aufzurufen - `None` (Standard) entspricht
+    exakt dem bisherigen Verhalten.
+    """
+    resolved_schedule = (
+        schedule if schedule is not None else show_schedule(conn, start_iso, end_iso, template_code)
+    )
+    if not resolved_schedule:
         return {}
-    return _on_stage_from_memory(schedule, build_memory(conn)["people"])
+    resolved_memory = memory_data if memory_data is not None else build_memory(conn)
+    return _on_stage_from_memory(resolved_schedule, resolved_memory["people"])
 
 
 def on_stage_shows_by_date(
@@ -588,15 +599,23 @@ def on_stage_shows_by_date(
     start_iso: str,
     end_iso: str,
     template_code: str | None = None,
+    *,
+    schedule: dict[str, dict] | None = None,
 ) -> dict[str, list[str]]:
     """{datum: [Show-/Party-Name, ...]} - für Konflikttexte im Plan-Editor.
 
     Liefert nur die menschenlesbaren Namen (z.B. "Taste of New York"), keine
     Personen - die Namen kommen bereits aus derselben `show_schedule`-Quelle,
     die auch `on_stage_by_date` speist.
+
+    AP6: nutzt eine bereits berechnete `schedule`, wenn übergeben, statt
+    show_schedule() erneut aufzurufen - `None` (Standard) entspricht exakt dem
+    bisherigen Verhalten.
     """
-    schedule = show_schedule(conn, start_iso, end_iso, template_code)
-    return {iso: [show["label"] for show in entry["shows"]] for iso, entry in schedule.items()}
+    resolved_schedule = (
+        schedule if schedule is not None else show_schedule(conn, start_iso, end_iso, template_code)
+    )
+    return {iso: [show["label"] for show in entry["shows"]] for iso, entry in resolved_schedule.items()}
 
 
 def planning_signals(
@@ -604,6 +623,9 @@ def planning_signals(
     start_iso: str,
     end_iso: str,
     template_code: str | None = None,
+    *,
+    schedule: dict[str, dict] | None = None,
+    memory_data: MemoryData | None = None,
 ) -> dict:
     """Alle Gedächtnis-Signale für die Plangenerierung - mit EINEM build_memory-Durchlauf.
 
@@ -611,9 +633,13 @@ def planning_signals(
         "affinity": {(Name, Kategorie): float in [-1,+1]},
         "task_added":   {Kategorie: [Namen]},   # manuell zugetraut (Kaltstart-Hebel)
         "task_removed": {Kategorie: [Namen]}}   # manuell "selten einplanen"
+
+    AP6: nutzt bereits berechnete `schedule`/`memory_data`, wenn übergeben - `None`
+    (Standard) entspricht exakt dem bisherigen Verhalten.
     """
-    entries = build_memory(conn)["people"]
-    schedule = show_schedule(conn, start_iso, end_iso, template_code)
+    resolved_memory = memory_data if memory_data is not None else build_memory(conn)
+    entries = resolved_memory["people"]
+    schedule = schedule if schedule is not None else show_schedule(conn, start_iso, end_iso, template_code)
 
     affinity: dict[tuple[str, str], float] = {}
     task_added: dict[str, list[str]] = defaultdict(list)

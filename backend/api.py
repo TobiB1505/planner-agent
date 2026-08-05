@@ -853,6 +853,83 @@ def _archived_assignment_for_grid(row: dict) -> dict:
     return item
 
 
+def _build_shared_plan_fields(
+    conn: sqlite3.Connection,
+    *,
+    week_dates_iso: list[str],
+    grid_rows: list[dict],
+    active_people: list[dict],
+    saved_artist_plan,
+    saved_rehearsal_plan,
+    previous_workload: dict,
+    template_code: str | None,
+    memory_data: memory.MemoryData | None = None,
+    schedule: dict | None = None,
+) -> dict:
+    """Response-Felder, die `plan_existing` und `plan_generate` identisch berechnen
+    (Finding E4/AP6). `memory_data`/`schedule` werden - falls vom Aufrufer bereits
+    einmalig pro Request berechnet - unverändert weitergereicht, statt hier erneut
+    build_memory()/show_schedule() auszulösen. `None` (Standard) entspricht exakt
+    dem bisherigen Verhalten."""
+    day_labels = [util.fmt_date_short(day) for day in week_dates_iso]
+
+    assignment_rules: dict[str, dict] = {}
+    for row in grid_rows:
+        if row.get(grid.ROW_TYPE_COL) != "data":
+            continue
+        category = row.get(grid.CATEGORY_COL) or row.get(grid.LABEL_COL)
+        slot = row.get(grid.SLOT_COL) or None
+        rule = planning_rules.assignment_rule(active_people, category, slot)
+        if rule:
+            assignment_rules[f"{category}::{slot or ''}"] = rule
+
+    rehearsal_intervals = [
+        {**dict(row), "is_show": rehearsal_plan.is_show_event(dict(row))}
+        for row in db.get_rehearsal_intervals(
+            conn, week_dates_iso[0], week_dates_iso[-1]
+        )
+    ]
+
+    deko_people = [
+        person["name"]
+        for person in active_people
+        if "DEKO" in planning_rules.department_tags(person.get("department"))
+    ]
+
+    return {
+        "day_labels": day_labels,
+        "person_categories": sorted(grid.PERSON_CATEGORIES),
+        "assignment_rules": assignment_rules,
+        "artist_plan": (
+            {
+                "id": saved_artist_plan["id"],
+                "sheet_name": saved_artist_plan["sheet_name"],
+                "source_filename": saved_artist_plan["source_filename"],
+            }
+            if saved_artist_plan is not None else None
+        ),
+        "rehearsal_plan": (
+            {
+                "id": saved_rehearsal_plan["id"],
+                "source_filename": saved_rehearsal_plan["source_filename"],
+            }
+            if saved_rehearsal_plan is not None else None
+        ),
+        "rehearsal_intervals": rehearsal_intervals,
+        "on_stage_by_date": memory.on_stage_by_date(
+            conn, week_dates_iso[0], week_dates_iso[-1], template_code,
+            schedule=schedule, memory_data=memory_data,
+        ),
+        "on_stage_shows_by_date": memory.on_stage_shows_by_date(
+            conn, week_dates_iso[0], week_dates_iso[-1], template_code,
+            schedule=schedule,
+        ),
+        "deko_people": deko_people,
+        "previous_week": previous_workload["week"],
+        "previous_week_workload": previous_workload["people"],
+    }
+
+
 @app.get("/api/plan/existing")
 def plan_existing(
     start_date: str,
@@ -912,73 +989,54 @@ def plan_existing(
 
     active_people = [dict(person) for person in db.get_all_people(conn, active_only=True)]
     grid_rows = records(grid_df)
-    assignment_rules: dict[str, dict] = {}
-    for row in grid_rows:
-        if row.get(grid.ROW_TYPE_COL) != "data":
-            continue
-        category = row.get(grid.CATEGORY_COL) or row.get(grid.LABEL_COL)
-        slot = row.get(grid.SLOT_COL) or None
-        rule = planning_rules.assignment_rule(active_people, category, slot)
-        if rule:
-            assignment_rules[f"{category}::{slot or ''}"] = rule
 
     saved_artist_plan = db.get_artist_plan_by_start(conn, start_date)
     saved_rehearsal_plan = db.get_rehearsal_plan_by_start(conn, start_date)
-    rehearsal_intervals = [
-        {**dict(row), "is_show": rehearsal_plan.is_show_event(dict(row))}
-        for row in db.get_rehearsal_intervals(
-            conn, week_dates_iso[0], week_dates_iso[-1]
-        )
-    ]
     rehearsal_events = [
         dict(row)
         for row in db.get_rehearsal_events(
             conn, week_dates_iso[0], week_dates_iso[-1]
         )
     ]
-    deko_people = [
-        person["name"]
-        for person in active_people
-        if "DEKO" in planning_rules.department_tags(person.get("department"))
-    ]
     previous_workload = stats.previous_week_workload(conn, start)
     kw = week["kw"] or start.isocalendar()[1]
 
+    # AP6: schedule/memory_data einmal pro Request berechnen und an alle
+    # Konsumenten im gemeinsamen Builder weiterreichen (statt mehrfach über
+    # on_stage_by_date/on_stage_shows_by_date neu aufzubauen).
+    schedule = memory.show_schedule(conn, week_dates_iso[0], week_dates_iso[-1], template_code)
+    memory_data = memory.build_memory(conn)
+    shared_fields = _build_shared_plan_fields(
+        conn,
+        week_dates_iso=week_dates_iso,
+        grid_rows=grid_rows,
+        active_people=active_people,
+        saved_artist_plan=saved_artist_plan,
+        saved_rehearsal_plan=saved_rehearsal_plan,
+        previous_workload=previous_workload,
+        template_code=template_code,
+        memory_data=memory_data,
+        schedule=schedule,
+    )
+
     return {
         "rows": grid_rows,
-        "day_labels": day_labels,
+        "day_labels": shared_fields["day_labels"],
         "week_dates_iso": week_dates_iso,
-        "person_categories": sorted(grid.PERSON_CATEGORIES),
-        "assignment_rules": assignment_rules,
+        "person_categories": shared_fields["person_categories"],
+        "assignment_rules": shared_fields["assignment_rules"],
         "template_week_id": week["id"],
         "template_code": template_code,
         "xlsx_sheet": selected_template["sheet"],
-        "artist_plan": (
-            {
-                "id": saved_artist_plan["id"],
-                "sheet_name": saved_artist_plan["sheet_name"],
-                "source_filename": saved_artist_plan["source_filename"],
-            }
-            if saved_artist_plan is not None else None
-        ),
-        "rehearsal_plan": (
-            {
-                "id": saved_rehearsal_plan["id"],
-                "source_filename": saved_rehearsal_plan["source_filename"],
-            }
-            if saved_rehearsal_plan is not None else None
-        ),
-        "rehearsal_intervals": rehearsal_intervals,
+        "artist_plan": shared_fields["artist_plan"],
+        "rehearsal_plan": shared_fields["rehearsal_plan"],
+        "rehearsal_intervals": shared_fields["rehearsal_intervals"],
         "show_dates": sorted(rehearsal_plan.detect_show_dates(rehearsal_events)),
-        "on_stage_by_date": memory.on_stage_by_date(
-            conn, week_dates_iso[0], week_dates_iso[-1], template_code
-        ),
-        "on_stage_shows_by_date": memory.on_stage_shows_by_date(
-            conn, week_dates_iso[0], week_dates_iso[-1], template_code
-        ),
-        "deko_people": deko_people,
-        "previous_week": previous_workload["week"],
-        "previous_week_workload": previous_workload["people"],
+        "on_stage_by_date": shared_fields["on_stage_by_date"],
+        "on_stage_shows_by_date": shared_fields["on_stage_shows_by_date"],
+        "deko_people": shared_fields["deko_people"],
+        "previous_week": shared_fields["previous_week"],
+        "previous_week_workload": shared_fields["previous_week_workload"],
         "existing_week": {
             "id": week["id"],
             "kw": kw,
@@ -1003,9 +1061,22 @@ def plan_generate(
         absent_by_date.setdefault(a.date, set()).add(a.person)
 
     rotation_week_id = _rotation_week_id(conn, payload.template_code, payload.template_week_id)
+
+    # AP6: `_week_dates` ist eine reine Funktion (kein DB-/Netzwerkzugriff, siehe
+    # `_week_dates` weiter oben) und kann deshalb vorgezogen werden, um schedule/
+    # memory_data einmal pro Request zu berechnen und sowohl an
+    # generate_week_draft() als auch an den gemeinsamen Response-Builder
+    # weiterzureichen, statt sie mehrfach neu aufzubauen.
+    week_dates_iso = _week_dates(payload.new_start)
+    schedule = memory.show_schedule(
+        conn, week_dates_iso[0], week_dates_iso[-1], payload.template_code
+    )
+    memory_data = memory.build_memory(conn)
+
     draft, show_dates = assignment.generate_week_draft(
         conn, rotation_week_id, new_start, absent_by_date,
         template_code=payload.template_code,
+        memory_data=memory_data, schedule=schedule,
     )
     # Aus der Historie werden nur echte Mitarbeiterdienste neu verteilt. Show-/Party-,
     # Motto- und sonstige Infotexte stammen verbindlich aus der gewählten A/B-Grundvorlage.
@@ -1032,22 +1103,10 @@ def plan_generate(
     if saved_artist_plan is not None:
         draft = artist_plan.apply_to_draft(conn, draft, saved_artist_plan)
 
-    week_dates_iso = _week_dates(payload.new_start)
     saved_rehearsal_plan = db.get_rehearsal_plan_by_start(
         conn, payload.new_start
     )
-    rehearsal_intervals = [
-        {**dict(row), "is_show": rehearsal_plan.is_show_event(dict(row))}
-        for row in db.get_rehearsal_intervals(
-            conn, week_dates_iso[0], week_dates_iso[-1]
-        )
-    ]
     active_people = [dict(p) for p in db.get_all_people(conn, active_only=True)]
-    deko_people = [
-        person["name"]
-        for person in active_people
-        if "DEKO" in planning_rules.department_tags(person.get("department"))
-    ]
     previous_workload = stats.previous_week_workload(conn, new_start)
     draft = assignment.add_relief_rewards(
         draft,
@@ -1057,55 +1116,39 @@ def plan_generate(
         show_dates,
     )
     grid_df = grid.build_grid(draft, week_dates_iso)
-    day_labels = [util.fmt_date_short(d) for d in week_dates_iso]
     grid_rows = records(grid_df)
-    assignment_rules: dict[str, dict] = {}
-    for row in grid_rows:
-        if row.get(grid.ROW_TYPE_COL) != "data":
-            continue
-        category = row.get(grid.CATEGORY_COL) or row.get(grid.LABEL_COL)
-        slot = row.get(grid.SLOT_COL) or None
-        rule = planning_rules.assignment_rule(active_people, category, slot)
-        if rule:
-            assignment_rules[f"{category}::{slot or ''}"] = rule
+
+    shared_fields = _build_shared_plan_fields(
+        conn,
+        week_dates_iso=week_dates_iso,
+        grid_rows=grid_rows,
+        active_people=active_people,
+        saved_artist_plan=saved_artist_plan,
+        saved_rehearsal_plan=saved_rehearsal_plan,
+        previous_workload=previous_workload,
+        template_code=payload.template_code,
+        memory_data=memory_data,
+        schedule=schedule,
+    )
 
     return {
         "rows": grid_rows,
-        "day_labels": day_labels,
+        "day_labels": shared_fields["day_labels"],
         "week_dates_iso": week_dates_iso,
-        "person_categories": sorted(grid.PERSON_CATEGORIES),
-        "assignment_rules": assignment_rules,
+        "person_categories": shared_fields["person_categories"],
+        "assignment_rules": shared_fields["assignment_rules"],
         "template_week_id": rotation_week_id,
         "template_code": selected_template["code"] if selected_template else None,
         "xlsx_sheet": selected_template["sheet"] if selected_template else None,
-        "artist_plan": (
-            {
-                "id": saved_artist_plan["id"],
-                "sheet_name": saved_artist_plan["sheet_name"],
-                "source_filename": saved_artist_plan["source_filename"],
-            }
-            if saved_artist_plan is not None
-            else None
-        ),
-        "rehearsal_plan": (
-            {
-                "id": saved_rehearsal_plan["id"],
-                "source_filename": saved_rehearsal_plan["source_filename"],
-            }
-            if saved_rehearsal_plan is not None
-            else None
-        ),
-        "rehearsal_intervals": rehearsal_intervals,
+        "artist_plan": shared_fields["artist_plan"],
+        "rehearsal_plan": shared_fields["rehearsal_plan"],
+        "rehearsal_intervals": shared_fields["rehearsal_intervals"],
         "show_dates": sorted(show_dates),
-        "on_stage_by_date": memory.on_stage_by_date(
-            conn, week_dates_iso[0], week_dates_iso[-1], payload.template_code
-        ),
-        "on_stage_shows_by_date": memory.on_stage_shows_by_date(
-            conn, week_dates_iso[0], week_dates_iso[-1], payload.template_code
-        ),
-        "deko_people": deko_people,
-        "previous_week": previous_workload["week"],
-        "previous_week_workload": previous_workload["people"],
+        "on_stage_by_date": shared_fields["on_stage_by_date"],
+        "on_stage_shows_by_date": shared_fields["on_stage_shows_by_date"],
+        "deko_people": shared_fields["deko_people"],
+        "previous_week": shared_fields["previous_week"],
+        "previous_week_workload": shared_fields["previous_week_workload"],
     }
 
 

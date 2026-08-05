@@ -194,10 +194,18 @@ def generate_week_draft(
     absent_by_date: dict[str, set[str]],
     *,
     template_code: str | None = None,
+    memory_data: memory.MemoryData | None = None,
+    schedule: dict | None = None,
 ) -> tuple[list[dict], set[str]]:
     """Erzeugt einen Zuteilungs-Vorschlag für eine neue Woche, basierend auf einer
     Vorlagen-Woche (Struktur: welche Kategorien/Subkategorien an welchem Wochentag)
-    und der historischen Rotations-Fairness (wer war zuletzt dran, wer ist verfügbar)."""
+    und der historischen Rotations-Fairness (wer war zuletzt dran, wer ist verfügbar).
+
+    AP6: `memory_data`/`schedule` werden - falls vom Aufrufer bereits einmalig pro
+    Request berechnet - unverändert an memory.planning_signals() weitergereicht,
+    statt dort erneut build_memory()/show_schedule() auszulösen. `None` (Standard)
+    entspricht exakt dem bisherigen Verhalten.
+    """
     template_rows = [dict(row) for row in db.get_assignments_for_week(conn, template_week_id)]
     template_week = next(w for w in db.get_week_plans(conn) if w["id"] == template_week_id)
     template_start = _parse_date(template_week["start_date"])
@@ -225,7 +233,8 @@ def generate_week_draft(
     # Aufgaben-Affinität und die manuellen "kann er trotzdem"/"selten einplanen"-Korrekturen.
     # Alles weich - es wird nie jemand gesperrt, nur die Reihenfolge verschoben.
     signals = memory.planning_signals(
-        conn, new_start.isoformat(), week_end.isoformat(), template_code
+        conn, new_start.isoformat(), week_end.isoformat(), template_code,
+        memory_data=memory_data, schedule=schedule,
     )
     on_stage = signals["on_stage_by_date"]
     affinity_by_person_category = signals["affinity"]
