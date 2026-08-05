@@ -46,7 +46,6 @@ planner-agent/
 │   ├── tests/                         pytest-Tests
 │   ├── run_local.py                   lokaler Start mit Vorprüfung
 │   ├── api.py                         FastAPI-App
-│   ├── app.py                         Legacy-Oberfläche (Streamlit, siehe unten)
 │   └── ... weitere Python-Module (db, assignment, memory, planning_rules, ...)
 ├── local_data/                        lokale Laufzeitdaten (NICHT versioniert)
 │   ├── database/dienstplaene.db       SQLite-Datenbank
@@ -189,18 +188,6 @@ Frontend:
 ```bash
 cd frontend
 npm run dev
-```
-
-### Legacy-Oberfläche (Streamlit)
-
-`backend/app.py` ist die ursprüngliche Streamlit-Oberfläche aus einer frühen
-Projektphase. Sie kennt Künstlerplan, Probenplan und die aktuelle
-Planungslogik **nicht mehr** und wird nicht mehr aktiv weiterentwickelt.
-Sie ist **nicht** Teil der Startskripte und startet nie automatisch mit.
-Falls sie doch einmal gebraucht wird:
-
-```bash
-streamlit run backend/app.py
 ```
 
 ## 6. Lokale Adressen

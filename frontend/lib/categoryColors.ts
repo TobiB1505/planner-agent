@@ -1,4 +1,4 @@
-// Exakte Farbcodes aus der echten Excel-Vorlage (siehe theme.py CATEGORY_COLORS).
+// Exakte Farbcodes aus der echten Excel-Vorlage.
 // Einzige Quelle für Kategorie-Farben im Frontend, damit Grid/Dashboard konsistent bleiben.
 
 export const CATEGORY_COLORS: Record<string, string> = {
