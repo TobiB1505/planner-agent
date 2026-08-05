@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from .. import db
+from .. import db, memory
 from . import employee_stats, memory_engine
 
 
@@ -57,15 +57,25 @@ def build_team_overview(
     current_week_start: str | None = None,
 ) -> dict:
     current_start = current_week_start or _current_monday()
+    people = db.get_all_people(conn)
+    # AP5c: Memory einmal für den gesamten Vorgang aufbauen statt - wie vorher -
+    # bis zu zweimal PRO Person (einmal über calculate_employee_statistics bei
+    # einem Statistik-Cache-Miss, einmal über entries_for_person, das nie
+    # cached). Bei einer leeren Personenliste braucht niemand die Daten, daher
+    # hier bedarfsgesteuert (keine unnötige Arbeit für den Leerfall).
+    memory_data = memory.build_memory(conn) if people else None
     rows = []
-    for person in db.get_all_people(conn):
+    for person in people:
         statistics = employee_stats.calculate_employee_statistics(
             conn,
             person["id"],
             weeks=weeks,
             current_week_start=current_start,
+            memory_data=memory_data,
         )
-        memory_entries = memory_engine.entries_for_person(conn, person["id"])
+        memory_entries = memory_engine.entries_for_person(
+            conn, person["id"], memory_data=memory_data
+        )
         top_skills = [
             {
                 "id": skill["id"],
