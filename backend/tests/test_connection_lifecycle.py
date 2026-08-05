@@ -52,6 +52,7 @@ def test_initialize_database_is_idempotent(redirected_db):
     db.initialize_database()
     conn = db.create_connection()
     person_id = db.create_person(conn, "Idempotenz-Test", "Testabteilung")
+    conn.commit()
     conn.close()
 
     # Zweiter Aufruf darf weder fehlschlagen noch vorhandene Daten verändern

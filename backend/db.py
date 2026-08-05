@@ -385,7 +385,6 @@ def update_person(conn, person_id: int, name: str, department: str | None, activ
         (name, department, 1 if active else 0, person_id),
     )
     conn.execute("DELETE FROM employee_statistics WHERE person_id = ?", (person_id,))
-    conn.commit()
 
 
 def delete_person(conn, person_id: int):
@@ -395,7 +394,6 @@ def delete_person(conn, person_id: int):
         (person_id,),
     )
     conn.execute("DELETE FROM employee_statistics WHERE person_id = ?", (person_id,))
-    conn.commit()
 
 
 def find_person_by_alias(conn, alias: str):
@@ -517,13 +515,11 @@ def create_person(conn, name: str, department: str | None = None) -> int:
             "DELETE FROM employee_statistics WHERE person_id = ?",
             (existing["id"],),
         )
-        conn.commit()
         return existing["id"]
     cur = conn.execute(
         "INSERT INTO people (name, department, active, deleted) VALUES (?, ?, 1, 0)",
         (name, department),
     )
-    conn.commit()
     return cur.lastrowid
 
 
@@ -532,7 +528,6 @@ def add_alias(conn, person_id: int, alias: str):
         "INSERT OR IGNORE INTO people_aliases (person_id, alias) VALUES (?, ?)",
         (person_id, alias),
     )
-    conn.commit()
 
 
 def insert_week_plan(conn, kw, start_date, end_date, source_pdf) -> int:
@@ -540,7 +535,6 @@ def insert_week_plan(conn, kw, start_date, end_date, source_pdf) -> int:
         "INSERT INTO week_plans (kw, start_date, end_date, source_pdf) VALUES (?, ?, ?, ?)",
         (kw, start_date, end_date, source_pdf),
     )
-    conn.commit()
     return cur.lastrowid
 
 
@@ -593,7 +587,6 @@ def delete_week_plan(conn, week_plan_id):
     conn.execute("DELETE FROM assignments WHERE week_plan_id = ?", (week_plan_id,))
     conn.execute("DELETE FROM absences WHERE week_plan_id = ?", (week_plan_id,))
     conn.execute("DELETE FROM week_plans WHERE id = ?", (week_plan_id,))
-    conn.commit()
 
 
 def get_setting(conn, key: str, default: str | None = None) -> str | None:
@@ -607,7 +600,6 @@ def set_setting(conn, key: str, value: str):
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (key, value),
     )
-    conn.commit()
 
 
 def get_memory_overrides(conn, person_id: int | None = None):
@@ -640,7 +632,6 @@ def set_memory_override(
                updated_at = CURRENT_TIMESTAMP""",
         (person_id, facet, item_key, state, value, note),
     )
-    conn.commit()
 
 
 def clear_memory_override(conn, person_id: int, facet: str, item_key: str):
@@ -648,7 +639,6 @@ def clear_memory_override(conn, person_id: int, facet: str, item_key: str):
         "DELETE FROM person_memory_overrides WHERE person_id = ? AND facet = ? AND item_key = ?",
         (person_id, facet, item_key),
     )
-    conn.commit()
 
 
 def clear_memory_overrides_for_person(conn, person_id: int, facet: str | None = None):
@@ -703,7 +693,6 @@ def upsert_artist_plan(
             for entry in entries
         ],
     )
-    conn.commit()
     return artist_plan_id
 
 
@@ -746,7 +735,6 @@ def delete_artist_plan(conn, artist_plan_id: int):
         (artist_plan_id,),
     )
     conn.execute("DELETE FROM artist_plans WHERE id = ?", (artist_plan_id,))
-    conn.commit()
 
 
 def upsert_rehearsal_plan(
@@ -819,7 +807,6 @@ def upsert_rehearsal_plan(
                 for person in rehearsal.get("people", [])
             ],
         )
-    conn.commit()
     return plan_id
 
 
@@ -915,4 +902,3 @@ def delete_rehearsal_plan(conn, rehearsal_plan_id: int):
         "DELETE FROM rehearsal_plans WHERE id = ?",
         (rehearsal_plan_id,),
     )
-    conn.commit()

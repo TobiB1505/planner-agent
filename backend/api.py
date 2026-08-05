@@ -134,6 +134,7 @@ def get_team(conn: sqlite3.Connection = Depends(db.get_db_connection)):
 @app.post("/api/team")
 def create_person(payload: PersonIn, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     person_id = db.create_person(conn, payload.name.strip(), (payload.department or "").strip() or None)
+    conn.commit()
     return {"id": person_id}
 
 
@@ -144,12 +145,14 @@ def update_person(
     conn: sqlite3.Connection = Depends(db.get_db_connection),
 ):
     db.update_person(conn, person_id, payload.name.strip(), (payload.department or "").strip() or None, payload.active)
+    conn.commit()
     return {"ok": True}
 
 
 @app.delete("/api/team/{person_id}")
 def delete_person(person_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     db.delete_person(conn, person_id)
+    conn.commit()
     return {"ok": True}
 
 
@@ -187,6 +190,7 @@ def get_week_detail(week_id: int, conn: sqlite3.Connection = Depends(db.get_db_c
 @app.delete("/api/weeks/{week_id}")
 def delete_week(week_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     db.delete_week_plan(conn, week_id)
+    conn.commit()
     return {"ok": True}
 
 
@@ -270,6 +274,7 @@ def memory_set_show(
         db.set_memory_override(conn, person_id, "show", key, payload.state)
     else:
         raise HTTPException(400, f"Unbekannter Status: {payload.state}")
+    conn.commit()
     return _memory_response(conn, person_id)
 
 
@@ -292,6 +297,7 @@ def memory_set_free(
             conn, person_id, "free", "weekdays", "pinned",
             value=json.dumps({"weekdays": weekdays}),
         )
+    conn.commit()
     return _memory_response(conn, person_id)
 
 
@@ -320,6 +326,7 @@ def memory_set_task(
         db.set_memory_override(conn, person_id, "task", key, payload.state, value=value)
     else:
         raise HTTPException(400, f"Unbekannter Status: {payload.state}")
+    conn.commit()
     return _memory_response(conn, person_id)
 
 
@@ -445,6 +452,7 @@ def artist_plan_save(
         payload.sheet_name,
         entries,
     )
+    conn.commit()
     return {"artist_plan_id": artist_plan_id}
 
 
@@ -487,6 +495,7 @@ def artist_plan_delete(
     if db.get_artist_plan(conn, artist_plan_id) is None:
         raise HTTPException(404, "Künstlerplan wurde nicht gefunden.")
     db.delete_artist_plan(conn, artist_plan_id)
+    conn.commit()
     return {"ok": True}
 
 
@@ -624,6 +633,7 @@ def rehearsal_plan_save(
         payload.source_filename,
         rehearsals,
     )
+    conn.commit()
     return {"rehearsal_plan_id": plan_id}
 
 
@@ -679,6 +689,7 @@ def rehearsal_plan_delete(
     if db.get_rehearsal_plan(conn, rehearsal_plan_id) is None:
         raise HTTPException(404, "Probenplan wurde nicht gefunden.")
     db.delete_rehearsal_plan(conn, rehearsal_plan_id)
+    conn.commit()
     return {"ok": True}
 
 
@@ -1711,6 +1722,7 @@ def set_setting(
     conn: sqlite3.Connection = Depends(db.get_db_connection),
 ):
     db.set_setting(conn, key, payload.value)
+    conn.commit()
     return {"ok": True}
 
 
