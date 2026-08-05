@@ -14,6 +14,8 @@ import "./styles/memory.css";
 import "./styles/system.css";
 import "./styles/plan-editor.css";
 import "./styles/intelligence.css";
+import "./styles/badges.css";
+import "./styles/command-theme.css";
 
 export const metadata: Metadata = {
   title: {
@@ -48,7 +50,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="de" className="h-full antialiased">
+    <html lang="de" className="h-full antialiased" data-theme="command">
       <body className="flex h-full min-h-screen overflow-hidden">
         <Sidebar />
         <main className="app-main min-w-0 flex-1 overflow-y-auto px-5 py-5 md:px-8 md:py-6">{children}</main>

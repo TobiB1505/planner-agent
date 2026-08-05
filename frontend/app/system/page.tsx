@@ -4,8 +4,10 @@ import PageHeader from "@/components/PageHeader";
 import {
   ApiError,
   ensureBackendRestarted,
+  getSetting,
   getSystemDiagnostics,
   healthCheck,
+  setSetting,
   type SystemDiagnostics,
 } from "@/lib/api";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -13,6 +15,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 type HealthState = "checking" | "up" | "down";
 
 const HEALTH_POLL_INTERVAL_MS = 5000;
+const AUTO_REFRESH_SETTING_KEY = "system_auto_refresh_diagnostics";
 
 type SystemGlyphKind = "server" | "clock" | "database" | "refresh" | "screen" | "check" | "file" | "folder" | "network";
 
@@ -53,6 +56,7 @@ export default function SystemPage() {
   const [diagnosticsError, setDiagnosticsError] = useState("");
   const [restarting, setRestarting] = useState(false);
   const [message, setMessage] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const pollTimer = useRef<number | null>(null);
 
   const checkHealth = useCallback(async () => {
@@ -96,15 +100,48 @@ export default function SystemPage() {
         if (active) setHealth("down");
       });
 
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Gespeicherte Präferenz laden (echte Einstellung über /api/settings,
+  // nicht nur lokaler UI-State - überlebt Reload und Backend-Neustart).
+  useEffect(() => {
+    let active = true;
+    getSetting(AUTO_REFRESH_SETTING_KEY)
+      .then((result) => {
+        if (active && result.value === "false") setAutoRefresh(false);
+      })
+      .catch(() => {
+        // Kein Eintrag oder Backend kurz nicht erreichbar - Default (an) bleibt.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
     pollTimer.current = window.setInterval(() => {
       checkHealth();
     }, HEALTH_POLL_INTERVAL_MS);
     return () => {
-      active = false;
       if (pollTimer.current) window.clearInterval(pollTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [autoRefresh, checkHealth]);
+
+  async function toggleAutoRefresh() {
+    const next = !autoRefresh;
+    setAutoRefresh(next);
+    try {
+      await setSetting(AUTO_REFRESH_SETTING_KEY, String(next));
+    } catch {
+      // Anzeige bleibt korrekt; nur die Persistenz ist (z.B. bei kurzzeitig
+      // nicht erreichbarem Backend) fehlgeschlagen.
+    }
+  }
 
   async function handleRestart() {
     if (!window.confirm("Backend jetzt (neu) starten? Die Verbindung ist dabei kurz unterbrochen.")) {
@@ -258,6 +295,22 @@ export default function SystemPage() {
                 <button type="button" className="btn" onClick={() => refreshAll()} disabled={restarting}>Jetzt prüfen</button>
               </article>
             </div>
+
+            <div className="settings-row" style={{ marginTop: 12 }}>
+              <div className="settings-row-copy">
+                <h3>Diagnose automatisch aktualisieren</h3>
+                <p>Backend- und Datenbankstatus alle {HEALTH_POLL_INTERVAL_MS / 1000} Sekunden neu prüfen.</p>
+              </div>
+              <button
+                type="button"
+                className={`settings-switch ${autoRefresh ? "is-on" : ""}`}
+                role="switch"
+                aria-checked={autoRefresh}
+                aria-label="Diagnose automatisch aktualisieren"
+                onClick={() => void toggleAutoRefresh()}
+              />
+            </div>
+
             {message && <div className={`status status-${message.kind}`}>{message.text}</div>}
           </div>
         </section>

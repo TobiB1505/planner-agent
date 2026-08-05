@@ -51,11 +51,11 @@
 }
 
 .system-health-banner.is-up {
-  border-color: color-mix(in srgb, #2da970 28%, var(--border));
+  border-color: color-mix(in srgb, var(--status-positive) 28%, var(--border));
 }
 
 .system-health-banner.is-down {
-  border-color: color-mix(in srgb, #c47c25 36%, var(--border));
+  border-color: color-mix(in srgb, var(--status-warning) 36%, var(--border));
 }
 
 .system-health-icon,
@@ -78,15 +78,15 @@
 }
 
 .system-health-banner.is-up .system-health-icon {
-  border-color: color-mix(in srgb, #2da970 30%, var(--border));
-  background: color-mix(in srgb, #2da970 11%, var(--background));
-  color: #2da970;
+  border-color: color-mix(in srgb, var(--status-positive) 30%, var(--border));
+  background: color-mix(in srgb, var(--status-positive) 11%, var(--background));
+  color: var(--status-positive);
 }
 
 .system-health-banner.is-down .system-health-icon {
-  border-color: color-mix(in srgb, #c47c25 34%, var(--border));
-  background: color-mix(in srgb, #c47c25 11%, var(--background));
-  color: #c47c25;
+  border-color: color-mix(in srgb, var(--status-warning) 34%, var(--border));
+  background: color-mix(in srgb, var(--status-warning) 11%, var(--background));
+  color: var(--status-warning);
 }
 
 .system-health-copy {
@@ -129,8 +129,8 @@
   background: currentColor;
 }
 
-.system-health-banner.is-up .system-live-badge { color: #2da970; }
-.system-health-banner.is-down .system-live-badge { color: #c47c25; }
+.system-health-banner.is-up .system-live-badge { color: var(--status-positive); }
+.system-health-banner.is-down .system-live-badge { color: var(--status-warning); }
 
 /* Kennzahlen */
 
@@ -197,12 +197,12 @@
 
 .system-overview article.tone-positive .system-stat-icon,
 .system-overview article.tone-positive strong {
-  color: #2da970;
+  color: var(--status-positive);
 }
 
 .system-overview article.tone-warning .system-stat-icon,
 .system-overview article.tone-warning strong {
-  color: #c47c25;
+  color: var(--status-warning);
 }
 
 /* Hauptbereich */
@@ -396,10 +396,10 @@
   min-height: 26px;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, #2da970 25%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--status-positive) 25%, var(--border));
   border-radius: 999px;
-  background: color-mix(in srgb, #2da970 8%, var(--background));
-  color: #2da970;
+  background: color-mix(in srgb, var(--status-positive) 8%, var(--background));
+  color: var(--status-positive);
   font-size: 10px;
   font-weight: 780;
 }
@@ -470,13 +470,13 @@
 }
 
 .system-check-status.is-ok {
-  background: color-mix(in srgb, #2da970 9%, var(--background));
-  color: #2da970;
+  background: color-mix(in srgb, var(--status-positive) 9%, var(--background));
+  color: var(--status-positive);
 }
 
 .system-check-status.is-warning {
-  background: color-mix(in srgb, #c47c25 10%, var(--background));
-  color: #c47c25;
+  background: color-mix(in srgb, var(--status-warning) 10%, var(--background));
+  color: var(--status-warning);
 }
 
 @container (max-width: 900px) {

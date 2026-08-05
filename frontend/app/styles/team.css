@@ -554,13 +554,13 @@
 }
 
 .team-data-status.is-ready {
-  background: rgba(45, 169, 112, 0.11);
-  color: #2da970;
+  background: color-mix(in srgb, var(--status-positive) 11%, transparent);
+  color: var(--status-positive);
 }
 
 .team-data-status.is-learning {
-  background: rgba(108, 123, 255, 0.11);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--status-info) 11%, transparent);
+  color: var(--status-info);
 }
 
 .team-member-intelligence {
@@ -646,15 +646,15 @@
 }
 
 .team-planning-hint.tone-positive > i {
-  background: #2da970;
+  background: var(--status-positive);
 }
 
 .team-planning-hint.tone-warning > i {
-  background: #d38a32;
+  background: var(--status-warning);
 }
 
 .team-planning-hint.tone-info > i {
-  background: var(--accent);
+  background: var(--status-info);
 }
 
 .team-planning-hint > span {

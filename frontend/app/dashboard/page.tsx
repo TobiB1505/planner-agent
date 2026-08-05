@@ -1,7 +1,9 @@
 "use client";
 
 import PageHeader from "@/components/PageHeader";
+import DashboardCommand from "@/components/DashboardCommand";
 import DashboardIntelligenceOverview from "@/components/DashboardIntelligenceOverview";
+import "@/app/styles/dashboard-command.css";
 import {
   getDashboardInsights,
   getFairnessAlerts,
@@ -315,6 +317,21 @@ export default function DashboardPage() {
         <DashboardSkeleton />
       ) : insights ? (
         <>
+          <DashboardCommand
+            insights={insights}
+            alerts={alerts}
+            weekLabel={selectedWeek?.label}
+            weekSubLabel={
+              selectedWeek
+                ? `${formatDate(selectedWeek.start_date)} – ${formatDate(selectedWeek.end_date)}`
+                : undefined
+            }
+            onPrevWeek={() => selectRelativeWeek(1)}
+            onNextWeek={() => selectRelativeWeek(-1)}
+            canPrev={selectedIndex < weeks.length - 1}
+            canNext={selectedIndex > 0}
+          />
+
           <section
             className={`dashboard-readiness-shell ${allPreparationReady ? "is-complete" : ""}`}
             aria-label="Vorbereitungsstatus"

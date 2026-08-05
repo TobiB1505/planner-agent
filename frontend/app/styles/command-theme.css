@@ -1,0 +1,130 @@
+/* =========================================================================
+   Planner-Agent · Command Center (Dark) — GLOBALES THEME
+   -------------------------------------------------------------------------
+   Färbt ALLE Seiten (Dashboard, Dienstplan, Team, Künstlerplan, Probenplan,
+   MA-Gedächtnis, Planungslogik, Archiv, System) einheitlich im Command-Look.
+
+   Funktioniert, weil deine Komponenten konsequent Design-Tokens nutzen
+   (var(--surface), var(--background), var(--foreground), var(--border),
+    var(--accent), var(--accent-soft), var(--muted)). Wir überschreiben nur
+   diese Tokens + ein paar Feinheiten — kein Umbau der Seiten nötig.
+
+   AKTIVIEREN:  <html lang="de" data-theme="command"> in app/layout.tsx
+   (Details siehe THEME-GLOBAL.md)
+   ========================================================================= */
+
+/* 1) Token-Override — das eigentliche Umschalten -------------------------- */
+:root[data-theme="command"] {
+  --background: #0a0b12;
+  --surface:    #12141f;
+  --surface-2:  #171a28;
+  --border:     rgba(255, 255, 255, 0.08);
+  --foreground: #e8eaf2;
+  --muted:      #7c8199;
+
+  /* Marken-Indigo bleibt der Primärakzent, nur für Dark aufgehellt */
+  --accent:      #7c8bff;
+  --accent-soft: rgba(124, 139, 255, 0.16);
+
+  /* zusätzliche Command-Akzente (frei nutzbar) */
+  --cmd-cyan:   #3ee0d0;
+  --cmd-violet: #8b7cff;
+  --cmd-amber:  #ffbb54;
+  --cmd-high:   #ff6b6b;
+
+  /* Allgemeines Statusfarbschema (siehe foundation.css) auf die
+     Command-Palette umgemünzt - gilt für jedes .badge-pill/.badge-dot und
+     jede Seite, die --status-* statt eigener Hex-Werte nutzt. */
+  --status-positive: var(--cmd-cyan);
+  --status-warning:  var(--cmd-amber);
+  --status-critical: var(--cmd-high);
+  --status-info:     var(--cmd-violet);
+
+  color-scheme: dark;
+}
+
+/* 2) Ambientes Hintergrund-Leuchten wie im Dashboard -------------------- */
+:root[data-theme="command"] body {
+  background:
+    radial-gradient(720px 480px at 0% 0%,   rgba(62, 224, 208, 0.06), transparent 60%),
+    radial-gradient(760px 520px at 100% 0%, rgba(139, 124, 255, 0.09), transparent 55%),
+    var(--background);
+}
+
+/* 3) Panels & Karten — mehr Tiefe im Dunkeln --------------------------- */
+:root[data-theme="command"] .panel,
+:root[data-theme="command"] .stat-card {
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 18px 44px -28px rgba(0, 0, 0, 0.7);
+}
+
+/* leicht erhöhte Innenflächen (Formulare, Zellen) klarer abheben */
+:root[data-theme="command"] .control,
+:root[data-theme="command"] .btn,
+:root[data-theme="command"] select,
+:root[data-theme="command"] input,
+:root[data-theme="command"] textarea {
+  background: var(--surface-2);
+  color: var(--foreground);
+}
+:root[data-theme="command"] ::placeholder { color: var(--muted); }
+
+/* Buttons */
+:root[data-theme="command"] .btn:hover {
+  background: var(--accent-soft);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.5);
+}
+:root[data-theme="command"] .btn-primary {
+  background: var(--accent);
+  color: #0a0b12;
+  box-shadow: 0 6px 18px rgba(124, 139, 255, 0.28);
+}
+:root[data-theme="command"] .btn-primary:hover { background: #93a0ff; }
+
+/* 4) Sidebar — dunkler Sockel + leuchtender Aktiv-Zustand -------------- */
+:root[data-theme="command"] .app-sidebar {
+  background:
+    radial-gradient(circle at 12% 3%, rgba(124, 139, 255, 0.14), transparent 26%),
+    color-mix(in srgb, var(--surface) 92%, #000);
+  box-shadow: 8px 0 34px rgba(0, 0, 0, 0.45);
+}
+:root[data-theme="command"] .sidebar-link.is-active {
+  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* 5) Tabellen — dezente Zebra-/Header-Trennung ------------------------ */
+:root[data-theme="command"] thead th {
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+:root[data-theme="command"] tbody tr:hover {
+  background: color-mix(in srgb, var(--accent-soft) 30%, transparent);
+}
+
+/* 6) Statushinweise auf Dark abstimmen (Kontrast) --------------------- */
+:root[data-theme="command"] .status-success {
+  background: color-mix(in srgb, var(--status-positive) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-positive) 28%, transparent);
+  color: var(--status-positive);
+}
+:root[data-theme="command"] .status-error {
+  background: color-mix(in srgb, var(--status-critical) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-critical) 28%, transparent);
+  color: var(--status-critical);
+}
+
+/* 7) Scrollbars -------------------------------------------------------- */
+:root[data-theme="command"] * {
+  scrollbar-color: var(--surface-2) transparent;
+}
+:root[data-theme="command"] *::-webkit-scrollbar { width: 10px; height: 10px; }
+:root[data-theme="command"] *::-webkit-scrollbar-thumb {
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 2px solid var(--background);
+}
+
+/* 8) Auswahl / Fokus --------------------------------------------------- */
+:root[data-theme="command"] ::selection { background: rgba(124, 139, 255, 0.32); }

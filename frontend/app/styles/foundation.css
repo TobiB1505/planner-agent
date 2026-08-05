@@ -7,6 +7,15 @@
   --muted: #6b6b76;
   --accent: #6c7bff;
   --accent-soft: rgba(108, 123, 255, 0.12);
+
+  /* Einheitliches Statusfarbschema (Badges, Chips, Statuspunkte) - eine
+     Quelle statt verstreuter Hex-Werte je Seite. command-theme.css
+     überschreibt diese Tokens fürs dunkle Command-Theme (Cyan/Amber/Rot). */
+  --status-positive: #2da970;
+  --status-warning: #d38a32;
+  --status-critical: #db4b56;
+  --status-info: var(--accent);
+
   --font-app: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-code: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
