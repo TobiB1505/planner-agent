@@ -74,11 +74,10 @@ GROUP_COLOR_COL = "_group_color"
 META_COLS = {
     LABEL_COL, SLOT_COL, ROW_TYPE_COL, CATEGORY_COL, GROUP_LABEL_COL, GROUP_COLOR_COL,
 }
-NON_PERSON_ASSIGNMENT_VALUES = {
-    "-", "KEINE", "KEIN", "NIEMAND",
-    "S&L", "SPT", "NM", "WASPO", "FO", "WFA", "SPA", "TC", "DEKO",
-    "LIVE-ENT", "SPORTSTAINER", "MANAGER", "REQUI", "KÜCHE", "COCINA",
-}
+# AP9: zentrale Quelle in template_spec.py (Abteilungs-Kurzcodes + "keine
+# Zuweisung"-Marker "-"/"KEINE"/"KEIN"/"NIEMAND") - vorher eine eigene, wertgleiche
+# Kopie hier.
+NON_PERSON_ASSIGNMENT_VALUES = template_spec.NON_PERSON_ASSIGNMENT_TOKENS
 
 
 def is_non_person_assignment_value(value: str) -> bool:

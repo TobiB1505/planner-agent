@@ -64,10 +64,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Planner-Agent API", lifespan=lifespan)
 _PROCESS_STARTED_AT = time.monotonic()
-KNOWN_DEPARTMENT_TOKENS = {
-    "S&L", "SPT", "NM", "KÜCHE", "COCINA", "TC", "DEKO", "LIVE-ENT",
-    "SPORTSTAINER", "MANAGER", "REQUI", "WASPO", "FO", "WFA", "SPA",
-}
+
+
 def _cors_origins() -> list[str]:
     """Liest erlaubte lokale Origins aus CORS_ORIGINS (kommasepariert).
 
@@ -378,7 +376,7 @@ def upload_xlsx(file: UploadFile = File(...), sheet_name: Optional[str] = None):
 
 @app.get("/api/known-department-tokens")
 def known_department_tokens():
-    return sorted(KNOWN_DEPARTMENT_TOKENS)
+    return sorted(template_spec.DEPARTMENT_TOKENS)
 
 
 # ---------- Künstlerplan ----------
@@ -859,7 +857,7 @@ def _archived_assignment_for_grid(row: dict) -> dict:
         item["person"] = value
         return item
     if (
-        raw_text.upper() in KNOWN_DEPARTMENT_TOKENS
+        raw_text.upper() in template_spec.DEPARTMENT_TOKENS
         or raw_text.casefold() in {"-", "keine", "kein", "niemand"}
     ):
         item["person"] = raw_text

@@ -283,6 +283,29 @@ def department_labels() -> set[str]:
     return {name for name, spec in ROWS.items() if spec["kind"] == DEPARTMENT}
 
 
+# AP9 - zentrale Quelle für Abteilungs-/Nicht-Personen-Kurzcodes, die in Plan-Zellen
+# anstelle eines Personennamens stehen können (z.B. "WASPO" oder "-" statt "Tobi").
+# Nicht zu verwechseln mit department_labels() oben: das sind die fachlichen
+# Zeilen-/Kategorienamen der Vorlage (z.B. "Abbauhilfe"), DEPARTMENT_TOKENS hier sind die
+# kurzen Zellwerte, die api.py, grid.py und xlsx_template.py bis AP9 je in einer eigenen,
+# wertgleichen Kopie pflegten (KNOWN_DEPARTMENT_TOKENS / NON_PERSON_ASSIGNMENT_VALUES /
+# DEPARTMENT_TOKENS) - eine einzige Quelle verhindert künftigen Drift zwischen ihnen.
+DEPARTMENT_TOKENS: frozenset[str] = frozenset({
+    "S&L", "SPT", "NM", "KÜCHE", "COCINA", "TC", "DEKO", "LIVE-ENT",
+    "SPORTSTAINER", "MANAGER", "REQUI", "WASPO", "FO", "WFA", "SPA",
+})
+
+# "Keine Zuweisung"-Marker in einer Person-Zelle (z.B. eine leere Schicht, explizit als
+# "-"/"keine" eingetragen) - fachlich etwas anderes als ein Abteilungs-Kurzcode, wird aber
+# an denselben Stellen wie DEPARTMENT_TOKENS als "keine Einzelperson" behandelt (bisher nur
+# in grid.py, dort Teil von NON_PERSON_ASSIGNMENT_VALUES).
+SPECIAL_ASSIGNMENT_TOKENS: frozenset[str] = frozenset({"-", "KEINE", "KEIN", "NIEMAND"})
+
+# Kombinierte Menge für Parser, die beide Fälle gleich behandeln (bisher grid.py:
+# NON_PERSON_ASSIGNMENT_VALUES).
+NON_PERSON_ASSIGNMENT_TOKENS: frozenset[str] = DEPARTMENT_TOKENS | SPECIAL_ASSIGNMENT_TOKENS
+
+
 def person_categories() -> list[str]:
     """Reihenfolge wie in der echten Vorlage - Basis für grid.CATEGORY_ORDER."""
     return [name for name, spec in ROWS.items() if spec["kind"] in (PERSON, MANUAL)]

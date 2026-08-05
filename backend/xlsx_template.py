@@ -23,10 +23,8 @@ def _normalize_label(s: str) -> str:
 # Abteilungs-Zeilen werden beim Import separat behandelt, damit Abteilungsnamen nicht
 # versehentlich als neue Mitarbeiter angelegt werden.
 DEPARTMENT_LABELS = {_normalize_label(name) for name in template_spec.department_labels()}
-DEPARTMENT_TOKENS = {
-    "S&L", "SPT", "NM", "WASPO", "FO", "WFA", "SPA", "TC", "DEKO",
-    "LIVE-ENT", "SPORTSTAINER", "MANAGER", "REQUI", "KÜCHE", "COCINA",
-}
+# AP9: zentrale Quelle in template_spec.py - vorher eine eigene, wertgleiche Kopie hier.
+DEPARTMENT_TOKENS = template_spec.DEPARTMENT_TOKENS
 GENERIC_DETAIL_LABELS = {"wann wo", "wer wann wo", "wer"}
 DETAIL_ROW_CATEGORIES = {
     _normalize_label(grid._normalize_category_name(name))
