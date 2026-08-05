@@ -2,9 +2,10 @@
 
 import PlanValidationSummary, { type ValidationStatus } from "@/components/PlanValidationSummary";
 import type { PlanValidationSummary as ValidationSummaryData } from "@/lib/planValidation";
+import { formatSaveStatus, type SaveState } from "@/lib/plan-editor/saveStatus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-export type SaveState = "idle" | "saving" | "saved" | "error";
+export type { SaveState };
 
 export interface PlanToolbarTool {
   label: string;
@@ -22,8 +23,6 @@ export default function PlanEditorToolbar({
   onRedo,
   saveState,
   isDirty,
-  changeCount,
-  lastSavedAt,
   saveError,
   onSave,
   saveLabel = "Änderungen speichern",
@@ -49,8 +48,6 @@ export default function PlanEditorToolbar({
   onRedo: () => void;
   saveState: SaveState;
   isDirty: boolean;
-  changeCount: number;
-  lastSavedAt: Date | null;
   saveError: string;
   onSave: () => void;
   saveLabel?: string;
@@ -87,27 +84,7 @@ export default function PlanEditorToolbar({
     };
   }, [toolsOpen]);
 
-  const statusText = (() => {
-    if (saveState === "saving") return "Änderungen werden gespeichert …";
-    if (saveState === "error") return "Speichern fehlgeschlagen";
-    if (isDirty) return `● ${changeCount} ungespeicherte ${changeCount === 1 ? "Änderung" : "Änderungen"}`;
-    if (lastSavedAt) {
-      const time = lastSavedAt.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-      return `✓ Alle Änderungen gespeichert · ${time} Uhr`;
-    }
-    return "Keine ungespeicherten Änderungen";
-  })();
-
-  const statusTone = saveState === "error" ? "is-error" : isDirty ? "is-dirty" : "is-clean";
-  const shortStatusText = (() => {
-    if (saveState === "saving") return "Speichert …";
-    if (saveState === "error") return "Speicherfehler";
-    if (isDirty) return `${changeCount} ungespeichert`;
-    if (lastSavedAt) {
-      return `Gespeichert · ${lastSavedAt.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`;
-    }
-    return "Gespeichert";
-  })();
+  const { text: statusText, tone: statusTone } = formatSaveStatus({ saveState, isDirty });
 
   return (
     <div className="plan-editor-toolbar" role="toolbar" aria-label="Dienstplan-Werkzeuge">
@@ -118,8 +95,8 @@ export default function PlanEditorToolbar({
             <span className="plan-editor-toolbar-count">{rowCount} Planzeilen</span>
           </div>
           <span className={`plan-editor-save-status ${statusTone}`} role="status">
-            <span className="plan-editor-save-status-long">{statusText}</span>
-            <span className="plan-editor-save-status-short">{shortStatusText}</span>
+            <span aria-hidden="true" />
+            {statusText}
           </span>
           {saveState === "error" && saveError && (
             <span className="plan-editor-save-error">{saveError}</span>
@@ -151,14 +128,23 @@ export default function PlanEditorToolbar({
           </div>
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary btn-save"
             disabled={busy || !isDirty}
-            title={!isDirty ? "Alle Änderungen sind bereits gespeichert" : undefined}
+            title={isDirty ? saveLabel : "Alle Änderungen sind bereits gespeichert"}
+            aria-label={saveLabel}
             onClick={onSave}
           >
-            {saveState === "saving" && <span className="spinner" />}
-            <span className="plan-toolbar-label-long">{saveLabel}</span>
-            <span className="plan-toolbar-label-short">Speichern</span>
+            {saveState === "saving" ? (
+              <span className="spinner" />
+            ) : (
+              <svg className="btn-save-icon" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M4 3.5h9.5L16.5 6.5v10a1 1 0 0 1-1 1h-11.5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1z" />
+                <path d="M6.5 3.5v4h6v-4" />
+                <path d="M6 12h8" />
+                <path d="M6 15h5" />
+              </svg>
+            )}
+            <span className={`btn-save-dot ${statusTone}`} aria-hidden="true" />
           </button>
           {onOpenIntelligence && (
             <button

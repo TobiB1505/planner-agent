@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 export default function PlanEditorSummary({
   kw,
@@ -9,9 +9,7 @@ export default function PlanEditorSummary({
   artistPlanReady,
   rehearsalPlanReady,
   peopleCount,
-  statusLabel,
   weekPicker,
-  details,
 }: {
   kw: number;
   dateRange: string;
@@ -19,17 +17,9 @@ export default function PlanEditorSummary({
   artistPlanReady: boolean;
   rehearsalPlanReady: boolean;
   peopleCount: number;
-  statusLabel: string;
-  /** Datumsauswahl, oben rechts neben dem Vorbereitungsdetails-Umschalter. */
+  /** Datumsauswahl oben rechts. */
   weekPicker: ReactNode;
-  /** Eingeklappter Detailbereich (Künstler-/Probenplan-Karten, Vorlagenwahl). */
-  details: ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const statusTone = statusLabel.toLocaleLowerCase("de").includes("ungespeichert")
-    ? "is-dirty"
-    : "is-saved";
-
   return (
     <section className="panel plan-editor-summary">
       <div className="plan-editor-summary-main">
@@ -50,29 +40,8 @@ export default function PlanEditorSummary({
           </div>
         </div>
 
-        <div className="plan-editor-summary-controls">
-          <span className={`plan-editor-summary-status ${statusTone}`}>
-            <span aria-hidden="true" />
-            {statusLabel}
-          </span>
-          <div className="plan-editor-summary-header-actions">
-            <button
-              type="button"
-              className="plan-editor-summary-toggle"
-              aria-expanded={expanded}
-              onClick={() => setExpanded((current) => !current)}
-            >
-              <span className="plan-editor-summary-toggle-long">
-                {expanded ? "Vorbereitungsdetails ausblenden" : "Vorbereitungsdetails anzeigen"}
-              </span>
-              <span className="plan-editor-summary-toggle-short">Details</span>
-              <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
-            </button>
-            {weekPicker}
-          </div>
-        </div>
+        <div className="plan-editor-summary-controls">{weekPicker}</div>
       </div>
-      {expanded && <div className="plan-editor-summary-details">{details}</div>}
     </section>
   );
 }

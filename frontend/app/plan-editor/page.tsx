@@ -1493,8 +1493,6 @@ export default function PlanEditorPage() {
       onRedo={handleRedo}
       saveState={saveState}
       isDirty={isDirty}
-      changeCount={changeCount}
-      lastSavedAt={lastSavedAt}
       saveError={saveError}
       onSave={save}
       busy={busy}
@@ -1534,25 +1532,6 @@ export default function PlanEditorPage() {
         />
       }
     />
-  );
-
-  const preparationDetails = (
-    <div className="field field-grow planner-template-field">
-      <div className="template-choice-grid">
-        {templates.map((template) => (
-          <button
-            key={template.code}
-            type="button"
-            className={`template-choice ${templateCode === template.code ? "is-selected" : ""}`}
-            onClick={() => setTemplateCode(template.code)}
-          >
-            <span>{template.name}</span>
-            <strong>{template.program}</strong>
-            <small>{template.code === "A" ? "Ungerade Kalenderwochen" : "Gerade Kalenderwochen"}</small>
-          </button>
-        ))}
-      </div>
-    </div>
   );
 
   const gridSection = rows.length > 0 && (
@@ -1665,16 +1644,34 @@ export default function PlanEditorPage() {
           artistPlanReady={Boolean(artistPlanForWeek)}
           rehearsalPlanReady={Boolean(rehearsalPlanForWeek)}
           peopleCount={people.length}
-          statusLabel={isDirty ? "Ungespeicherte Änderungen" : "Gespeichert"}
           weekPicker={
-            <WeekPicker
-              className="planner-week-picker plan-editor-summary-week-picker"
-              label="Andere Planwoche öffnen"
-              value={startDate}
-              onChange={requestWeekChange}
-            />
+            <div className="plan-editor-week-nav" aria-label="Planwoche wechseln">
+              <button
+                type="button"
+                className="btn btn-icon plan-editor-week-arrow"
+                onClick={() => requestWeekChange(addDays(startDate, -7))}
+                aria-label="Vorherige Woche"
+                title="Vorherige Woche"
+              >
+                ‹
+              </button>
+              <WeekPicker
+                className="planner-week-picker plan-editor-summary-week-picker"
+                label="Andere Planwoche öffnen"
+                value={startDate}
+                onChange={requestWeekChange}
+              />
+              <button
+                type="button"
+                className="btn btn-icon plan-editor-week-arrow"
+                onClick={() => requestWeekChange(addDays(startDate, 7))}
+                aria-label="Nächste Woche"
+                title="Nächste Woche"
+              >
+                ›
+              </button>
+            </div>
           }
-          details={preparationDetails}
         />
       ) : (
         <>
@@ -1689,12 +1686,32 @@ export default function PlanEditorPage() {
               <strong>KW {isoWeek(startDate)} · {selectedTemplate?.name ?? `Woche ${templateCode}`}</strong>
               <span>{selectedTemplate?.program ?? "Wochenprogramm"}</span>
             </div>
-            <WeekPicker
-              className="planner-week-picker"
-              label="Planwoche beginnt am"
-              value={startDate}
-              onChange={requestWeekChange}
-            />
+            <div className="plan-editor-week-nav" aria-label="Planwoche wechseln">
+              <button
+                type="button"
+                className="btn btn-icon plan-editor-week-arrow"
+                onClick={() => requestWeekChange(addDays(startDate, -7))}
+                aria-label="Vorherige Woche"
+                title="Vorherige Woche"
+              >
+                ‹
+              </button>
+              <WeekPicker
+                className="planner-week-picker plan-editor-summary-week-picker"
+                label="Planwoche beginnt am"
+                value={startDate}
+                onChange={requestWeekChange}
+              />
+              <button
+                type="button"
+                className="btn btn-icon plan-editor-week-arrow"
+                onClick={() => requestWeekChange(addDays(startDate, 7))}
+                aria-label="Nächste Woche"
+                title="Nächste Woche"
+              >
+                ›
+              </button>
+            </div>
           </section>
 
           <nav className="planner-steps" aria-label="Schritte der Dienstplanerstellung">

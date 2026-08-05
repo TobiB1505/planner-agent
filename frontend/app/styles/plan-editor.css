@@ -260,51 +260,62 @@
 }
 
 .plan-editor-summary-controls {
-  display: grid;
+  display: flex;
   min-width: 0;
-  justify-items: end;
-  gap: 8px;
-}
-
-.plan-editor-summary-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 999px;
-  background: var(--background);
-  padding: 4px 9px;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.plan-editor-summary-status > span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.plan-editor-summary-status.is-saved {
-  color: #2da970;
-}
-
-.plan-editor-summary-status.is-dirty {
-  color: #d7952b;
-}
-
-.plan-editor-summary-header-actions {
-  display: grid;
-  grid-template-columns: max-content minmax(220px, 250px);
-  align-items: center;
   justify-content: flex-end;
-  gap: 10px;
-  width: 100%;
+}
+
+.planner-week-context > .plan-editor-week-nav,
+.plan-editor-week-nav {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--background);
+  box-shadow: 0 4px 14px rgba(10, 10, 24, 0.05);
+}
+
+.plan-editor-week-nav .plan-editor-week-arrow {
+  flex: 0 0 auto;
+  min-width: 38px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 16px;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.plan-editor-week-nav .plan-editor-week-arrow:first-child {
+  border-right: 1px solid var(--border);
+  border-radius: 12px 0 0 12px;
+}
+
+.plan-editor-week-nav .plan-editor-week-arrow:last-child {
+  border-left: 1px solid var(--border);
+  border-radius: 0 12px 12px 0;
+}
+
+.plan-editor-week-nav .plan-editor-week-arrow:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+  transform: none;
+}
+
+.plan-editor-week-nav .plan-editor-week-arrow:disabled {
+  opacity: 0.35;
 }
 
 .plan-editor-summary-week-picker {
-  width: 100%;
+  flex: 1 1 auto;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+}
+
+.plan-editor-summary-week-picker .week-picker {
   min-width: 0;
 }
 
@@ -315,66 +326,45 @@
 .plan-editor-summary-week-picker .week-picker-control {
   width: 100%;
   min-height: 40px;
-}
-
-.plan-editor-summary-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  border: 0;
+  border-radius: 0;
   background: transparent;
-  color: var(--accent);
-  padding: 5px 11px;
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
+  padding: 4px 10px 4px 6px;
 }
 
-.plan-editor-summary-toggle:hover {
+.plan-editor-summary-week-picker .week-picker-control:hover {
+  border-color: transparent;
   background: var(--accent-soft);
 }
 
-.plan-editor-summary-toggle-short {
-  display: none;
+.plan-editor-summary-week-picker .week-picker-control:focus-within {
+  border-color: transparent;
+  background: var(--accent-soft);
+  box-shadow: none;
 }
 
-.plan-editor-summary-details {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 14px;
-  border-top: 1px solid var(--border);
-  padding: 16px 20px 20px;
+.plan-editor-summary-week-picker .week-picker-tile {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 8px;
 }
 
-.plan-editor-summary-details > .field {
-  flex: 1 1 260px;
-  min-width: 0;
-  padding: 16px 0;
+.plan-editor-summary-week-picker .week-picker-tile strong {
+  font-size: 12px;
 }
 
-.plan-editor-summary-details .template-choice-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
-  width: 100%;
+.plan-editor-summary-week-picker .week-picker-tile small {
+  font-size: 7px;
 }
 
-@media (max-width: 1100px) {
-  .plan-editor-summary-main {
-    gap: 18px;
-  }
+.plan-editor-summary-week-picker .week-picker-copy strong {
+  font-size: 12px;
+  font-weight: 750;
+}
 
-  .plan-editor-summary-header-actions {
-    grid-template-columns: max-content minmax(210px, 240px);
-  }
-
-  .plan-editor-summary-toggle-long {
-    display: none;
-  }
-
-  .plan-editor-summary-toggle-short {
-    display: inline;
-  }
+.plan-editor-summary-week-picker .week-picker-copy small {
+  font-size: 9.5px;
 }
 
 @media (max-width: 820px) {
@@ -384,15 +374,7 @@
   }
 
   .plan-editor-summary-controls {
-    display: flex;
     width: 100%;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .plan-editor-summary-header-actions {
-    width: auto;
-    margin-left: auto;
   }
 }
 
@@ -414,33 +396,8 @@
     justify-items: stretch;
   }
 
-  .plan-editor-summary-status {
-    justify-self: start;
-  }
-
-  .plan-editor-summary-header-actions {
-    grid-template-columns: minmax(0, 1fr);
-    width: 100%;
-    margin-left: 0;
-  }
-
-  .plan-editor-summary-toggle {
-    width: 100%;
-    justify-content: center;
-    order: 2;
-  }
-
-  .plan-editor-summary-toggle-long {
-    display: none;
-  }
-
-  .plan-editor-summary-toggle-short {
-    display: inline;
-  }
-
-  .plan-editor-summary-details {
-    display: grid;
-    padding: 14px 15px 16px;
+  .plan-editor-summary-week-picker {
+    max-width: none;
   }
 }
 
@@ -494,16 +451,28 @@
 }
 
 .plan-editor-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-left: auto;
-  border-left: 1px solid var(--border);
-  padding-left: 12px;
-  font-size: 12px;
-  font-weight: 650;
+  border-radius: 999px;
+  background: var(--background);
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 700;
   white-space: nowrap;
 }
 
+.plan-editor-save-status > span:first-child {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
 .plan-editor-save-status.is-dirty {
-  color: #c47c25;
+  color: #d7952b;
 }
 
 .plan-editor-save-status.is-clean {
@@ -558,6 +527,42 @@
   box-shadow: none;
 }
 
+.btn.btn-save {
+  position: relative;
+  min-width: 42px;
+  padding: 8px 10px;
+}
+
+.btn-save-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
+.btn-save-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  background: #2da970;
+}
+
+.btn-save-dot.is-dirty {
+  background: #d7952b;
+}
+
+.btn-save-dot.is-error {
+  background: #db4b56;
+}
+
 .btn-excel-export-icon {
   width: 18px;
   height: 18px;
@@ -584,8 +589,7 @@
   min-width: 0;
 }
 
-.plan-toolbar-label-short,
-.plan-editor-save-status-short {
+.plan-toolbar-label-short {
   display: none;
 }
 
@@ -1121,9 +1125,16 @@ button.plan-validation-summary {
   cursor: text;
 }
 
-.plan-grid .ag-cell.ag-cell-inline-editing,
-.plan-grid .ag-cell.ag-cell-focus {
+.plan-grid .ag-cell.ag-cell-inline-editing {
   box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* Reiner Zell-Fokus (Tastaturposition, bleibt nach Escape/Editierende stehen)
+   bekommt bewusst nur einen dezenten Rahmen statt des kräftigen
+   Editier-Rahmens - sonst wirkt eine längst abgebrochene Bearbeitung so, als
+   wäre die Zelle immer noch "ausgewählt"/aktiv. */
+.plan-grid .ag-cell.ag-cell-focus:not(.ag-cell-inline-editing) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
 }
 
 .plan-day-header-tile {
@@ -1143,26 +1154,14 @@ button.plan-validation-summary {
   font-weight: 700;
 }
 
-.plan-day-header-tile:hover,
-.plan-day-header-tile.is-active {
+.plan-day-header-tile:hover {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
 .plan-day-header-tile.is-active {
   position: relative;
-  box-shadow: inset 0 0 0 1.5px var(--accent);
-}
-
-.plan-day-header-tile.is-active::after {
-  position: absolute;
-  right: 22%;
-  bottom: 2px;
-  left: 22%;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--accent);
-  content: "";
+  color: var(--accent);
 }
 
 .plan-day-header-tile small {
@@ -1181,8 +1180,24 @@ button.plan-validation-summary {
   background: color-mix(in srgb, var(--accent) 9%, var(--background));
 }
 
+.plan-grid .ag-header-cell.plan-day-header-active::after {
+  position: absolute;
+  right: 18%;
+  bottom: 0;
+  left: 18%;
+  height: 2px;
+  border-radius: 999px 999px 0 0;
+  background: var(--accent);
+  content: "";
+}
+
 .plan-grid .ag-cell.plan-day-cell-active:not(.plan-cell-issue-error, .plan-cell-issue-warning) {
   background-image: linear-gradient(color-mix(in srgb, var(--accent) 5%, transparent), color-mix(in srgb, var(--accent) 5%, transparent));
+  box-shadow: inset 1.5px 0 0 var(--accent), inset -1.5px 0 0 var(--accent);
+}
+
+.plan-grid .ag-row:last-child .ag-cell.plan-day-cell-active {
+  box-shadow: inset 1.5px 0 0 var(--accent), inset -1.5px 0 0 var(--accent), inset 0 -1.5px 0 var(--accent);
 }
 
 .plan-grid .ag-cell.plan-cell-manual::before {
@@ -1407,13 +1422,11 @@ button.plan-validation-summary {
 }
 
 @container (max-width: 780px) {
-  .plan-toolbar-label-long,
-  .plan-editor-save-status-long {
+  .plan-toolbar-label-long {
     display: none;
   }
 
-  .plan-toolbar-label-short,
-  .plan-editor-save-status-short {
+  .plan-toolbar-label-short {
     display: inline;
   }
 
@@ -1895,89 +1908,6 @@ button.plan-validation-summary {
   gap: 6px;
 }
 
-.people-chips-field {
-  display: grid;
-  gap: 6px;
-}
-
-.people-chips-input-wrap {
-  position: relative;
-}
-
-.people-chips-input-wrap input {
-  width: 100%;
-  min-height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--surface);
-  color: var(--foreground);
-  padding: 5px 8px;
-  font-size: 12px;
-  outline: none;
-}
-
-.people-chips-input-wrap input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
-}
-
-.people-chips-suggestions {
-  position: absolute;
-  z-index: 5;
-  top: calc(100% + 4px);
-  left: 0;
-  display: grid;
-  width: 100%;
-  max-height: 220px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  padding: 4px;
-  box-shadow: 0 10px 24px rgba(10, 10, 24, 0.18);
-}
-
-.people-chips-suggestions li {
-  display: block;
-}
-
-.people-chips-suggestions button {
-  display: flex;
-  width: 100%;
-  align-items: baseline;
-  gap: 6px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  padding: 6px 8px;
-  color: var(--foreground);
-  text-align: left;
-  font-size: 12px;
-}
-
-.people-chips-suggestions button:hover,
-.people-chips-suggestions button.is-active {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.people-chips-suggestions button.status-warning {
-  color: #c47c25;
-}
-
-.people-chips-suggestions button.status-unavailable {
-  color: var(--muted);
-  opacity: 0.7;
-}
-
-.people-chips-suggestions button small {
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.people-chips-suggestions button.is-active small {
-  color: inherit;
-}
 
 /* ---------- Kopier-/Übernahmefunktionen der Tagesplanung ---------- */
 
