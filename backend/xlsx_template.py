@@ -196,56 +196,59 @@ def read_template_content(
     im neuen Plan automatisch verteilt bzw. manuell gepflegt.
     """
     wb = openpyxl.load_workbook(template_path, data_only=True)
-    ws = wb[sheet_name]
-    _, date_row = _sheet_dates(ws)
-    rows: list[dict] = []
-    parent_category: str | None = None
+    try:
+        ws = wb[sheet_name]
+        _, date_row = _sheet_dates(ws)
+        rows: list[dict] = []
+        parent_category: str | None = None
 
-    for row in range(date_row + 1, ws.max_row + 1):
-        raw_label = ws.cell(row=row, column=1).value
-        if not raw_label:
-            continue
-        label = str(raw_label).strip()
-        norm_label = _normalize_label(label)
-        direct_category = _canonical_category(label)
-        if direct_category:
-            parent_category = direct_category
-            category = direct_category
-        elif norm_label in GENERIC_DETAIL_LABELS and parent_category:
-            category = parent_category
-        else:
-            continue
-
-        kind = grid.category_kind(category)
-        if kind not in (template_spec.CONTENT, template_spec.DEPARTMENT):
-            continue
-        if category == grid._normalize_category_name("Specials"):
-            continue
-
-        for day_index, col in enumerate(range(2, 9)):
-            value = ws.cell(row=row, column=col).value
-            if value is None:
+        for row in range(date_row + 1, ws.max_row + 1):
+            raw_label = ws.cell(row=row, column=1).value
+            if not raw_label:
                 continue
-            text = str(value).strip()
-            if not text:
+            label = str(raw_label).strip()
+            norm_label = _normalize_label(label)
+            direct_category = _canonical_category(label)
+            if direct_category:
+                parent_category = direct_category
+                category = direct_category
+            elif norm_label in GENERIC_DETAIL_LABELS and parent_category:
+                category = parent_category
+            else:
                 continue
-            rows.append({
-                "date": (new_start + timedelta(days=day_index)).isoformat(),
-                "category": category,
-                "subcategory": None,
-                "person": None,
-                "raw_text": text,
-            })
 
-    wb.close()
-    return rows
+            kind = grid.category_kind(category)
+            if kind not in (template_spec.CONTENT, template_spec.DEPARTMENT):
+                continue
+            if category == grid._normalize_category_name("Specials"):
+                continue
+
+            for day_index, col in enumerate(range(2, 9)):
+                value = ws.cell(row=row, column=col).value
+                if value is None:
+                    continue
+                text = str(value).strip()
+                if not text:
+                    continue
+                rows.append({
+                    "date": (new_start + timedelta(days=day_index)).isoformat(),
+                    "category": category,
+                    "subcategory": None,
+                    "person": None,
+                    "raw_text": text,
+                })
+
+        return rows
+    finally:
+        wb.close()
 
 
 def list_week_sheets(path: str) -> list[str]:
     wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-    sheets = [s for s in wb.sheetnames if s.strip().lower() != "mitarbeiter"]
-    wb.close()
-    return sheets
+    try:
+        return [s for s in wb.sheetnames if s.strip().lower() != "mitarbeiter"]
+    finally:
+        wb.close()
 
 
 def _row_labels(ws) -> dict[int, str]:
@@ -388,91 +391,94 @@ def extract_from_xlsx(path: str, sheet_name: str | None = None) -> dict:
     Liefert dasselbe Format wie extraction.extract_dienstplan (kw, start_date, end_date,
     assignments[], absences[]), damit der bestehende Prüf-/Speicherfluss wiederverwendet wird."""
     wb = openpyxl.load_workbook(path, data_only=True)
-    if sheet_name is None:
-        candidates = [s for s in wb.sheetnames if s.strip().lower() != "mitarbeiter"]
-        sheet_name = candidates[-1]
-    ws = wb[sheet_name]
+    try:
+        if sheet_name is None:
+            candidates = [s for s in wb.sheetnames if s.strip().lower() != "mitarbeiter"]
+            sheet_name = candidates[-1]
+        ws = wb[sheet_name]
 
-    dates, date_row = _sheet_dates(ws)
-    if not dates:
-        raise ValueError("Konnte die Datumszeile nicht lesen.")
+        dates, date_row = _sheet_dates(ws)
+        if not dates:
+            raise ValueError("Konnte die Datumszeile nicht lesen.")
 
-    start_date = min(d for _, d in dates)
-    end_date = max(d for _, d in dates)
+        start_date = min(d for _, d in dates)
+        end_date = max(d for _, d in dates)
 
-    assignments: list[dict] = []
-    absences: list[dict] = []
-    parent_category: str | None = None
+        assignments: list[dict] = []
+        absences: list[dict] = []
+        parent_category: str | None = None
 
-    for r in range(date_row + 1, ws.max_row + 1):
-        raw_label = ws.cell(row=r, column=1).value
-        if not raw_label:
-            continue
-        label = str(raw_label).strip()
-        if not label:
-            continue
-        norm_label = _normalize_label(label)
-        direct_category = _canonical_category(label)
-        if direct_category:
-            parent_category = direct_category
-        category = (
-            parent_category
-            if norm_label in GENERIC_DETAIL_LABELS and parent_category
-            else direct_category or label
-        )
-        kind = grid.category_kind(category)
-
-        for col, d in dates:
-            val = ws.cell(row=r, column=col).value
-            if val is None:
+        for r in range(date_row + 1, ws.max_row + 1):
+            raw_label = ws.cell(row=r, column=1).value
+            if not raw_label:
                 continue
-            text = str(val).strip()
-            if not text or text == "-":
+            label = str(raw_label).strip()
+            if not label:
                 continue
+            norm_label = _normalize_label(label)
+            direct_category = _canonical_category(label)
+            if direct_category:
+                parent_category = direct_category
+            category = (
+                parent_category
+                if norm_label in GENERIC_DETAIL_LABELS and parent_category
+                else direct_category or label
+            )
+            kind = grid.category_kind(category)
 
-            if category in grid.ABSENCE_ROWS:
-                typ = category
-                for name in _split_people(text):
-                    absences.append({"date": d.isoformat(), "person": name, "type": typ})
-                continue
+            for col, d in dates:
+                val = ws.cell(row=r, column=col).value
+                if val is None:
+                    continue
+                text = str(val).strip()
+                if not text or text == "-":
+                    continue
 
-            if kind in (template_spec.CONTENT, template_spec.MANUAL):
-                # Shows, Meetings, Mottos, Erinnerungen und MOD sind wichtige Planinhalte,
-                # aber keine Mitarbeiter. Sie werden als Freitext archiviert.
-                assignments.append({
-                    "date": d.isoformat(), "category": category, "subcategory": None,
-                    "person": None, "raw_text": text,
-                })
-                continue
+                if category in grid.ABSENCE_ROWS:
+                    typ = category
+                    for name in _split_people(text):
+                        absences.append({"date": d.isoformat(), "person": name, "type": typ})
+                    continue
 
-            if kind == template_spec.DEPARTMENT or norm_label in DEPARTMENT_LABELS:
-                # Abteilungs-Zeile (z.B. Abbauhilfe, 18 Uhr LEDs): vollständig archivieren,
-                # aber niemals als Mitarbeiter in den aktiven Pool übernehmen.
-                assignments.append({
-                    "date": d.isoformat(), "category": category, "subcategory": None,
-                    "person": None, "raw_text": text,
-                })
-                continue
+                if kind in (template_spec.CONTENT, template_spec.MANUAL):
+                    # Shows, Meetings, Mottos, Erinnerungen und MOD sind wichtige Planinhalte,
+                    # aber keine Mitarbeiter. Sie werden als Freitext archiviert.
+                    assignments.append({
+                        "date": d.isoformat(), "category": category, "subcategory": None,
+                        "person": None, "raw_text": text,
+                    })
+                    continue
 
-            subcat, people = _person_cell_parts(category, label, text)
-            if not people:
-                # "keine", reine Abteilungswerte oder ein Aperitif ohne MA bleiben als
-                # Information erhalten, erzeugen aber keine Person.
-                assignments.append({
-                    "date": d.isoformat(), "category": category, "subcategory": subcat,
-                    "person": None, "raw_text": text,
-                })
-                continue
-            for name in people:
-                assignments.append({
-                    "date": d.isoformat(), "category": category, "subcategory": subcat,
-                    "person": name, "raw_text": text,
-                })
+                if kind == template_spec.DEPARTMENT or norm_label in DEPARTMENT_LABELS:
+                    # Abteilungs-Zeile (z.B. Abbauhilfe, 18 Uhr LEDs): vollständig archivieren,
+                    # aber niemals als Mitarbeiter in den aktiven Pool übernehmen.
+                    assignments.append({
+                        "date": d.isoformat(), "category": category, "subcategory": None,
+                        "person": None, "raw_text": text,
+                    })
+                    continue
 
-    return {
-        "kw": start_date.isocalendar()[1],
-        "start_date": start_date.isoformat(),
-        "end_date": end_date.isoformat(),
-        "assignments": assignments,
-        "absences": absences,
-    }
+                subcat, people = _person_cell_parts(category, label, text)
+                if not people:
+                    # "keine", reine Abteilungswerte oder ein Aperitif ohne MA bleiben als
+                    # Information erhalten, erzeugen aber keine Person.
+                    assignments.append({
+                        "date": d.isoformat(), "category": category, "subcategory": subcat,
+                        "person": None, "raw_text": text,
+                    })
+                    continue
+                for name in people:
+                    assignments.append({
+                        "date": d.isoformat(), "category": category, "subcategory": subcat,
+                        "person": name, "raw_text": text,
+                    })
+
+        return {
+            "kw": start_date.isocalendar()[1],
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "assignments": assignments,
+            "absences": absences,
+        }
+    finally:
+        wb.close()

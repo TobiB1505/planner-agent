@@ -339,8 +339,11 @@ def dashboard_insights(week_id: int, conn: sqlite3.Connection = Depends(db.get_d
 # ---------- Upload (PDF / Excel) ----------
 
 @app.post("/api/upload/pdf")
-async def upload_pdf(file: UploadFile = File(...), api_key: Optional[str] = None):
-    content = await file.read()
+def upload_pdf(file: UploadFile = File(...), api_key: Optional[str] = None):
+    # AP7: def statt async def - FastAPI führt synchrone Path-Operationen im
+    # Threadpool aus, damit der blockierende Gemini-Netzwerkcall in
+    # extract_dienstplan() den Event-Loop nicht mehr aufhält.
+    content = file.file.read()
     key = api_key or os.environ.get("GEMINI_API_KEY")
     if not key:
         raise HTTPException(400, "Kein Gemini API Key vorhanden.")
@@ -352,8 +355,9 @@ async def upload_pdf(file: UploadFile = File(...), api_key: Optional[str] = None
 
 
 @app.post("/api/upload/xlsx/sheets")
-async def upload_xlsx_sheets(file: UploadFile = File(...)):
-    content = await file.read()
+def upload_xlsx_sheets(file: UploadFile = File(...)):
+    # AP7: def statt async def - openpyxl-Ladevorgang läuft dadurch im Threadpool.
+    content = file.file.read()
     try:
         sheets = xlsx_template.list_week_sheets(io.BytesIO(content))
     except Exception as e:
@@ -362,8 +366,9 @@ async def upload_xlsx_sheets(file: UploadFile = File(...)):
 
 
 @app.post("/api/upload/xlsx")
-async def upload_xlsx(file: UploadFile = File(...), sheet_name: Optional[str] = None):
-    content = await file.read()
+def upload_xlsx(file: UploadFile = File(...), sheet_name: Optional[str] = None):
+    # AP7: def statt async def - openpyxl-Ladevorgang läuft dadurch im Threadpool.
+    content = file.file.read()
     try:
         result = xlsx_template.extract_from_xlsx(io.BytesIO(content), sheet_name)
     except Exception as e:
@@ -379,8 +384,9 @@ def known_department_tokens():
 # ---------- Künstlerplan ----------
 
 @app.post("/api/artist-plans/upload/sheets")
-async def artist_plan_upload_sheets(file: UploadFile = File(...)):
-    content = await file.read()
+def artist_plan_upload_sheets(file: UploadFile = File(...)):
+    # AP7: def statt async def - openpyxl-Ladevorgang läuft dadurch im Threadpool.
+    content = file.file.read()
     try:
         sheets = artist_plan.list_sheets(io.BytesIO(content))
     except Exception as exc:
@@ -389,8 +395,9 @@ async def artist_plan_upload_sheets(file: UploadFile = File(...)):
 
 
 @app.post("/api/artist-plans/import")
-async def artist_plan_import(file: UploadFile = File(...), sheet_name: Optional[str] = None):
-    content = await file.read()
+def artist_plan_import(file: UploadFile = File(...), sheet_name: Optional[str] = None):
+    # AP7: def statt async def - openpyxl-Ladevorgang läuft dadurch im Threadpool.
+    content = file.file.read()
     try:
         return artist_plan.extract_artist_plan(
             content,
@@ -520,9 +527,12 @@ def artist_plan_export(
 # ---------- Probenplan ----------
 
 @app.post("/api/rehearsal-plans/upload/sheets")
-async def rehearsal_plan_sheets(file: UploadFile = File(...)):
-    """Wochenblätter einer Probenplan-Excel auflisten (Vorlage/Diagramme fliegen raus)."""
-    content = await file.read()
+def rehearsal_plan_sheets(file: UploadFile = File(...)):
+    """Wochenblätter einer Probenplan-Excel auflisten (Vorlage/Diagramme fliegen raus).
+
+    AP7: def statt async def - openpyxl-Ladevorgang läuft dadurch im Threadpool.
+    """
+    content = file.file.read()
     try:
         sheets = rehearsal_plan.list_sheets(io.BytesIO(content))
     except Exception as exc:
@@ -533,15 +543,18 @@ async def rehearsal_plan_sheets(file: UploadFile = File(...)):
 
 
 @app.post("/api/rehearsal-plans/import")
-async def rehearsal_plan_import(
+def rehearsal_plan_import(
     file: UploadFile = File(...),
     sheet_name: Optional[str] = None,
     conn: sqlite3.Connection = Depends(db.get_db_connection),
 ):
+    """AP7: def statt async def - fitz-/openpyxl-/Gemini-Verarbeitung läuft dadurch
+    im Threadpool; die per Depends() erzeugte Connection wird ausschließlich in
+    diesem einen Worker-Thread verwendet (keine Cross-Thread-Weitergabe)."""
     filename = (file.filename or "").casefold()
     if not filename.endswith((".pdf", ".xlsx")):
         raise HTTPException(400, "Bitte eine Probenplan-PDF oder -Excel auswählen.")
-    content = await file.read()
+    content = file.file.read()
     active_people = [
         row["name"] for row in db.get_all_people(conn, active_only=True)
     ]

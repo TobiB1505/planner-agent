@@ -95,7 +95,10 @@ def _start_date(ws) -> date:
 
 def list_sheets(source: str | BinaryIO) -> list[str]:
     workbook = load_workbook(source, read_only=True, data_only=False)
-    return workbook.sheetnames
+    try:
+        return workbook.sheetnames
+    finally:
+        workbook.close()
 
 
 def _block_values(ws, column: int, start_row: int | None, end_row: int) -> list[str]:
@@ -184,76 +187,79 @@ def extract_artist_plan(
 ) -> dict:
     file_source = io.BytesIO(source) if isinstance(source, bytes) else source
     workbook = load_workbook(file_source, data_only=False)
-    ws = workbook[sheet_name] if sheet_name else workbook.active
-    start = _start_date(ws)
-    result = empty_rows(start)
-    result.update({
-        "sheet_name": ws.title,
-        "source_filename": source_filename,
-    })
+    try:
+        ws = workbook[sheet_name] if sheet_name else workbook.active
+        start = _start_date(ws)
+        result = empty_rows(start)
+        result.update({
+            "sheet_name": ws.title,
+            "source_filename": source_filename,
+        })
 
-    lunch_row = _find_label_row(ws, "Mittagsgrill")
-    chillout_row = _find_label_row(ws, "Chillout")
-    gastro_row = _find_label_row(ws, "Gastrotainment")
-    evening_row = _find_label_row(ws, "Abend Programm", "Programm Abend")
-    schachbrett_row = _find_label_row(ws, "Schachbrett")
-    special_row = _find_label_row(ws, "Special")
-    nite_row = _find_label_row(ws, "Nite Club")
+        lunch_row = _find_label_row(ws, "Mittagsgrill")
+        chillout_row = _find_label_row(ws, "Chillout")
+        gastro_row = _find_label_row(ws, "Gastrotainment")
+        evening_row = _find_label_row(ws, "Abend Programm", "Programm Abend")
+        schachbrett_row = _find_label_row(ws, "Schachbrett")
+        special_row = _find_label_row(ws, "Special")
+        nite_row = _find_label_row(ws, "Nite Club")
 
-    row_lookup = {row["field_key"]: row for row in result["rows"]}
-    for day_index, column in enumerate(range(2, 9)):
-        day_label = result["day_labels"][day_index]
-        row_lookup["lunch_dj"][day_label] = _direct_cell_text(
-            ws, lunch_row, column, allow_vertical_merge=False
-        )
+        row_lookup = {row["field_key"]: row for row in result["rows"]}
+        for day_index, column in enumerate(range(2, 9)):
+            day_label = result["day_labels"][day_index]
+            row_lookup["lunch_dj"][day_label] = _direct_cell_text(
+                ws, lunch_row, column, allow_vertical_merge=False
+            )
 
-        chill_values = _block_values(
-            ws,
-            column,
-            chillout_row,
-            _row_before_next(
+            chill_values = _block_values(
+                ws,
+                column,
                 chillout_row,
-                gastro_row,
-                evening_row,
-                schachbrett_row,
-                fallback=ws.max_row,
-            ),
-        )
-        chill_time, chill_location, chill_artist = _classify_details(chill_values)
-        row_lookup["chillout_time"][day_label] = chill_time
-        row_lookup["chillout_location"][day_label] = chill_location
-        row_lookup["chillout_artist"][day_label] = chill_artist
+                _row_before_next(
+                    chillout_row,
+                    gastro_row,
+                    evening_row,
+                    schachbrett_row,
+                    fallback=ws.max_row,
+                ),
+            )
+            chill_time, chill_location, chill_artist = _classify_details(chill_values)
+            row_lookup["chillout_time"][day_label] = chill_time
+            row_lookup["chillout_location"][day_label] = chill_location
+            row_lookup["chillout_artist"][day_label] = chill_artist
 
-        gastro_values = _block_values(
-            ws,
-            column,
-            gastro_row,
-            _row_before_next(
+            gastro_values = _block_values(
+                ws,
+                column,
                 gastro_row,
-                evening_row,
-                schachbrett_row,
-                special_row,
-                fallback=ws.max_row,
-            ),
-        )
-        gastro_time, gastro_location, gastro_artist = _classify_details(gastro_values)
-        row_lookup["gastro_time"][day_label] = gastro_time
-        row_lookup["gastro_location"][day_label] = gastro_location
-        row_lookup["gastro_artist"][day_label] = gastro_artist
+                _row_before_next(
+                    gastro_row,
+                    evening_row,
+                    schachbrett_row,
+                    special_row,
+                    fallback=ws.max_row,
+                ),
+            )
+            gastro_time, gastro_location, gastro_artist = _classify_details(gastro_values)
+            row_lookup["gastro_time"][day_label] = gastro_time
+            row_lookup["gastro_location"][day_label] = gastro_location
+            row_lookup["gastro_artist"][day_label] = gastro_artist
 
-        row_lookup["evening_program"][day_label] = _direct_cell_text(
-            ws, evening_row, column
-        )
-        row_lookup["evening_dj"][day_label] = _direct_cell_text(
-            ws, schachbrett_row, column
-        )
-        row_lookup["special"][day_label] = _direct_cell_text(
-            ws, special_row, column
-        )
-        row_lookup["nite_club"][day_label] = _direct_cell_text(
-            ws, nite_row, column
-        )
-    return result
+            row_lookup["evening_program"][day_label] = _direct_cell_text(
+                ws, evening_row, column
+            )
+            row_lookup["evening_dj"][day_label] = _direct_cell_text(
+                ws, schachbrett_row, column
+            )
+            row_lookup["special"][day_label] = _direct_cell_text(
+                ws, special_row, column
+            )
+            row_lookup["nite_club"][day_label] = _direct_cell_text(
+                ws, nite_row, column
+            )
+        return result
+    finally:
+        workbook.close()
 
 
 def rows_to_entries(rows: list[dict], day_labels: list[str], week_dates_iso: list[str]) -> list[dict]:

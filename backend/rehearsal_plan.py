@@ -346,8 +346,10 @@ def extract_pdf_with_gemini(
         raise RuntimeError("Kein Gemini API Key vorhanden.")
 
     document = fitz.open(stream=pdf_bytes, filetype="pdf")
-    document_year = _pdf_year(document)
-    document.close()
+    try:
+        document_year = _pdf_year(document)
+    finally:
+        document.close()
     client = genai.Client(api_key=key)
     response = client.models.generate_content(
         model=GEMINI_MODEL,
@@ -558,56 +560,58 @@ def extract_pdf(
     source_filename: str | None = None,
 ) -> dict:
     document = fitz.open(stream=pdf_bytes, filetype="pdf")
-    year = _pdf_year(document)
-    current_date: date | None = None
-    rehearsals: list[dict] = []
-    warnings: list[str] = []
+    try:
+        year = _pdf_year(document)
+        current_date: date | None = None
+        rehearsals: list[dict] = []
+        warnings: list[str] = []
 
-    for page in document:
-        for table in page.find_tables().tables:
-            for raw_row in table.extract():
-                row = list(raw_row) + [None] * (6 - len(raw_row))
-                cells = [_clean_text(value) for value in row[:6]]
-                row_date = _parse_date(cells[0], year)
-                if row_date:
-                    current_date = row_date
-                    continue
-                if _norm(cells[0]) == "zeit" or not cells[0]:
-                    continue
-                parsed_times = _times(cells[0])
-                if parsed_times is None or current_date is None:
-                    continue
-                start_time, end_time, inferred = parsed_times
-                activity = cells[2] or cells[1] or "Probe"
-                # Einzelzeile „21:45 | Clubtanz Probe mit Sofia“ liegt wegen der
-                # Tabellenformatierung in der Orts-Spalte.
-                location = cells[1]
-                participants_raw = cells[3]
-                choreographer_raw = cells[5]
-                if not cells[2] and "probe" in _norm(cells[1]):
-                    activity = cells[1]
-                    location = ""
-                    name_match = re.search(r"\bmit\s+(.+?)(?:<3)?$", activity, re.IGNORECASE)
-                    if name_match and not choreographer_raw:
-                        choreographer_raw = name_match.group(1).strip()
-                item = {
-                    "date": current_date.isoformat(),
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "location": location,
-                    "activity": activity,
-                    "show_code": cells[4],
-                    "participants_raw": participants_raw,
-                    "choreographer_raw": choreographer_raw,
-                    "end_inferred": inferred,
-                }
-                rehearsals.append(item)
-                if inferred:
-                    warnings.append(
-                        f"{current_date.strftime('%d.%m.')}: Ende für „{activity}“ "
-                        "war nicht angegeben und wurde mit 60 Minuten angesetzt."
-                    )
-    document.close()
+        for page in document:
+            for table in page.find_tables().tables:
+                for raw_row in table.extract():
+                    row = list(raw_row) + [None] * (6 - len(raw_row))
+                    cells = [_clean_text(value) for value in row[:6]]
+                    row_date = _parse_date(cells[0], year)
+                    if row_date:
+                        current_date = row_date
+                        continue
+                    if _norm(cells[0]) == "zeit" or not cells[0]:
+                        continue
+                    parsed_times = _times(cells[0])
+                    if parsed_times is None or current_date is None:
+                        continue
+                    start_time, end_time, inferred = parsed_times
+                    activity = cells[2] or cells[1] or "Probe"
+                    # Einzelzeile „21:45 | Clubtanz Probe mit Sofia“ liegt wegen der
+                    # Tabellenformatierung in der Orts-Spalte.
+                    location = cells[1]
+                    participants_raw = cells[3]
+                    choreographer_raw = cells[5]
+                    if not cells[2] and "probe" in _norm(cells[1]):
+                        activity = cells[1]
+                        location = ""
+                        name_match = re.search(r"\bmit\s+(.+?)(?:<3)?$", activity, re.IGNORECASE)
+                        if name_match and not choreographer_raw:
+                            choreographer_raw = name_match.group(1).strip()
+                    item = {
+                        "date": current_date.isoformat(),
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "location": location,
+                        "activity": activity,
+                        "show_code": cells[4],
+                        "participants_raw": participants_raw,
+                        "choreographer_raw": choreographer_raw,
+                        "end_inferred": inferred,
+                    }
+                    rehearsals.append(item)
+                    if inferred:
+                        warnings.append(
+                            f"{current_date.strftime('%d.%m.')}: Ende für „{activity}“ "
+                            "war nicht angegeben und wurde mit 60 Minuten angesetzt."
+                        )
+    finally:
+        document.close()
     normalized = normalize_rehearsals(rehearsals, active_people)
     dates = [datetime.strptime(row["date"], "%Y-%m-%d").date() for row in normalized]
     if not dates:
