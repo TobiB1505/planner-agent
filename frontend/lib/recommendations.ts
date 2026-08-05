@@ -315,9 +315,16 @@ export function recommendForCell({
     const category = categoryOf(row);
 
     if (category === "Frei" || category === "Urlaub/Krank") {
-      for (const name of namesFromCell(row[dayLabel])) {
-        unavailable.add(name);
-        if (!absenceKind.has(name)) absenceKind.set(name, category);
+      // Die Zielzelle selbst (z.B. beim Bearbeiten der Urlaub/Frei-Zeile) darf sich
+      // nicht selbst als Abwesenheitsgrund gegen die eigenen, bereits eingetragenen
+      // Namen auslegen - sonst zeigt der Editor unsinnig "hat Urlaub" für MA, die
+      // gerade dort als Urlaub/Frei eingetragen werden sollen.
+      const isTargetAbsenceCell = category === targetCategory && row.Zeile === targetRow.Zeile;
+      if (!isTargetAbsenceCell) {
+        for (const name of namesFromCell(row[dayLabel])) {
+          unavailable.add(name);
+          if (!absenceKind.has(name)) absenceKind.set(name, category);
+        }
       }
       continue;
     }

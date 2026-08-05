@@ -1248,13 +1248,21 @@ def intelligence_recommendations(payload: IntelligenceRecommendationRequest):
             and (assignment.get("subcategory") or "") == (payload.subcategory or "")
         )
     ]
+    # Wird die Urlaub/Krank- oder Frei-Zeile selbst bearbeitet, darf die bereits
+    # dort eingetragene Abwesenheit nicht gegen die eigenen Namen als Warngrund
+    # zurückkommen - sonst zeigt der Editor unsinnig "hat Urlaub" fuer MA, die
+    # gerade als Urlaub/Frei eingetragen werden sollen.
+    absences_without_target = [
+        absence for absence in absences_list
+        if not (absence.get("date") == target_date and absence.get("type") == payload.category)
+    ]
     return clean(recommendation_engine.recommend(
         get_conn(),
         target_date=target_date,
         category=payload.category,
         subcategory=payload.subcategory,
         assignments=assignments_without_target,
-        absences=absences_list,
+        absences=absences_without_target,
     ))
 
 

@@ -19,7 +19,6 @@ export function resolveEntryFieldType({
   dayLabel,
   dayLabels,
   isPersonSection,
-  isAbsenceSection,
 }: {
   category: string;
   zeile: string;
@@ -28,9 +27,10 @@ export function resolveEntryFieldType({
   isPersonSection: (category: string) => boolean;
   isAbsenceSection: (category: string) => boolean;
 }): EntryFieldType {
-  if (isAbsenceSection(category)) {
-    return { kind: "people", minimumPeople: 0 };
-  }
+  // isPersonSection ist true für Personen- UND Abwesenheits-Kategorien
+  // (dieselbe Prüfung wie im cellEditorSelector der Wochenübersicht) - beide
+  // nutzen dort denselben PersonCellEditor mit minimumPeople 1, also gilt
+  // hier genau dieselbe Regel statt einer abweichenden Sonderbehandlung.
   if (isPersonSection(category)) {
     if (category === "Sportprogramm" && zeile.includes("Softsport")) {
       return { kind: "softsport" };

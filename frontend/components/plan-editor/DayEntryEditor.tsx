@@ -1,8 +1,7 @@
 "use client";
 
-import { composeCell, parseCell } from "@/components/PersonCellEditor";
-import PeopleChipsField from "@/components/plan-editor/PeopleChipsField";
-import { composeValue, parseValue, SOFTSPORT_OPTIONS } from "@/components/SoftsportCellEditor";
+import PersonCellEditor from "@/components/PersonCellEditor";
+import SoftsportCellEditor from "@/components/SoftsportCellEditor";
 import type { EntryFieldType } from "@/lib/plan-editor/entryFieldType";
 import type { CandidateInfo } from "@/lib/recommendations";
 import { useEffect, useRef, useState } from "react";
@@ -69,17 +68,10 @@ export default function DayEntryEditor({
   onCommit: (nextValue: string) => void;
   onCancel: () => void;
 }) {
-  const parsedPerson = fieldType.kind === "people" ? parseCell(value) : null;
-  const parsedSoftsport = fieldType.kind === "softsport" ? parseValue(value) : null;
-
-  const [draftPrefix, setDraftPrefix] = useState(parsedPerson?.prefix ?? "");
-  const [draftNames, setDraftNames] = useState<string[]>(parsedPerson?.names ?? parsedSoftsport?.names ?? []);
-  const [draftActivity, setDraftActivity] = useState(parsedSoftsport?.activity ?? "");
   const [draftText, setDraftText] = useState(fieldType.kind === "text" || fieldType.kind === "text-suggest" ? value : "");
-  const [error, setError] = useState("");
-  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (fieldType.kind === "text" || fieldType.kind === "text-suggest") return;
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -89,92 +81,49 @@ export default function DayEntryEditor({
     }
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [onCancel]);
+  }, [fieldType.kind, onCancel]);
 
   function submit() {
-    if (fieldType.kind === "people") {
-      if (draftNames.length < fieldType.minimumPeople) {
-        setError(`Bitte mindestens ${fieldType.minimumPeople} Mitarbeiter auswählen.`);
-        return;
-      }
-      onCommit(composeCell(draftPrefix.trim(), draftNames));
-      return;
-    }
-    if (fieldType.kind === "softsport") {
-      const isEmpty = !draftActivity && draftNames.length === 0;
-      if (!isEmpty && (!draftActivity || draftNames.length === 0)) {
-        setError("Bitte Softsport-Art und mindestens einen Mitarbeiter auswählen.");
-        return;
-      }
-      onCommit(composeValue(draftActivity, draftNames));
-      return;
-    }
     onCommit(draftText.trim());
   }
 
-  function clearAll() {
-    setDraftNames([]);
-    setDraftPrefix("");
-    setDraftActivity("");
-    setDraftText("");
+  // Personen-Zuweisung (Softsport eingeschlossen) nutzt genau dasselbe Modul
+  // wie die Wochenübersicht (PersonCellEditor/SoftsportCellEditor) statt einer
+  // zweiten, eigenen Chip-Oberfläche - ein einziger, bekannter "MA
+  // hinzufügen"-Baustein für beide Ansichten. `onValueChange` wird nur beim
+  // "Übernehmen" aufgerufen, `stopEditing` sowohl beim Übernehmen (danach)
+  // als auch beim Abbrechen/Escape - in beiden Fällen genügt es, den
+  // Tagesplanung-Eintrag zu schließen.
+  if (fieldType.kind === "people") {
+    // PersonCellEditor ist als AG-Grid-CustomCellEditor typisiert (CustomCellEditorProps
+    // mit vielen grid-internen Feldern wie column/node/api). Hier läuft es außerhalb
+    // eines Grids - nur value/onValueChange/stopEditing werden tatsächlich benötigt
+    // (siehe Komponente), der Rest wird nie gelesen. Cast statt Attrappen-Objekt.
+    const props = {
+      value,
+      onValueChange: (nextValue: string | null | undefined) => onCommit(nextValue ?? ""),
+      stopEditing: onCancel,
+      people,
+      candidates,
+      minimumPeople: fieldType.minimumPeople,
+      serviceName: ariaLabelBase,
+    } as unknown as Parameters<typeof PersonCellEditor>[0];
+    return <PersonCellEditor {...props} />;
+  }
+
+  if (fieldType.kind === "softsport") {
+    const props = {
+      value,
+      onValueChange: (nextValue: string | null | undefined) => onCommit(nextValue ?? ""),
+      stopEditing: onCancel,
+      people,
+      candidates,
+    } as unknown as Parameters<typeof SoftsportCellEditor>[0];
+    return <SoftsportCellEditor {...props} />;
   }
 
   return (
-    <div ref={rootRef} className="day-entry-editor" role="group" aria-label={`${ariaLabelBase} bearbeiten`}>
-      {fieldType.kind === "people" && (
-        <>
-          <label className="day-entry-field">
-            <span>Zusatzinfo (Ort, Uhrzeit, Künstler o. ä.)</span>
-            <input
-              type="text"
-              value={draftPrefix}
-              onChange={(event) => setDraftPrefix(event.target.value)}
-              placeholder="Optional"
-            />
-          </label>
-          <label className="day-entry-field">
-            <span>{fieldType.minimumPeople > 1 ? `Mitarbeiter (mind. ${fieldType.minimumPeople})` : "Mitarbeiter"}</span>
-            <PeopleChipsField
-              value={draftNames}
-              onChange={setDraftNames}
-              people={people}
-              candidates={candidates}
-              ariaLabel={`Mitarbeiter für ${ariaLabelBase}`}
-              autoFocus
-              onSubmitRequest={submit}
-            />
-          </label>
-        </>
-      )}
-
-      {fieldType.kind === "softsport" && (
-        <>
-          <label className="day-entry-field">
-            <span>Softsport-Art</span>
-            <select value={draftActivity} onChange={(event) => setDraftActivity(event.target.value)}>
-              <option value="">Art auswählen …</option>
-              {(draftActivity && !SOFTSPORT_OPTIONS.includes(draftActivity)
-                ? [draftActivity, ...SOFTSPORT_OPTIONS]
-                : SOFTSPORT_OPTIONS
-              ).map((option) => (
-                <option key={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-          <label className="day-entry-field">
-            <span>Mitarbeiter</span>
-            <PeopleChipsField
-              value={draftNames}
-              onChange={setDraftNames}
-              people={people}
-              candidates={candidates}
-              ariaLabel={`Mitarbeiter für ${ariaLabelBase}`}
-              onSubmitRequest={submit}
-            />
-          </label>
-        </>
-      )}
-
+    <div className="day-entry-editor" role="group" aria-label={`${ariaLabelBase} bearbeiten`}>
       {fieldType.kind === "text-suggest" && (
         <label className="day-entry-field">
           <span>{ariaLabelBase}</span>
@@ -206,10 +155,8 @@ export default function DayEntryEditor({
         </label>
       )}
 
-      {error && <div className="day-entry-error">{error}</div>}
-
       <div className="day-entry-actions">
-        <button type="button" className="btn day-entry-clear" onClick={clearAll}>
+        <button type="button" className="btn day-entry-clear" onClick={() => setDraftText("")}>
           Inhalt leeren
         </button>
         <div className="day-entry-actions-primary">
