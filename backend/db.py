@@ -302,8 +302,20 @@ def create_connection() -> sqlite3.Connection:
     Führt bewusst KEIN Schema, KEINE Migration und KEINE Runtime-Verzeichnis-Erstellung
     aus - dafür ist einmalig initialize_database() zuständig. Jeder Aufruf öffnet eine
     eigene, unabhängige Verbindung; kein Connection-Objekt wird zwischen Aufrufern geteilt.
+
+    check_same_thread=False ist hier bewusst nötig, nicht optional: FastAPI wickelt die
+    __enter__/__exit__-Seiten eines sync-Generator-Dependencies (Depends(get_db_connection)
+    unten) über contextmanager_in_threadpool() ab, das __enter__ über den normalen
+    Threadpool-Limiter und __exit__ über einen eigenen, unabhängigen CapacityLimiter(1)
+    laufen lässt (siehe fastapi/dependencies/utils.py) - dieselbe Connection kann dadurch
+    unter echter uvicorn-Nebenläufigkeit auf einem Thread erzeugt und auf einem anderen
+    wieder geschlossen werden. Das passiert rein sequenziell innerhalb EINES Requests (nie
+    gleichzeitig von zwei Threads), sqlite3 verbietet mit seinem Default
+    check_same_thread=True aber bereits den bloßen Thread-Wechsel. Ohne dieses Flag schlägt
+    jeder Request unter Last mit "SQLite objects created in a thread can only be used in
+    that same thread" fehl (siehe backend/tests/test_uvicorn_real_concurrency.py).
     """
-    conn = sqlite3.connect(str(DATABASE_PATH))
+    conn = sqlite3.connect(str(DATABASE_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     _configure_connection(conn)
     return conn
