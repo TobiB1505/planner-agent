@@ -43,6 +43,8 @@ import { categoryColor, hexToRgba } from "@/lib/categoryColors";
 import { diffPlanRows, type PlanDiff } from "@/lib/plan-editor/planDiff";
 import { computeDayStatuses } from "@/lib/plan-editor/dayStatus";
 import { collectCategorySuggestions } from "@/lib/plan-editor/entryFieldType";
+import { useGridDayIndicators } from "@/lib/plan-editor/useGridDayIndicators";
+import { useThrottledFocusReload } from "@/lib/plan-editor/useThrottledFocusReload";
 import {
   loadPlanViewPreferences,
   savePlanViewPreferences,
@@ -481,6 +483,16 @@ export default function PlanEditorPage() {
     [dayLabels, weekDates, validation.issues, isDirty],
   );
 
+  // AP8: aktiver Tag und Tagesstatus ändern sich bei jedem Zellklick bzw.
+  // jeder Planprüfung - werden hier in abonnierbare Stores gespiegelt und
+  // gezielt per refreshHeader()/refreshCells() ins Grid nachgezogen, statt
+  // `columnDefs` dafür neu zu bauen (siehe useGridDayIndicators).
+  const { activeDayStore, dayStatusesStore } = useGridDayIndicators(
+    gridApiRef,
+    effectiveActiveDay,
+    dayStatuses,
+  );
+
   useEffect(() => {
     if (!rows.length || !dayLabels.length) return;
     let cancelled = false;
@@ -674,16 +686,29 @@ export default function PlanEditorPage() {
     }, 60);
   }
 
+  // AP8: `mountedRef` schützt sowohl den initialen Ladevorgang als auch den
+  // fokus-getriggerten Reload (useThrottledFocusReload) davor, nach einem
+  // Unmount noch State zu setzen - derselbe Zweck wie die bereits an anderer
+  // Stelle in dieser Datei verwendeten lokalen `active`/`cancelled`-Flags,
+  // hier komponentenweit, weil beide Aufrufer dieselbe Funktion teilen.
+  const mountedRef = useRef(true);
   useEffect(() => {
-    const load = () => {
-      Promise.all([
-        getPlanTemplates(),
-        getActivePeople(),
-        getArtistPlans(),
-        getRehearsalPlans(),
-        getWeeks(),
-      ])
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const loadReferenceData = useCallback(() => {
+    return Promise.all([
+      getPlanTemplates(),
+      getActivePeople(),
+      getArtistPlans(),
+      getRehearsalPlans(),
+      getWeeks(),
+    ])
       .then(([templateData, activePeople, storedArtistPlans, storedRehearsalPlans, storedWeeks]) => {
+        if (!mountedRef.current) return;
         setTemplates(templateData);
         setPeople(activePeople);
         setArtistPlans(storedArtistPlans);
@@ -694,17 +719,22 @@ export default function PlanEditorPage() {
         }
       })
       .catch((error) => {
+        if (!mountedRef.current) return;
         setInitializing(false);
         setMessage({ kind: "error", text: error.message });
       });
-    };
-    const timer = window.setTimeout(load, 0);
-    window.addEventListener("focus", load);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("focus", load);
-    };
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(loadReferenceData, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadReferenceData]);
+
+  // AP8: vorher lud `window.focus` ungedrosselt bei jedem Tab-Wechsel dieselben
+  // fünf Endpunkte neu - jetzt mit Mindestabstand (30s) und In-Flight-Schutz
+  // (siehe useThrottledFocusReload). Verhalten bezüglich Dirty State
+  // unverändert: `loadReferenceData` berührt weder `rows` noch `isDirty`.
+  useThrottledFocusReload(loadReferenceData);
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -871,8 +901,11 @@ export default function PlanEditorPage() {
       headerComponentParams: {
         dayLabel: label,
         isToday: weekDates[index] === todayIso,
-        isActive: label === effectiveActiveDay,
-        status: dayStatuses[label],
+        // AP8: abonnierbare Stores statt fertiger Werte - DayHeaderCell
+        // rendert sich darüber selbst neu (useSyncExternalStore), columnDefs
+        // muss dafür nicht neu gebaut werden (siehe useGridDayIndicators).
+        activeDayStore,
+        dayStatusesStore,
         onSelect: selectDay,
       },
       minWidth: 94,
@@ -881,7 +914,9 @@ export default function PlanEditorPage() {
       singleClickEdit: true,
       wrapText: false,
       autoHeight: false,
-      headerClass: label === effectiveActiveDay ? "plan-day-header-active" : undefined,
+      // AP8: Funktion statt fertigem String - wird bei refreshHeader() neu
+      // ausgewertet und liest den aktiven Tag live aus dem Store.
+      headerClass: () => (activeDayStore.get() === label ? "plan-day-header-active" : undefined),
       // AG Grid beendet Editoren standardmäßig selbst bei Enter (noch vor dem
       // React-Editor). Die jeweiligen Editoren übernehmen Enter kontrolliert.
       suppressKeyboardEvent: (params) =>
@@ -994,7 +1029,11 @@ export default function PlanEditorPage() {
       // komplette Spaltenkonfiguration neu aufbaut - nur ein gezieltes
       // refreshCells() nach der Prüfung (siehe cellIssueIndex-Effekt).
       cellClassRules: {
-        "plan-day-cell-active": () => label === effectiveActiveDay,
+        // AP8: liest aus demselben Store wie der Header (statt der
+        // geschlossenen effectiveActiveDay-Variable), damit ein Tageswechsel
+        // keinen columnDefs-Rebuild mehr braucht - nur refreshCells() (siehe
+        // useGridDayIndicators).
+        "plan-day-cell-active": () => activeDayStore.get() === label,
         "plan-cell-manual": (params) =>
           Boolean(
             params.data &&
@@ -1053,8 +1092,13 @@ export default function PlanEditorPage() {
     previousWeekWorkload,
     startDate,
     weekDates,
-    effectiveActiveDay,
-    dayStatuses,
+    // AP8: effectiveActiveDay/dayStatuses bewusst NICHT hier - sie werden über
+    // activeDayStore/dayStatusesStore gelesen (useGridDayIndicators) und
+    // gezielt per refreshHeader()/refreshCells() nachgezogen, damit ein
+    // Zellklick oder eine neue Planprüfung keinen kompletten columnDefs-
+    // Rebuild mehr auslöst.
+    activeDayStore,
+    dayStatusesStore,
     selectDay,
   ]);
 
@@ -1624,7 +1668,12 @@ export default function PlanEditorPage() {
               }}
               onCellClicked={(event: CellClickedEvent<PlanRow>) => {
                 const field = event.colDef.field;
-                if (field && dayLabels.includes(field)) setActiveDay(field);
+                // AP8: kein unnötiges setActiveDay, wenn der Tag bereits aktiv
+                // ist - vermeidet ein wirkungsloses Re-Render bei Klicks
+                // innerhalb derselben Spalte.
+                if (field && dayLabels.includes(field) && field !== activeDayStore.get()) {
+                  setActiveDay(field);
+                }
               }}
               getRowId={(params) => rowKey(params.data)}
             />

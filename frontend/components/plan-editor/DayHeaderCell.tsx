@@ -1,13 +1,21 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
+import type { ReadableStore } from "@/lib/plan-editor/useGridDayIndicators";
 import type { DayStatus } from "@/lib/plan-editor/dayStatus";
 import type { IHeaderParams } from "ag-grid-community";
 
 export interface DayHeaderCellParams {
   dayLabel: string;
   isToday: boolean;
-  isActive: boolean;
-  status?: DayStatus;
+  /** AP8: abonnierbare Stores statt fertiger Werte, damit dieser Header sich
+   * bei einem Tages-/Statuswechsel selbst neu rendert (useSyncExternalStore),
+   * ohne dass sich `columnDefs` dafür neu bauen muss (siehe
+   * useGridDayIndicators). Ein reines `ref.current` im Render-Body wäre laut
+   * react-hooks/refs nicht erlaubt und würde von ag-grid-react ohnehin nicht
+   * zuverlässig neu gerendert (refreshHeader() allein reicht dafür nicht). */
+  activeDayStore: ReadableStore<string>;
+  dayStatusesStore: ReadableStore<Record<string, DayStatus | undefined>>;
   onSelect: (dayLabel: string) => void;
 }
 
@@ -17,7 +25,15 @@ export interface DayHeaderCellParams {
  * Tagesnavigation mehr, die Kachel IST jetzt der Spaltenkopf.
  */
 export default function DayHeaderCell(props: IHeaderParams & DayHeaderCellParams) {
-  const { dayLabel, isToday, isActive, status, onSelect } = props;
+  const { dayLabel, isToday, activeDayStore, dayStatusesStore, onSelect } = props;
+  const isActive = useSyncExternalStore(
+    activeDayStore.subscribe,
+    () => activeDayStore.get() === dayLabel,
+  );
+  const status = useSyncExternalStore(
+    dayStatusesStore.subscribe,
+    () => dayStatusesStore.get()[dayLabel],
+  );
   const hasStatus = Boolean(
     status && (status.hasErrors || status.hasWarnings || status.incomplete || status.isDirty),
   );
