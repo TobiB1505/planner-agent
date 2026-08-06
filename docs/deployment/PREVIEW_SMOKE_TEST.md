@@ -86,6 +86,25 @@ korrekt liest/schreibt, sofern der Pfad tatsächlich erhalten bleibt. Das
 technische Volume-Verhalten selbst muss beim echten Deployment einmal
 verifiziert werden (Checkliste unten, Abschnitt "Redeploy-/Persistenztest").
 
+## Live-Verifikation 2026-08-06 (Folgesitzung, nach realem Deployment)
+
+Backend läuft auf Render, Frontend auf Vercel
+(`planner-agent-sepia.vercel.app`, Production-Deployment von `main`).
+Geprüft per authentifiziertem Fetch (Vercel-Zugriff über MCP); Browser-only-
+Punkte (Konsole, Schreib-Workflows) stehen weiterhin aus - siehe Checkliste
+unten.
+
+| Test | Ergebnis |
+|---|---|
+| `GET /api/health` über den Rewrite | ✅ `status ok`, `database connected`, `templates_ok true`, `data_dir_writable true`; Antwort kam nachweislich vom Render-Backend (`x-render-origin-server: uvicorn`) |
+| `GET /api/team` über den Rewrite | ✅ `200`, `[]` (frische, leere Datenbank) |
+| `GET /api/system/diagnostics` | ✅ Pfade sanitisiert (`...`-Präfixe), keine Secrets; alle Verzeichnisse `exists`/`writable`; drei Vorlagen gefunden; `cors_origins` = die drei Vercel-Domains (explizit gesetzt, kein localhost-Default) |
+| Dashboard `/` lädt | ✅ `200`, vollständiges HTML (Sidebar, Wochenauswahl, Skeleton) |
+| `/control/backend/status` (Dev-Watchdog im Vercel-Bundle) | ✅ kontrollierte Antwort `{"backend_reachable":true,"tracked_process_alive":false}`, kein 500er/Absturz |
+| Deployment Protection | ✅ aktiv (Vercel Authentication, Scope `all_except_custom_domains`) |
+| Anonyme Erreichbarkeit der Production-Domain | ⚠️ **offen** - aus der Arbeitsumgebung nicht prüfbar (Proxy blockt `vercel.app` direkt); einmal im Inkognito-Fenster gegenprüfen. Bis dahin: nur synthetische Daten |
+| `POST /api/system/restart` → `restart_disabled` | ⚠️ offen (nur GET-Fetches möglich) |
+
 ## Checkliste für den echten Browser-Test (nach dem realen Deployment)
 
 Auszuführen über die **geschützte** Vercel-Preview-Domain (Deployment

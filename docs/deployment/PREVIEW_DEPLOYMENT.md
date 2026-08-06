@@ -14,6 +14,33 @@ Preview-Umgebung** - ausdrücklich **kein** öffentliches Production-Deployment
 > deshalb als **manuelle Dashboard-Anleitung** formuliert, keine ausgeführten
 > CLI-Kommandos. Was tatsächlich lokal verifiziert wurde, ist explizit als
 > solches markiert. Domains/Tokens sind durchgehend Platzhalter.
+>
+> **Update 2026-08-06 (Folgesitzung, Live-Verifikation):** Das Deployment
+> wurde inzwischen real durchgeführt - Backend auf Render (manuell, gemäß
+> dieser Anleitung), Frontend auf Vercel (GitHub-Import, Projekt
+> `planner-agent`, Deployment von `main`). Per authentifiziertem Fetch über
+> die Vercel-Domain `planner-agent-sepia.vercel.app` wurde live verifiziert:
+>
+> - `GET /api/health` antwortet durch den Next.js-Rewrite hindurch vom
+>   Render-Backend (`x-render-origin-server: uvicorn`) mit
+>   `{"status":"ok","database":"connected","templates_ok":true,"data_dir_writable":true}`
+>   - `BACKEND_INTERNAL_URL` ist also korrekt gesetzt und wirksam.
+> - `GET /api/system/diagnostics`: Pfade sanitisiert (`...`-Präfixe), keine
+>   Secrets; alle Laufzeitverzeichnisse `exists`/`writable`; alle drei
+>   Excel-Vorlagen gefunden; `CORS_ORIGINS` ist explizit auf die drei
+>   Vercel-Domains des Projekts gesetzt (Schritt 4 damit erledigt).
+> - Vercel Deployment Protection (Vercel Authentication) ist aktiv mit
+>   Scope `all_except_custom_domains`.
+>
+> **Abweichung vom Plan:** Deployt wurde als Vercel-**Production**-Deployment
+> (`main` → `planner-agent-sepia.vercel.app`), nicht als reines
+> Preview-Deployment. Beim Protection-Scope `all_except_custom_domains`
+> bleiben Production-Domains typischerweise öffentlich erreichbar - ob die
+> anonyme Erreichbarkeit tatsächlich blockiert ist, konnte aus der
+> Arbeitsumgebung nicht geprüft werden (Proxy blockt direkte
+> `vercel.app`-Zugriffe) und **muss einmal im Inkognito-Fenster verifiziert
+> werden**. Solange das offen ist, gilt die Regel aus
+> `PREVIEW_SECURITY_LIMITS.md`: ausschließlich synthetische Daten.
 
 ## Reihenfolge der Deployments
 
