@@ -129,6 +129,11 @@ export function usePlanPersistence({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const manuallyEditedCellsRef = useRef<Set<string>>(new Set());
   const auditEventsRef = useRef<PlanAuditEventInput[]>([]);
+  // Sprint 2 (Phase 10): synchroner Schutz gegen Doppel-Speichern zusätzlich
+  // zum disabled-Zustand des Speichern-Buttons (busy || !isDirty) - der
+  // React-State-Update, der den Button deaktiviert, greift erst nach dem
+  // nächsten Render, ein Ref dagegen sofort beim ersten performSave()-Aufruf.
+  const savingRef = useRef(false);
 
   const markDirty = useCallback((count = 1) => {
     setIsDirty(true);
@@ -164,11 +169,13 @@ export function usePlanPersistence({
 
   // ---------- Speichern ----------
   const performSave = useCallback(async (): Promise<boolean> => {
+    if (savingRef.current) return false;
     if (!rows.length) return false;
     if (!resolvedTemplateWeekId) {
       onMessage({ kind: "error", text: "Bitte den Plan zuerst neu erstellen." });
       return false;
     }
+    savingRef.current = true;
     onBusyChange(true);
     setSaveState("saving");
     try {
@@ -251,6 +258,7 @@ export function usePlanPersistence({
       setSaveError(text);
       return false;
     } finally {
+      savingRef.current = false;
       onBusyChange(false);
     }
   }, [

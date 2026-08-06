@@ -1,6 +1,7 @@
 "use client";
 
 import PageHeader from "@/components/PageHeader";
+import InlineStatus from "@/components/ui/InlineStatus";
 import PersonCellEditor from "@/components/PersonCellEditor";
 import PlanEditorSummary from "@/components/PlanEditorSummary";
 import PlanEditorToolbar from "@/components/PlanEditorToolbar";
@@ -70,6 +71,7 @@ import {
   templateCodeForDate,
   weekdayLabelFor,
 } from "./utils/planEditorHelpers";
+import { todayIso } from "@/lib/plan-editor/today";
 
 export default function PlanEditorPage() {
   const initialStart = useMemo(() => mondayIso(), []);
@@ -144,8 +146,7 @@ export default function PlanEditorPage() {
 
   const effectiveActiveDay = useMemo(() => {
     if (dayLabels.includes(activeDay)) return activeDay;
-    const todayIso = new Date().toLocaleDateString("sv-SE");
-    const todayIndex = weekDates.indexOf(todayIso);
+    const todayIndex = weekDates.indexOf(todayIso());
     return dayLabels[todayIndex >= 0 ? todayIndex : 0] ?? "";
   }, [activeDay, dayLabels, weekDates]);
 
@@ -551,7 +552,7 @@ export default function PlanEditorPage() {
         }),
       },
     ];
-    const todayIso = new Date().toLocaleDateString("sv-SE");
+    const currentDateIso = todayIso();
     const days = dayLabels.map<ColDef<PlanRow>>((label, index) => ({
       field: label,
       headerName: label,
@@ -561,7 +562,7 @@ export default function PlanEditorPage() {
       headerComponent: DayHeaderCell,
       headerComponentParams: {
         dayLabel: label,
-        isToday: weekDates[index] === todayIso,
+        isToday: weekDates[index] === currentDateIso,
         // AP8: abonnierbare Stores statt fertiger Werte - DayHeaderCell
         // rendert sich darüber selbst neu (useSyncExternalStore), columnDefs
         // muss dafür nicht neu gebaut werden (siehe useGridDayIndicators).
@@ -1177,7 +1178,14 @@ export default function PlanEditorPage() {
         </>
       )}
 
-      {message && <div className={`status status-${message.kind}`}>{message.text}</div>}
+      {message && (
+        <InlineStatus
+          variant={message.kind === "success" ? "success" : message.kind === "error" ? "danger" : "info"}
+          className="mt-3"
+        >
+          {message.text}
+        </InlineStatus>
+      )}
 
       {!hasExistingPlan && activeStep === 1 && (
         <ArtistPlanStep artistPlanForWeek={artistPlanForWeek} onContinue={() => setActiveStep(2)} />
