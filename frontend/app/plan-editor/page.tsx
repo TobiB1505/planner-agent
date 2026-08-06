@@ -45,6 +45,7 @@ import type { ColDef, GridApi } from "ag-grid-community";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 
 import EditorDialogs from "./components/EditorDialogs";
+import { PlanWeekCellRenderer } from "./components/PlanWeekCell";
 import PlanGrid from "./components/PlanGrid";
 import { ArtistPlanStep, ExportStep, RehearsalPlanStep, TemplateChoiceStep } from "./components/PlanWizardSteps";
 import WeekNavigation from "./components/WeekNavigation";
@@ -628,6 +629,11 @@ export default function PlanEditorPage() {
       singleClickEdit: true,
       wrapText: false,
       autoHeight: false,
+      // Sprint 3 (Phase 6): Personen als kompakte Chips mit "+n"-Überlauf
+      // statt abgeschnittenem Fließtext - reine Anzeige, Wert/Editor/Undo
+      // unverändert (siehe PlanWeekCell.tsx).
+      cellRenderer: PlanWeekCellRenderer,
+      cellRendererParams: { isPersonSection, isAbsenceSection },
       // AP8: Funktion statt fertigem String - wird bei refreshHeader() neu
       // ausgewertet und liest den aktiven Tag live aus dem Store.
       headerClass: () => (activeDayStore.get() === label ? "plan-day-header-active" : undefined),
@@ -810,6 +816,7 @@ export default function PlanEditorPage() {
     assignmentRules,
     dayLabels,
     isPersonSection,
+    isAbsenceSection,
     people,
     personCategories,
     rehearsalIntervals,
