@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import InternalNavigationGuard from "@/components/InternalNavigationGuard";
 import Sidebar from "@/components/Sidebar";
 import "./globals.css";
 import "./styles/foundation.css";
@@ -52,6 +53,7 @@ export default function RootLayout({
   return (
     <html lang="de" className="h-full antialiased" data-theme="command">
       <body className="flex h-full min-h-screen overflow-hidden">
+        <InternalNavigationGuard />
         <Sidebar />
         <main className="app-main min-w-0 flex-1 overflow-y-auto px-5 py-5 md:px-8 md:py-6">{children}</main>
       </body>

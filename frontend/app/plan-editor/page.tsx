@@ -39,6 +39,7 @@ import {
   type PlanIssue,
 } from "@/lib/planValidation";
 import { recommendForCell, serviceIntervalLabel } from "@/lib/recommendations";
+import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 import {
   AllCommunityModule,
   ModuleRegistry,
@@ -450,16 +451,16 @@ export default function PlanEditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [archivedWeeks, startDate]);
 
-  // ---------- Schutz vor Datenverlust: Browser-Tab schließen/neu laden ----------
-  useEffect(() => {
-    function handleBeforeUnload(event: BeforeUnloadEvent) {
-      if (!isDirty) return;
-      event.preventDefault();
-      event.returnValue = "";
-    }
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [isDirty]);
+  // ---------- Schutz vor Datenverlust (Sprint 0, S1-Fix C1) ----------
+  // Meldet isDirty an die geteilte Registry: sichert beforeunload (Reload/
+  // Tab schließen) UND macht den globalen InternalNavigationGuard
+  // (Sidebar-/interne Links, siehe app/layout.tsx) für diese Seite aktiv.
+  // Der bestehende pendingAction-Mechanismus für Wochenwechsel bleibt
+  // unverändert - er behandelt programmatische Navigation innerhalb der
+  // Seite selbst, die dieser Hook bewusst nicht abstrahiert.
+  useUnsavedChangesGuard(isDirty, {
+    message: "Der Dienstplan hat ungespeicherte Änderungen, die dabei verloren gehen.",
+  });
 
   const hasExistingPlan = Boolean(loadedArchivedWeek);
   const selectedTemplate = templates.find((template) => template.code === templateCode);

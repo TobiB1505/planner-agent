@@ -28,6 +28,7 @@ import {
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useEffect, useMemo, useState } from "react";
+import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -94,6 +95,14 @@ export default function ArtistPlanPage() {
     kind: "success" | "error" | "info";
     text: string;
   } | null>(null);
+  // Sprint 0 (S1-Fix, C2): bislang ungeschützte Grid-Änderungen. true, sobald
+  // die aktuell geladene Woche vom zuletzt gespeicherten/importierten Stand
+  // abweicht (Zellbearbeitung, Wochenwechsel-Remap); false nach jedem neuen
+  // Ausgangspunkt (Import, Laden, Speichern, leere Woche, Löschen).
+  const [isDirty, setIsDirty] = useState(false);
+  useUnsavedChangesGuard(isDirty, {
+    message: "Der Künstlerplan hat ungespeicherte Änderungen, die dabei verloren gehen.",
+  });
 
   async function refreshSaved() {
     const saved = await getArtistPlans();
@@ -155,6 +164,7 @@ export default function ArtistPlanPage() {
   async function chooseFile(nextFile: File | null) {
     setFile(nextFile);
     setPlan(null);
+    setIsDirty(false);
     setSheets([]);
     setSheet("");
     if (!nextFile) return;
@@ -189,6 +199,7 @@ export default function ArtistPlanPage() {
     try {
       const result = await importArtistPlan(file, sheet);
       setPlan(result);
+      setIsDirty(false);
       setStartDate(result.start_date);
       setSetupOpen(false);
       setMessage({
@@ -211,6 +222,7 @@ export default function ArtistPlanPage() {
     try {
       const result = await createEmptyArtistPlan(startDate);
       setPlan(result);
+      setIsDirty(false);
       setFile(null);
       setSheets([]);
       setSheet("");
@@ -236,6 +248,7 @@ export default function ArtistPlanPage() {
     try {
       const result = await getArtistPlan(Number(id));
       setPlan(result);
+      setIsDirty(false);
       setStartDate(result.start_date);
       setFile(null);
       setSheets([]);
@@ -258,6 +271,7 @@ export default function ArtistPlanPage() {
     try {
       const saved = await saveArtistPlan(plan);
       setPlan({ ...plan, id: saved.artist_plan_id });
+      setIsDirty(false);
       setSelectedSavedId(String(saved.artist_plan_id));
       await refreshSaved();
       setMessage({
@@ -281,6 +295,7 @@ export default function ArtistPlanPage() {
     try {
       await deleteArtistPlan(plan.id);
       setPlan(null);
+      setIsDirty(false);
       setSelectedSavedId("");
       setSetupOpen(true);
       await refreshSaved();
@@ -353,6 +368,7 @@ export default function ArtistPlanPage() {
       day_labels: nextLabels,
       rows: nextRows,
     });
+    setIsDirty(true);
     setStartDate(nextStart);
     setSelectedSavedId("");
   }
@@ -523,9 +539,10 @@ export default function ArtistPlanPage() {
                   undoRedoCellEditing
                   undoRedoCellEditingLimit={30}
                   getRowId={(params) => params.data.field_key}
-                  onCellValueChanged={() =>
-                    setPlan((current) => current ? { ...current, rows: [...current.rows] } : current)
-                  }
+                  onCellValueChanged={() => {
+                    setPlan((current) => current ? { ...current, rows: [...current.rows] } : current);
+                    setIsDirty(true);
+                  }}
                 />
               </div>
             </div>

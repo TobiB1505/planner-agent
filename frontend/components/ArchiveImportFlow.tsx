@@ -12,7 +12,9 @@ import {
   type ExtractionResult,
 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
+import ConfirmDialog from "./ConfirmDialog";
 import FileDropzone from "./FileDropzone";
+import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 
 type Notice = { kind: "success" | "error" | "info"; text: string };
 
@@ -33,6 +35,14 @@ export default function ArchiveImportFlow({
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState("Datei wird vorbereitet …");
   const [notice, setNotice] = useState<Notice | null>(null);
+  // Sprint 0 (S1-Fix, C2): reset() ("Andere Datei wählen") und der
+  // X-Button verwarfen einen bereits geprüften, aber noch nicht im Archiv
+  // gespeicherten Import bislang kommentarlos. "resetKind" merkt sich, WELCHE
+  // der beiden Aktionen bestätigt werden soll.
+  const [pendingReset, setPendingReset] = useState<"reset" | "close" | null>(null);
+  useUnsavedChangesGuard(Boolean(result), {
+    message: "Der geprüfte Import wurde noch nicht im Archiv gespeichert und geht dabei verloren.",
+  });
 
   useEffect(() => {
     Promise.all([getActivePeople(), getKnownDepartmentTokens()])
@@ -69,6 +79,22 @@ export default function ArchiveImportFlow({
     setResult(null);
     setResolutions({});
     setNotice(null);
+  }
+
+  function requestReset() {
+    if (result) {
+      setPendingReset("reset");
+      return;
+    }
+    reset();
+  }
+
+  function requestClose() {
+    if (result) {
+      setPendingReset("close");
+      return;
+    }
+    onClose();
   }
 
   async function chooseFile(selected: File | null) {
@@ -200,7 +226,7 @@ export default function ArchiveImportFlow({
           <h2>Alten Dienstplan archivieren</h2>
           <p>Excel wird direkt gelesen, PDF weiterhin automatisch mit Gemini ausgewertet.</p>
         </div>
-        <button type="button" className="archive-close-button" onClick={onClose} aria-label="Import schließen">
+        <button type="button" className="archive-close-button" onClick={requestClose} aria-label="Import schließen">
           ×
         </button>
       </div>
@@ -432,7 +458,7 @@ export default function ArchiveImportFlow({
           )}
 
           <div className="archive-review-actions">
-            <button type="button" className="btn" onClick={() => { reset(); }}>
+            <button type="button" className="btn" onClick={requestReset}>
               Andere Datei wählen
             </button>
             <button type="button" className="btn btn-primary" disabled={busy} onClick={store}>
@@ -442,6 +468,27 @@ export default function ArchiveImportFlow({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingReset !== null}
+        title="Geprüften Import verwerfen?"
+        description="Dieser Import wurde noch nicht im Archiv gespeichert. Ohne Speichern gehen die geprüften Daten verloren."
+        onDismiss={() => setPendingReset(null)}
+        actions={[
+          { label: "Abbrechen", onClick: () => setPendingReset(null) },
+          {
+            label: "Verwerfen",
+            variant: "danger",
+            autoFocus: true,
+            onClick: () => {
+              const kind = pendingReset;
+              setPendingReset(null);
+              reset();
+              if (kind === "close") onClose();
+            },
+          },
+        ]}
+      />
     </section>
   );
 }

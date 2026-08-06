@@ -18,6 +18,7 @@ import {
   type RehearsalPlanSummary,
 } from "@/lib/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 
 function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("de-DE", {
@@ -46,6 +47,11 @@ export default function RehearsalPlanPage() {
     kind: "success" | "error" | "info";
     text: string;
   } | null>(null);
+  // Sprint 0 (S1-Fix, C2): bislang ungeschützte Tabellen-Änderungen.
+  const [isDirty, setIsDirty] = useState(false);
+  useUnsavedChangesGuard(isDirty, {
+    message: "Der Probenplan hat ungespeicherte Änderungen, die dabei verloren gehen.",
+  });
 
   const refreshPlans = useCallback(async () => {
     setPlans(await getRehearsalPlans());
@@ -79,6 +85,7 @@ export default function RehearsalPlanPage() {
   async function chooseFile(nextFile: File | null) {
     setFile(nextFile);
     setPlan(null);
+    setIsDirty(false);
     setSetupOpen(true);
     setSheets([]);
     setSheet("");
@@ -122,6 +129,7 @@ export default function RehearsalPlanPage() {
     try {
       const result = await importRehearsalPlan(file, isExcel ? sheet : undefined);
       setPlan(result);
+      setIsDirty(false);
       setSetupOpen(false);
       const quelle = result.extraction_method === "gemini"
         ? "mit Gemini "
@@ -154,6 +162,7 @@ export default function RehearsalPlanPage() {
           }
         : current,
     );
+    setIsDirty(true);
   }
 
   function changeWeekStart(nextStart: string) {
@@ -172,6 +181,7 @@ export default function RehearsalPlanPage() {
         })),
       };
     });
+    setIsDirty(true);
   }
 
   async function save() {
@@ -182,6 +192,7 @@ export default function RehearsalPlanPage() {
       await refreshPlans();
       const stored = await getRehearsalPlan(result.rehearsal_plan_id);
       setPlan(stored);
+      setIsDirty(false);
       setMessage({
         kind: "success",
         text: "Probenplan aktiviert. Die Dienstplan-Erstellung berücksichtigt ihn für diese Woche automatisch.",
@@ -200,6 +211,7 @@ export default function RehearsalPlanPage() {
     setBusy(true);
     try {
       setPlan(await getRehearsalPlan(id));
+      setIsDirty(false);
       setSetupOpen(false);
       setMessage({ kind: "success", text: "Gespeicherter Probenplan geladen." });
     } catch (error) {
@@ -217,7 +229,10 @@ export default function RehearsalPlanPage() {
     setBusy(true);
     try {
       await deleteRehearsalPlan(id);
-      if (plan?.id === id) setPlan(null);
+      if (plan?.id === id) {
+        setPlan(null);
+        setIsDirty(false);
+      }
       setSetupOpen(true);
       await refreshPlans();
       setMessage({ kind: "success", text: "Probenplan wurde gelöscht." });
@@ -444,12 +459,13 @@ export default function RehearsalPlanPage() {
                         <button
                           className="btn btn-icon"
                           title="Zeile entfernen"
-                          onClick={() =>
+                          onClick={() => {
                             setPlan((current) => current
                               ? { ...current, rehearsals: current.rehearsals.filter((_, rowIndex) => rowIndex !== index) }
                               : current
-                            )
-                          }
+                            );
+                            setIsDirty(true);
+                          }}
                         >
                           ×
                         </button>
