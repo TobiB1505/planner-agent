@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Zwei unabhängige Jobs statt einem sequenziellen: ein Frontend-Fehler soll
+# nicht verschleiern, ob das Backend grün ist, und umgekehrt (Schritt 4 -
+# "welcher Schritt fehlgeschlagen ist" muss auf einen Blick erkennbar sein).
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Python 3.9 exakt wie in README.md dokumentiert ("entwickelt/getestet
+      # mit Python 3.9.6") - CI soll denselben Stand prüfen, der lokal
+      # tatsächlich verifiziert wurde, keinen abweichenden.
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      # Kein GEMINI_API_KEY gesetzt: die Tests, die Gemini-Aufrufe brauchen,
+      # mocken sie durchgehend (monkeypatch) - siehe backend/tests/test_async_imports.py.
+      # Die autouse-Guard-Fixture in backend/tests/conftest.py lässt jeden Test
+      # fehlschlagen, der versucht, die echte lokale Datenbank zu öffnen; da
+      # local_data/database/ per .gitignore nie eingecheckt ist, existiert im
+      # CI-Checkout ohnehin keine echte DB-Datei.
+      - name: Run backend tests
+        run: python -m pytest backend/tests -v
+
+  frontend:
+    name: Frontend (lint, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Node 20 LTS: erfüllt die in README.md dokumentierte Mindestanforderung
+      # ("Node.js 18 oder neuer") mit einer auf GitHub Actions gut unterstützten
+      # LTS-Version.
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
+      # next build baut ohne laufendes Backend (next.config.ts nutzt die
+      # Rewrite-Regel nur zur Laufzeit, kein Build-Time-Fetch) und ohne
+      # Secrets - BACKEND_INTERNAL_URL hat einen sicheren lokalen Default.
+      - name: Build
+        run: npm run build
