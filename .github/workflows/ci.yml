@@ -35,6 +35,12 @@ jobs:
       # fehlschlagen, der versucht, die echte lokale Datenbank zu öffnen; da
       # local_data/database/ per .gitignore nie eingecheckt ist, existiert im
       # CI-Checkout ohnehin keine echte DB-Datei.
+      #
+      # Deployment-Smoke inklusive: backend/tests/test_preview_mode_smoke.py
+      # startet hier bereits einen echten "python -m backend.run_local"-Prozess
+      # mit APP_ENV=preview/PLANNER_DATA_DIR=<tmp>/SYSTEM_RESTART_ENABLED=0 und
+      # prüft Health, Vorlagen und dass kein echter Restart ausgeführt wird -
+      # kein separater CI-Schritt dafür nötig.
       - name: Run backend tests
         run: python -m pytest backend/tests -v
 
@@ -72,3 +78,11 @@ jobs:
       # Secrets - BACKEND_INTERNAL_URL hat einen sicheren lokalen Default.
       - name: Build
         run: npm run build
+
+      # Deployment-Smoke: derselbe Build-Befehl, aber mit einer
+      # produktionsartigen (nicht erreichbaren) BACKEND_INTERNAL_URL - prüft,
+      # dass eine gültige https-URL akzeptiert wird UND dass rewrites() rein
+      # metadatenbasiert bleibt (kein echter Netzwerkzugriff auf die
+      # Beispieladresse während des Builds, siehe frontend/lib/backend-url.ts).
+      - name: Build with production-like BACKEND_INTERNAL_URL
+        run: BACKEND_INTERNAL_URL=https://backend.example.invalid npm run build

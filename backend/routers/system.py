@@ -24,9 +24,39 @@ router = APIRouter()
 _PROCESS_STARTED_AT = time.monotonic()
 
 
+def _is_writable(path: Path) -> bool:
+    if not path.exists():
+        return False
+    probe = path / ".system_write_check"
+    try:
+        probe.write_text("ok")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _templates_present() -> bool:
+    return all(
+        path.exists()
+        for path in (
+            config_paths.WEEK_A_TEMPLATE_PATH,
+            config_paths.WEEK_B_TEMPLATE_PATH,
+            config_paths.ARTIST_TEMPLATE_PATH,
+        )
+    )
+
+
 @router.get("/api/health")
 def health():
     """Reiner Lesezugriff - verändert nie Daten, legt auch keine Datenbank an.
+
+    Für Deployment-Plattformen nutzbar (Liveness/Readiness): prüft neben der
+    Datenbank auch, ob die Excel-Grundvorlagen vorhanden und das
+    Laufzeitverzeichnis beschreibbar sind - beides bewusst nur als Booleans,
+    nicht als volle Pfad-/Fehlerliste (das bleibt /api/system/diagnostics
+    vorbehalten, siehe dort). Enthält nie Secrets, volle interne Serverpfade,
+    API-Keys oder Stacktraces.
 
     Safety Fix: liest db.DATABASE_PATH statt config_paths.DATABASE_PATH, damit
     dieser Endpunkt in Tests denselben Monkeypatch-Mechanismus respektiert wie
@@ -44,28 +74,25 @@ def health():
                 conn.close()
         except sqlite3.Error:
             database_status = "error"
+
+    templates_ok = _templates_present()
+    data_dir_writable = _is_writable(config_paths.LOCAL_DATA_DIR)
+    healthy = database_status == "connected" and templates_ok and data_dir_writable
+
     return {
-        "status": "ok",
+        "status": "ok" if healthy else "degraded",
         "database": database_status,
         "database_path": config_paths.relative_to_project(db.DATABASE_PATH),
+        "templates_ok": templates_ok,
+        "data_dir_writable": data_dir_writable,
     }
 
 
 def _dir_diagnostic(path: Path) -> dict:
-    exists = path.exists()
-    writable = False
-    if exists:
-        probe = path / ".system_write_check"
-        try:
-            probe.write_text("ok")
-            probe.unlink()
-            writable = True
-        except OSError:
-            writable = False
     return {
         "path": config_paths.relative_to_project(path),
-        "exists": exists,
-        "writable": writable,
+        "exists": path.exists(),
+        "writable": _is_writable(path),
     }
 
 
@@ -131,6 +158,17 @@ def system_diagnostics():
     }
 
 
+def _restart_enabled() -> bool:
+    """SYSTEM_RESTART_ENABLED entscheidet explizit; ohne Einstellung ist ein
+    execv-Prozessneustart nur in APP_ENV=local sinnvoll (persistenter,
+    selbst verwalteter Prozess) - in Preview/Production übernimmt die
+    Hosting-Plattform Neustarts (Redeploy, Health-Check-Restart etc.)."""
+    raw = os.getenv("SYSTEM_RESTART_ENABLED")
+    if raw is not None:
+        return raw == "1"
+    return os.getenv("APP_ENV", "local") == "local"
+
+
 @router.post("/api/system/restart")
 def system_restart():
     """Startet den Backend-Prozess vollständig neu - unabhängig davon, wie
@@ -150,7 +188,23 @@ def system_restart():
     PEP 446 standardmässig nicht vererbbar über exec hinweg), sodass der
     neue Prozess den Port direkt neu binden kann - kein doppelt gebundener
     Port, kein verwaister Prozess.
+
+    In Preview/Production (siehe _restart_enabled()) ergibt das keinen Sinn:
+    Container-Plattformen erwarten einen langlebigen Prozess und verwalten
+    Neustarts selbst (Redeploy, Health-Check-Neustart) - os.execv oder ein
+    Hintergrund-Thread dafür würde diesen Mechanismus unterlaufen. Der
+    API-Pfad bleibt unverändert, die Antwort verweist stattdessen auf die
+    Plattform-eigene Restart-Funktion.
     """
+    if not _restart_enabled():
+        return {
+            "status": "restart_disabled",
+            "message": (
+                "Neustarts werden in dieser Umgebung von der Hosting-Plattform "
+                "verwaltet (SYSTEM_RESTART_ENABLED=0). Bitte die Redeploy-/"
+                "Restart-Funktion des Hosting-Providers verwenden."
+            ),
+        }
 
     def _restart() -> None:
         time.sleep(0.3)  # HTTP-Antwort erst zustellen lassen
