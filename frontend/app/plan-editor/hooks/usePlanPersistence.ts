@@ -71,13 +71,24 @@ export function usePlanPersistence({
     };
   }, []);
 
+  // Sprint 2 (Phase 9.1): ein neuer Ladevorgang (z.B. erneuter Fokus-Reload,
+  // siehe useThrottledFocusReload) bricht einen noch laufenden vorherigen
+  // Ladevorgang wirklich ab (AbortController), statt nur dessen Ergebnis
+  // über mountedRef zu verwerfen - erspart dem Backend unnötige Arbeit bei
+  // schnellen Folgeaktionen und wird beim Unmount ebenfalls abgebrochen.
+  const loadAbortControllerRef = useRef<AbortController | null>(null);
+
   const loadReferenceData = useCallback(() => {
+    loadAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortControllerRef.current = controller;
+    const { signal } = controller;
     return Promise.all([
-      getPlanTemplates(),
-      getActivePeople(),
-      getArtistPlans(),
-      getRehearsalPlans(),
-      getWeeks(),
+      getPlanTemplates(signal),
+      getActivePeople(signal),
+      getArtistPlans(signal),
+      getRehearsalPlans(signal),
+      getWeeks(signal),
     ])
       .then(([templateData, activePeople, storedArtistPlans, storedRehearsalPlans, storedWeeks]) => {
         if (!mountedRef.current) return;
@@ -89,6 +100,7 @@ export function usePlanPersistence({
         onReferenceDataLoaded(storedWeeks);
       })
       .catch((error) => {
+        if (error?.name === "AbortError") return;
         if (!mountedRef.current) return;
         onReferenceDataError(error.message);
       });
@@ -97,7 +109,10 @@ export function usePlanPersistence({
 
   useEffect(() => {
     const timer = window.setTimeout(loadReferenceData, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      loadAbortControllerRef.current?.abort();
+    };
   }, [loadReferenceData]);
 
   // AP8: vorher lud `window.focus` ungedrosselt bei jedem Tab-Wechsel dieselben

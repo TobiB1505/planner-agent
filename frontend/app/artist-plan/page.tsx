@@ -22,17 +22,11 @@ import {
   type ArtistPlanRow,
   type ArtistPlanSummary,
 } from "@/lib/api";
-import {
-  AllCommunityModule,
-  ModuleRegistry,
-  themeQuartz,
-  type ColDef,
-} from "ag-grid-community";
+import { themeQuartz, type ColDef } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useEffect, useMemo, useState } from "react";
 import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
-
-ModuleRegistry.registerModules([AllCommunityModule]);
+import "@/lib/ag-grid-setup";
 
 const groupColors: Record<string, string> = {
   "Tages-Entertainment": "#C67EBD",

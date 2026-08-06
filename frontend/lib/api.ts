@@ -25,9 +25,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         ...init?.headers,
       },
     });
-  } catch {
-    // fetch() wirft nur, wenn die Anfrage den Server gar nicht erst erreicht
-    // (z.B. Next.js-Dev-Server selbst nicht erreichbar) - kein Stacktrace im UI.
+  } catch (error) {
+    // Ein gezielt per AbortController abgebrochener Request (Sprint 2,
+    // Phase 9.1) ist kein Backend-Fehler - unverändert weiterreichen, damit
+    // Aufrufer ihn an error.name === "AbortError" erkennen und still
+    // ignorieren können, statt "Backend nicht erreichbar" anzuzeigen.
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    // fetch() wirft sonst nur, wenn die Anfrage den Server gar nicht erst
+    // erreicht (z.B. Next.js-Dev-Server selbst nicht erreichbar) - kein
+    // Stacktrace im UI.
     throw new ApiError(0, BACKEND_UNREACHABLE_MESSAGE);
   }
   if (!res.ok) {
@@ -53,11 +59,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-function get<T>(path: string): Promise<T> {
-  return request<T>(path);
+function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return request<T>(path, signal ? { signal } : undefined);
 }
-function post<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined });
+function post<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  return request<T>(path, {
+    method: "POST",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
+  });
 }
 function put<T>(path: string, body?: unknown): Promise<T> {
   return request<T>(path, { method: "PUT", body: body !== undefined ? JSON.stringify(body) : undefined });
@@ -562,10 +572,10 @@ export const updatePerson = (
   payload: { name: string; department?: string; active: boolean },
 ) => put<{ ok: boolean }>(`/team/${id}`, payload);
 export const deletePerson = (id: number) => del<{ ok: boolean }>(`/team/${id}`);
-export const getActivePeople = () => get<string[]>("/people/active");
+export const getActivePeople = (signal?: AbortSignal) => get<string[]>("/people/active", signal);
 
 // ---------- Wochen / Archiv ----------
-export const getWeeks = () => get<WeekSummary[]>("/weeks");
+export const getWeeks = (signal?: AbortSignal) => get<WeekSummary[]>("/weeks", signal);
 export const getWeekDetail = (weekId: number) => get<WeekDetail>(`/weeks/${weekId}`);
 export const deleteWeek = (weekId: number) => del<{ ok: boolean }>(`/weeks/${weekId}`);
 
@@ -721,7 +731,7 @@ export async function importArtistPlan(file: File, sheetName?: string): Promise<
 export const createEmptyArtistPlan = (startDate: string) =>
   get<ArtistPlanData>(`/artist-plans/empty?start_date=${encodeURIComponent(startDate)}`);
 
-export const getArtistPlans = () => get<ArtistPlanSummary[]>("/artist-plans");
+export const getArtistPlans = (signal?: AbortSignal) => get<ArtistPlanSummary[]>("/artist-plans", signal);
 export const getArtistPlan = (id: number) => get<ArtistPlanData>(`/artist-plans/${id}`);
 export const deleteArtistPlan = (id: number) => del<{ ok: boolean }>(`/artist-plans/${id}`);
 export const saveArtistPlan = (payload: ArtistPlanData) =>
@@ -753,8 +763,8 @@ export async function importRehearsalPlan(
   });
 }
 
-export const getRehearsalPlans = () =>
-  get<RehearsalPlanSummary[]>("/rehearsal-plans");
+export const getRehearsalPlans = (signal?: AbortSignal) =>
+  get<RehearsalPlanSummary[]>("/rehearsal-plans", signal);
 export const getRehearsalPlan = (id: number) =>
   get<RehearsalPlanData>(`/rehearsal-plans/${id}`);
 export const deleteRehearsalPlan = (id: number) =>
@@ -767,7 +777,7 @@ export const saveImport = (payload: ImportSavePayload) =>
   post<{ week_plan_id: number }>("/import/save", payload);
 
 // ---------- Plan-Editor ----------
-export const getPlanTemplates = () => get<PlanTemplate[]>("/plan/templates");
+export const getPlanTemplates = (signal?: AbortSignal) => get<PlanTemplate[]>("/plan/templates", signal);
 
 export const generatePlan = (payload: {
   template_week_id?: number;
@@ -776,8 +786,8 @@ export const generatePlan = (payload: {
   absences?: ExtractedAbsence[];
 }) => post<PlanGenerateResult>("/plan/generate", payload);
 
-export const getArchivedPlan = (startDate: string) =>
-  get<ArchivedPlanResult>(`/plan/existing?start_date=${encodeURIComponent(startDate)}`);
+export const getArchivedPlan = (startDate: string, signal?: AbortSignal) =>
+  get<ArchivedPlanResult>(`/plan/existing?start_date=${encodeURIComponent(startDate)}`, signal);
 
 export const savePlan = (payload: PlanSavePayload) =>
   post<PlanSaveResult>("/plan/save", payload);
@@ -831,20 +841,26 @@ export const setEmployeeIntelligenceMemory = (
 export const deleteEmployeeIntelligenceMemory = (personId: number, entryId: number) =>
   del<EmployeeMemoryEntry[]>(`/intelligence/employees/${personId}/memory/${entryId}`);
 
-export const getIntelligentRecommendations = (payload: {
-  start_date: string;
-  day_labels: string[];
-  rows: Record<string, string | null>[];
-  day_label: string;
-  category: string;
-  subcategory?: string | null;
-}) => post<IntelligentRecommendationResult>("/intelligence/recommendations", payload);
+export const getIntelligentRecommendations = (
+  payload: {
+    start_date: string;
+    day_labels: string[];
+    rows: Record<string, string | null>[];
+    day_label: string;
+    category: string;
+    subcategory?: string | null;
+  },
+  signal?: AbortSignal,
+) => post<IntelligentRecommendationResult>("/intelligence/recommendations", payload, signal);
 
-export const getPlanQuality = (payload: {
-  start_date: string;
-  day_labels: string[];
-  rows: Record<string, string | null>[];
-}) => post<PlanQualityResult>("/intelligence/plan-quality", payload);
+export const getPlanQuality = (
+  payload: {
+    start_date: string;
+    day_labels: string[];
+    rows: Record<string, string | null>[];
+  },
+  signal?: AbortSignal,
+) => post<PlanQualityResult>("/intelligence/plan-quality", payload, signal);
 
 export const getPlanAudit = (options: { weekPlanId?: number; startDate?: string; limit?: number }) => {
   const params = new URLSearchParams();

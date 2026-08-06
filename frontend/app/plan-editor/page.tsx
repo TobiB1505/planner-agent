@@ -40,12 +40,8 @@ import {
 } from "@/lib/planValidation";
 import { recommendForCell, serviceIntervalLabel } from "@/lib/recommendations";
 import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
-import {
-  AllCommunityModule,
-  ModuleRegistry,
-  type ColDef,
-  type GridApi,
-} from "ag-grid-community";
+import "@/lib/ag-grid-setup";
+import type { ColDef, GridApi } from "ag-grid-community";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 
 import EditorDialogs from "./components/EditorDialogs";
@@ -74,8 +70,6 @@ import {
   templateCodeForDate,
   weekdayLabelFor,
 } from "./utils/planEditorHelpers";
-
-ModuleRegistry.registerModules([AllCommunityModule]);
 
 export default function PlanEditorPage() {
   const initialStart = useMemo(() => mondayIso(), []);
@@ -266,17 +260,24 @@ export default function PlanEditorPage() {
   useEffect(() => {
     if (!rows.length || !dayLabels.length) return;
     let cancelled = false;
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setQualityLoading(true);
-      getPlanQuality({
-        start_date: startDate,
-        day_labels: dayLabels,
-        rows: rows.map((row) => ({ ...row })),
-      })
+      getPlanQuality(
+        {
+          start_date: startDate,
+          day_labels: dayLabels,
+          rows: rows.map((row) => ({ ...row })),
+        },
+        controller.signal,
+      )
         .then((result) => {
           if (!cancelled) setPlanQuality(result);
         })
         .catch(() => {
+          // Abgebrochene Requests (Wochenwechsel, neue Zellbearbeitung
+          // während eine ältere Prüfung noch läuft) sind kein sichtbarer
+          // Fehler - `cancelled` ist in diesem Fall bereits true.
           if (!cancelled) setPlanQuality(null);
         })
         .finally(() => {
@@ -286,6 +287,7 @@ export default function PlanEditorPage() {
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      controller.abort();
     };
     // changeCount ist nötig, weil AG Grid Zeilenobjekte direkt mutiert.
   }, [rows, changeCount, startDate, dayLabels]);
@@ -407,7 +409,8 @@ export default function PlanEditorPage() {
     loadedArchiveKeyRef.current = archiveKey;
 
     let active = true;
-    getArchivedPlan(startDate)
+    const controller = new AbortController();
+    getArchivedPlan(startDate, controller.signal)
       .then((result) => {
         if (!active) return;
         setRows(result.rows as PlanRow[]);
@@ -447,6 +450,7 @@ export default function PlanEditorPage() {
       });
     return () => {
       active = false;
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [archivedWeeks, startDate]);

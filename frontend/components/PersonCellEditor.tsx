@@ -158,7 +158,12 @@ function PersonCellEditorInstance({
   useEffect(() => {
     if (!intelligenceRequest) return;
     let activeRequest = true;
-    getIntelligentRecommendations(intelligenceRequest)
+    // Sprint 2 (Phase 9.1): bricht die Anfrage wirklich ab, wenn die Zelle
+    // vor Antwort geschlossen wird (schnelle Folgeaktion/Escape) - erspart
+    // dem Backend unnötige Arbeit, zusätzlich zum bestehenden activeRequest-
+    // Schutz gegen das Anwenden veralteter Ergebnisse.
+    const controller = new AbortController();
+    getIntelligentRecommendations(intelligenceRequest, controller.signal)
       .then((result) => {
         if (activeRequest) setIntelligenceCandidates(result.candidates.map(backendCandidate));
       })
@@ -168,7 +173,10 @@ function PersonCellEditorInstance({
       .finally(() => {
         if (activeRequest) setIntelligenceLoading(false);
       });
-    return () => { activeRequest = false; };
+    return () => {
+      activeRequest = false;
+      controller.abort();
+    };
   }, [intelligenceRequest]);
 
   const candidateByName = useMemo(() => {
