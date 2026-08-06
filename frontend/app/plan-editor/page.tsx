@@ -580,10 +580,14 @@ export default function PlanEditorPage() {
         width: 132,
         editable: false,
         lockPinned: true,
+        // Sprint 3 (Ent-Excelung, Phase 4.3/4.4): Kategorie nur noch als
+        // farbige linke Kante + minimale Tönung statt der bisherigen
+        // 16%-Vollfläche - die Kategorie-Farbwerte selbst bleiben unverändert
+        // (lib/categoryColors.ts), nur ihre Flächenanwendung wird reduziert.
         cellStyle: (params) => ({
-          backgroundColor: hexToRgba(rowColor(params.data), 0.16),
+          backgroundColor: hexToRgba(rowColor(params.data), 0.05),
           borderLeft: `3px solid ${rowColor(params.data)}`,
-          fontWeight: "700",
+          fontWeight: "650",
         }),
       },
       {
@@ -595,11 +599,9 @@ export default function PlanEditorPage() {
         lockPinned: true,
         wrapText: false,
         autoHeight: false,
-        cellStyle: (params) => ({
-          backgroundColor: hexToRgba(rowColor(params.data), 0.09),
-          color: "var(--muted)",
-          fontWeight: "600",
-        }),
+        // Sprint 3: keine zweite Kategorie-Tönung mehr - ruhige Grundfläche,
+        // Zeitangaben bleiben als gedämpfter Text lesbar.
+        cellStyle: { color: "var(--muted)", fontWeight: "600" },
       },
     ];
     const currentDateIso = todayIso();
@@ -732,10 +734,12 @@ export default function PlanEditorPage() {
           popupPosition: "under",
         };
       },
-      cellStyle: (params) => ({
-        backgroundColor: hexToRgba(rowColor(params.data), 0.06),
-        cursor: "text",
-      }),
+      // Sprint 3 (Ent-Excelung): keine Kategorie-Tönung mehr auf Tageszellen -
+      // die Kategorie bleibt über die linke Kante der ersten Spalte und die
+      // Abschnittsköpfe erkennbar; die Zellfläche selbst bleibt ruhig. Der
+      // frühere cursor:"text" signalisierte Textmarkierung statt Bearbeitung
+      // (siehe EDITOR_VISUAL_BASELINE.md) - Pointer/Hover kommen jetzt aus
+      // plan-editor.css.
       // Konfliktmarkierungen (Sprint 3): liest aus einem Ref statt aus einer
       // columnDefs-Abhängigkeit, damit eine neue Planprüfung nicht die
       // komplette Spaltenkonfiguration neu aufbaut - nur ein gezieltes
@@ -746,6 +750,12 @@ export default function PlanEditorPage() {
         // keinen columnDefs-Rebuild mehr braucht - nur refreshCells() (siehe
         // useGridDayIndicators).
         "plan-day-cell-active": () => activeDayStore.get() === label,
+        // Leere, bearbeitbare Zelle: bekommt per CSS eine Hover-/Fokus-
+        // Affordance (Plus-Symbol) - wird bei jeder Wertänderung durch den
+        // ohnehin laufenden Zell-Refresh neu ausgewertet.
+        "plan-cell-empty": (params) =>
+          Boolean(params.data && params.data._row_type !== "group") &&
+          !(typeof params.value === "string" && params.value.trim()),
         "plan-cell-manual": (params) =>
           Boolean(
             params.data &&
@@ -783,10 +793,16 @@ export default function PlanEditorPage() {
               .join(" | ")}`
           : "";
         const cellText = typeof params.value === "string" ? params.value.trim() : "";
-        if (cellText) {
-          return issueText ? `${issueText}\n\nInhalt: ${cellText}` : cellText;
-        }
-        return issueText || undefined;
+        // Sprint 3 (Phase 5.3): "Manuell angepasst" als verständlicher Text
+        // statt nur des kleinen Punkts - der Marker allein trug keine Semantik.
+        const manualText = manuallyEditedCellsRef.current.has(
+          cellIssueKey(params.data._row_id, label),
+        )
+          ? "Manuell angepasst"
+          : "";
+        const parts = [issueText, cellText ? (issueText ? `Inhalt: ${cellText}` : cellText) : "", manualText]
+          .filter(Boolean);
+        return parts.length ? parts.join("\n\n") : undefined;
       },
     }));
     return [...fixed, ...days];

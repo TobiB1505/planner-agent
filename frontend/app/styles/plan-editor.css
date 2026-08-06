@@ -952,6 +952,25 @@ button.plan-validation-summary {
 
 /* Sprint 4: Wochenarbeitsplatz ------------------------------------------ */
 
+/* Sprint 3 (Ent-Excelung): Abschnittsköpfe als ruhige Trennzeilen -
+   Kategoriefarbe nur noch als Punkt + linke Kante (Inline-Style aus
+   GroupHeaderRenderer), Fläche bleibt neutral. */
+.plan-grid .plan-group-row {
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 62%, transparent);
+  color: var(--muted-strong);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+}
+
+.plan-group-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
 .plan-editor-page {
   min-height: 100%;
 }
@@ -1117,13 +1136,35 @@ button.plan-validation-summary {
   white-space: nowrap;
 }
 
-.plan-grid.plan-grid-week .ag-cell:not(.ag-cell-inline-editing) {
-  cursor: text !important;
+/* Sprint 3 (Ent-Excelung): Tageszellen signalisieren Bearbeitung (Pointer +
+   Hover-Fläche) statt Textmarkierung - cursor:text suggerierte eine reine
+   Lese-/Kopierfläche (siehe EDITOR_VISUAL_BASELINE.md, "unklare interaktive
+   Zellen"). Die beiden angepinnten Spalten (Abschnitt, Zeile) sind nicht
+   editierbar und behalten den Standard-Cursor. */
+.plan-grid.plan-grid-week .ag-center-cols-container .ag-cell:not(.ag-cell-inline-editing) {
+  cursor: pointer;
 }
 
-.plan-grid.plan-grid-week .ag-cell:not(.ag-cell-inline-editing):hover {
+.plan-grid.plan-grid-week .ag-center-cols-container .ag-cell:not(.ag-cell-inline-editing):hover {
+  background-color: color-mix(in srgb, var(--accent) 7%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
-  cursor: text;
+}
+
+/* Leere, bearbeitbare Zelle: Plus-Affordance bei Hover/Tastaturfokus (nicht
+   dauerhaft - das würde die Fläche überladen, Phase 5.1). Zellen mit
+   Konfliktmarkierung behalten ihr Warnsymbol (::after bereits belegt). */
+.plan-grid .ag-center-cols-container .ag-cell.plan-cell-empty:not(.ag-cell-inline-editing, .plan-cell-issue-error, .plan-cell-issue-warning):hover::after,
+.plan-grid .ag-center-cols-container .ag-cell.plan-cell-empty.ag-cell-focus:not(.ag-cell-inline-editing, .plan-cell-issue-error, .plan-cell-issue-warning)::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: color-mix(in srgb, var(--accent) 80%, var(--muted));
+  content: "+";
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .plan-grid .ag-cell.ag-cell-inline-editing {
@@ -1192,13 +1233,11 @@ button.plan-validation-summary {
   content: "";
 }
 
+/* Sprint 3: aktive Tagesspalte als ruhige Tönung statt Gradient plus
+   beidseitiger Akzentkanten - Orientierung bleibt (Header-Unterstreichung
+   + Tönung), ohne dass die Spalte wie ein Rahmen-Käfig wirkt. */
 .plan-grid .ag-cell.plan-day-cell-active:not(.plan-cell-issue-error, .plan-cell-issue-warning) {
-  background-image: linear-gradient(color-mix(in srgb, var(--accent) 5%, transparent), color-mix(in srgb, var(--accent) 5%, transparent));
-  box-shadow: inset 1.5px 0 0 var(--accent), inset -1.5px 0 0 var(--accent);
-}
-
-.plan-grid .ag-row:last-child .ag-cell.plan-day-cell-active {
-  box-shadow: inset 1.5px 0 0 var(--accent), inset -1.5px 0 0 var(--accent), inset 0 -1.5px 0 var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 
 .plan-grid .ag-cell.plan-cell-manual::before {

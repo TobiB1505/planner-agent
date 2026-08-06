@@ -1,7 +1,7 @@
 // AP12: reine Hilfsfunktionen und kleine Präsentations-Komponenten aus
 // page.tsx - unverändertes Verhalten, nur ausgelagert.
 import type { ExtractedAbsence } from "@/lib/api";
-import { categoryColor, hexToRgba } from "@/lib/categoryColors";
+import { categoryColor } from "@/lib/categoryColors";
 import { themeQuartz, type ICellRendererParams } from "ag-grid-community";
 import type { PlanRow } from "../types";
 
@@ -163,15 +163,20 @@ export function assignRowIds(rows: PlanRow[]): PlanRow[] {
 
 export function GroupHeaderRenderer({ data }: ICellRendererParams<PlanRow>) {
   const color = data?._group_color || "#6c7bff";
+  // Sprint 3 (Ent-Excelung, Phase 4.4): Abschnittsköpfe sind keine
+  // durchgehenden Farbbänder mehr, sondern ruhige Trennzeilen mit
+  // Kategorie-Punkt + Label - die Kategoriefarbe bleibt als Punkt und
+  // linker Kante erkennbar, dominiert aber nicht mehr die Fläche.
   return (
     <div
-      className="plan-group-row flex h-full w-full items-center px-4 text-left text-[12.5px] font-semibold tracking-[0.02em]"
-      style={{
-        backgroundColor: hexToRgba(color, 0.14),
-        borderLeft: `3px solid ${color}`,
-        color: "var(--foreground)",
-      }}
+      className="plan-group-row flex h-full w-full items-center gap-2 px-3 text-left"
+      style={{ borderLeft: `3px solid ${color}` }}
     >
+      <span
+        aria-hidden="true"
+        className="plan-group-dot"
+        style={{ backgroundColor: color }}
+      />
       {data?._group_label}
     </div>
   );
