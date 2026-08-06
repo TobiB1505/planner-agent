@@ -8,9 +8,27 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+
+// Mount-Gate für den Portal: SSR hat kein document, der erste Client-Render
+// muss deshalb ebenfalls "nicht gemountet" liefern, sonst weicht er vom
+// SSR-Markup ab (Hydration-Fehler). useSyncExternalStore statt setState im
+// Effekt (siehe pwa-install-button.tsx für das gleiche Muster im Projekt).
+function subscribeNever() {
+  return () => {};
+}
+function getIsMountedSnapshot() {
+  return true;
+}
+function getIsMountedServerSnapshot() {
+  return false;
+}
+function useIsMounted() {
+  return useSyncExternalStore(subscribeNever, getIsMountedSnapshot, getIsMountedServerSnapshot);
+}
 
 export type ToastVariant = "success" | "info" | "warning" | "error" | "loading";
 
@@ -200,7 +218,8 @@ function ToastViewport({
   onPause: (id: string) => void;
   onResume: (id: string) => void;
 }) {
-  if (typeof document === "undefined") return null;
+  const mounted = useIsMounted();
+  if (!mounted) return null;
 
   return createPortal(
     <div className="ui-toast-viewport" aria-live="polite" aria-relevant="additions">

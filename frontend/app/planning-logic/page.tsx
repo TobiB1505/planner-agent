@@ -1,6 +1,8 @@
 "use client";
 
-import PageHeader from "@/components/PageHeader";
+import PageHeader from "@/components/ui/PageHeader";
+import MetricCard from "@/components/ui/MetricCard";
+import InlineStatus from "@/components/ui/InlineStatus";
 import PlanningRulesPanel from "@/components/PlanningRulesPanel";
 import { getPlanningRules, type PlanningRule } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
@@ -41,30 +43,25 @@ export default function PlanningLogicPage() {
         subtitle="Alle Regeln, die bei automatischer Verteilung und Empfehlungen mitdenken"
       />
 
-      <section className="planning-logic-overview" aria-label="Übersicht Planungslogik">
-        <article>
-          <span>Aktiv</span>
-          <strong>{loading ? "…" : rules.length}</strong>
-          <small>Regeln insgesamt</small>
-        </article>
-        <article className="tone-info">
-          <span>Grundlogik</span>
-          <strong>{loading ? "…" : counts.info}</strong>
-          <small>Fairness, Abteilungen und Zeitfenster</small>
-        </article>
-        <article className="tone-warning">
-          <span>Zu beachten</span>
-          <strong>{loading ? "…" : counts.warning}</strong>
-          <small>Besondere Einschränkungen</small>
-        </article>
+      <section className="planning-logic-metrics" aria-label="Übersicht Planungslogik">
+        <MetricCard title="Aktiv" value={loading ? "…" : String(rules.length)} change={{ label: "Regeln insgesamt", tone: "neutral" }} />
+        <MetricCard
+          title="Grundlogik"
+          value={loading ? "…" : String(counts.info)}
+          change={{ label: "Fairness, Abteilungen und Zeitfenster", tone: "neutral" }}
+        />
+        <MetricCard
+          title="Zu beachten"
+          value={loading ? "…" : String(counts.warning)}
+          status={counts.warning > 0 ? { label: "Prüfen", tone: "warning" } : undefined}
+          change={{ label: "Besondere Einschränkungen", tone: "neutral" }}
+        />
       </section>
 
       {loading ? (
-        <section className="panel planning-logic-loading" role="status">
-          Planungsregeln werden geladen …
-        </section>
+        <InlineStatus variant="loading" className="mt-3">Planungsregeln werden geladen …</InlineStatus>
       ) : error ? (
-        <section className="panel planning-logic-error" role="alert">{error}</section>
+        <InlineStatus variant="danger" className="mt-3">{error}</InlineStatus>
       ) : (
         <PlanningRulesPanel rules={rules} defaultOpen />
       )}
