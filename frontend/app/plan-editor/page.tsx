@@ -1,50 +1,32 @@
 "use client";
 
-import ConfirmDialog from "@/components/ConfirmDialog";
 import PageHeader from "@/components/PageHeader";
 import PersonCellEditor from "@/components/PersonCellEditor";
 import PlanEditorSummary from "@/components/PlanEditorSummary";
 import PlanEditorToolbar from "@/components/PlanEditorToolbar";
-import PlanIssuesPanel from "@/components/PlanIssuesPanel";
-import PreparationStatusCard from "@/components/PreparationStatusCard";
 import SoftsportCellEditor from "@/components/SoftsportCellEditor";
-import WeekPicker from "@/components/WeekPicker";
 import DayHeaderCell from "@/components/plan-editor/DayHeaderCell";
 import EditorViewControls from "@/components/plan-editor/EditorViewControls";
 import PlanDayView from "@/components/plan-editor/PlanDayView";
-import PlanPreviewDialog from "@/components/plan-editor/PlanPreviewDialog";
-import PlanIntelligenceDialog from "@/components/plan-editor/PlanIntelligenceDialog";
 import PlanViewSwitcher from "@/components/plan-editor/PlanViewSwitcher";
 import {
   generatePlan,
-  getActivePeople,
   getArchivedPlan,
-  getArtistPlans,
   getFreeSuggestion,
-  getPlanTemplates,
   getPlanQuality,
-  getRehearsalPlans,
-  getWeeks,
-  savePlan,
   type AssignmentRule,
-  type ArtistPlanSummary,
-  type ExtractedAbsence,
-  type PlanTemplate,
   type PlanGenerateResult,
-  type PlanAuditEventInput,
   type PlanQualityResult,
   type PreviousWeekWorkload,
   type RehearsalInterval,
-  type RehearsalPlanSummary,
   type WeekSummary,
   xlsxGenerate,
 } from "@/lib/api";
-import { categoryColor, hexToRgba } from "@/lib/categoryColors";
-import { diffPlanRows, type PlanDiff } from "@/lib/plan-editor/planDiff";
+import { hexToRgba } from "@/lib/categoryColors";
+import { diffPlanRows } from "@/lib/plan-editor/planDiff";
 import { computeDayStatuses } from "@/lib/plan-editor/dayStatus";
 import { collectCategorySuggestions } from "@/lib/plan-editor/entryFieldType";
 import { useGridDayIndicators } from "@/lib/plan-editor/useGridDayIndicators";
-import { useThrottledFocusReload } from "@/lib/plan-editor/useThrottledFocusReload";
 import {
   loadPlanViewPreferences,
   savePlanViewPreferences,
@@ -62,259 +44,41 @@ import { recommendForCell, serviceIntervalLabel } from "@/lib/recommendations";
 import {
   AllCommunityModule,
   ModuleRegistry,
-  themeQuartz,
-  type CellValueChangedEvent,
-  type CellClickedEvent,
   type ColDef,
   type GridApi,
-  type GridReadyEvent,
-  type ICellRendererParams,
 } from "ag-grid-community";
-import { AgGridReact } from "ag-grid-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import EditorDialogs from "./components/EditorDialogs";
+import PlanGrid from "./components/PlanGrid";
+import { ArtistPlanStep, ExportStep, RehearsalPlanStep, TemplateChoiceStep } from "./components/PlanWizardSteps";
+import WeekNavigation from "./components/WeekNavigation";
+import { usePlanHistory } from "./hooks/usePlanHistory";
+import { usePlanPersistence } from "./hooks/usePlanPersistence";
+import type { AutomationPreview, PendingAction, PlanRow } from "./types";
+import {
+  ABSENCE_SECTIONS,
+  PlanEditorInitialLoading,
+  addDays,
+  collectAbsences,
+  formatDateRange,
+  isoWeek,
+  mergeGeneratedPersonCell,
+  mondayIso,
+  rowCategory,
+  rowColor,
+  rowKey,
+  serviceExtraLabel,
+  shortDateLabelFor,
+  splitNames,
+  templateCodeForDate,
+  weekdayLabelFor,
+} from "./utils/planEditorHelpers";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-type PlanRow = Record<string, string | null> & {
-  Abschnitt: string;
-  Zeile: string;
-  _row_type: "data" | "group";
-  _category: string;
-  _group_label: string | null;
-  _group_color: string | null;
-};
-
-type SaveState = "idle" | "saving" | "saved" | "error";
-
-type PendingAction =
-  | { kind: "week-change"; nextDate: string }
-  | { kind: "save-with-conflicts" }
-  | { kind: "export-with-conflicts" };
-
-type PlanHistoryChange = {
-  row: PlanRow;
-  dayLabel: string;
-  previousValue: string | null;
-  nextValue: string | null;
-};
-
-type PlanHistoryAction = {
-  changes: PlanHistoryChange[];
-};
-
-type AutomationPreview = {
-  kind: "recalculate" | "rebuild" | "free-suggestion";
-  title: string;
-  description: string;
-  applyLabel: string;
-  diff: PlanDiff;
-  nextRows: PlanRow[];
-  result?: PlanGenerateResult;
-  successMessage: string;
-};
-
-const ABSENCE_SECTIONS = new Set(["Urlaub/Krank", "Frei"]);
-
-const gridTheme = themeQuartz.withParams({
-  accentColor: "#6c7bff",
-  backgroundColor: "var(--surface)",
-  foregroundColor: "var(--foreground)",
-  borderColor: "var(--border)",
-  headerBackgroundColor: "var(--background)",
-  oddRowBackgroundColor: "var(--surface)",
-  rowHoverColor: "var(--accent-soft)",
-  fontFamily: "var(--font-app)",
-  fontSize: 13,
-  headerFontSize: 12,
-  spacing: 7,
-});
-
-function mondayIso(): string {
-  const now = new Date();
-  const weekday = now.getDay() || 7;
-  // Auf 12 Uhr mittags verankern: toISOString() rechnet in UTC um und würde sonst
-  // in den Nachtstunden (bzw. bei positivem UTC-Offset) einen Tag zurückspringen -
-  // die Planwoche startete dann auf einem Sonntag statt auf Montag.
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - weekday + 1, 12);
-  return monday.toISOString().slice(0, 10);
-}
-
-function addDays(iso: string, amount: number): string {
-  const date = new Date(`${iso}T12:00:00`);
-  date.setDate(date.getDate() + amount);
-  return date.toISOString().slice(0, 10);
-}
-
-function isoWeek(iso: string): number {
-  const date = new Date(`${iso}T12:00:00Z`);
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-}
-
-function templateCodeForDate(iso: string): "A" | "B" {
-  return isoWeek(iso) % 2 === 1 ? "A" : "B";
-}
-
-function formatDateRange(startIso: string, endIso: string): string {
-  const formatter = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
-  return `${formatter.format(new Date(`${startIso}T12:00:00`))}–${formatter.format(new Date(`${endIso}T12:00:00`))}`;
-}
-
-const WEEKDAY_FORMATTER = new Intl.DateTimeFormat("de-DE", { weekday: "long" });
-const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" });
-
-function weekdayLabelFor(iso?: string): string | undefined {
-  if (!iso) return undefined;
-  return WEEKDAY_FORMATTER.format(new Date(`${iso}T12:00:00`));
-}
-
-function shortDateLabelFor(iso?: string): string | undefined {
-  if (!iso) return undefined;
-  // Intl hängt im de-DE-Format bei day+month bereits einen Punkt an ("27.07.").
-  return SHORT_DATE_FORMATTER.format(new Date(`${iso}T12:00:00`));
-}
-
-/** Löst Uhrzeitangaben aus dem Zeilentext ("KP3 19:00 - 21:15" -> "KP3"), damit der
- *  Popup-Kopfbereich keine Zeit doppelt zeigt (die kommt separat aus serviceInterval). */
-function serviceExtraLabel(zeile: string): string {
-  return zeile
-    .replace(/\d{1,2}[:.]\d{2}\s*(?:-|–|bis)\s*\d{1,2}[:.]\d{2}/gi, "")
-    .replace(/\d{1,2}[:.]\d{2}/g, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}
-
-function splitNames(value: string): string[] {
-  return value
-    .split(/[,;\n]+/)
-    .map((part) => part.includes("|") ? part.split("|").at(-1)!.trim() : part.trim())
-    .filter(Boolean);
-}
-
-/** Bei kombinierten Zellen (z.B. `Boccia | Livia` oder Aperitif mit
- * Ort/Uhrzeit/Künstler) gehört nur der Teil nach dem letzten Trenner zur
- * automatischen MA-Zuweisung. Eine Neuverteilung darf den redaktionellen
- * Präfix nicht nebenbei umformatieren. */
-function mergeGeneratedPersonCell(
-  currentValue: string | null | undefined,
-  generatedValue: string | null | undefined,
-): string | null {
-  const current = currentValue ?? "";
-  const generated = generatedValue ?? "";
-  const currentSeparator = current.lastIndexOf("|");
-  const generatedSeparator = generated.lastIndexOf("|");
-  if (currentSeparator < 0 || generatedSeparator < 0) return generatedValue ?? null;
-  const generatedPeople = generated.slice(generatedSeparator + 1).trim();
-  const currentPrefix = current.slice(0, currentSeparator + 1).trimEnd();
-  return generatedPeople ? `${currentPrefix} ${generatedPeople}` : currentPrefix;
-}
-
-function collectAbsences(
-  rows: PlanRow[],
-  dayLabels: string[],
-  weekDates: string[],
-): ExtractedAbsence[] {
-  const absences: ExtractedAbsence[] = [];
-  for (const row of rows) {
-    if (!ABSENCE_SECTIONS.has(row.Abschnitt)) continue;
-    dayLabels.forEach((label, index) => {
-      splitNames(row[label] ?? "").forEach((person) => {
-        absences.push({ date: weekDates[index], person, type: row.Abschnitt });
-      });
-    });
-  }
-  return absences;
-}
-
-function rowCategory(row?: PlanRow): string {
-  return row?._category || row?.Abschnitt || "";
-}
-
-function rowColor(row?: PlanRow): string {
-  return row?._group_color || categoryColor(rowCategory(row));
-}
-
-function rowKey(row: PlanRow): string {
-  if (row._row_type === "group") return `group::${row._group_label}`;
-  return `${rowCategory(row)}::${row.Zeile}`;
-}
-
-function GroupHeaderRenderer({ data }: ICellRendererParams<PlanRow>) {
-  const color = data?._group_color || "#6c7bff";
-  return (
-    <div
-      className="plan-group-row flex h-full w-full items-center px-4 text-left text-[12.5px] font-semibold tracking-[0.02em]"
-      style={{
-        backgroundColor: hexToRgba(color, 0.14),
-        borderLeft: `3px solid ${color}`,
-        color: "var(--foreground)",
-      }}
-    >
-      {data?._group_label}
-    </div>
-  );
-}
-
-function PlanEditorInitialLoading({ startDate }: { startDate: string }) {
-  return (
-    <div className="plan-editor-initial-loading" role="status" aria-live="polite">
-      <section className="panel plan-editor-loading-summary">
-        <div className="plan-editor-loading-copy">
-          <span>Aktiver Dienstplan</span>
-          <strong>KW {isoWeek(startDate)} wird geöffnet</strong>
-          <small>
-            {formatDateRange(startDate, addDays(startDate, 6))} · Gespeicherte Planung wird wiederhergestellt
-          </small>
-        </div>
-        <div className="plan-editor-loading-indicator">
-          <span className="spinner" aria-hidden="true" />
-          Plan wird geladen
-        </div>
-      </section>
-
-      <div className="plan-editor-loading-toolbar" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-        <i />
-      </div>
-
-      <section className="panel plan-editor-loading-grid" aria-hidden="true">
-        <div className="plan-editor-loading-grid-head">
-          <i />
-          <i />
-          <i />
-          <i />
-          <i />
-          <i />
-          <i />
-          <i />
-          <i />
-        </div>
-        {Array.from({ length: 9 }, (_, index) => (
-          <div className="plan-editor-loading-grid-row" key={index}>
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-          </div>
-        ))}
-      </section>
-    </div>
-  );
-}
-
 export default function PlanEditorPage() {
   const initialStart = useMemo(() => mondayIso(), []);
-  const [templates, setTemplates] = useState<PlanTemplate[]>([]);
-  const [people, setPeople] = useState<string[]>([]);
   const [templateCode, setTemplateCode] = useState<"A" | "B">(() => templateCodeForDate(initialStart));
   const [resolvedTemplateWeekId, setResolvedTemplateWeekId] = useState<number | null>(null);
   const [startDate, setStartDate] = useState(initialStart);
@@ -336,14 +100,10 @@ export default function PlanEditorPage() {
   const [previousWeekWorkload, setPreviousWeekWorkload] = useState<
     Record<string, PreviousWeekWorkload>
   >({});
-  const [artistPlans, setArtistPlans] = useState<ArtistPlanSummary[]>([]);
-  const [rehearsalPlans, setRehearsalPlans] = useState<RehearsalPlanSummary[]>([]);
-  const [archivedWeeks, setArchivedWeeks] = useState<WeekSummary[]>([]);
   const [loadedArchivedWeek, setLoadedArchivedWeek] = useState<WeekSummary | null>(null);
   const [activeStep, setActiveStep] = useState(1);
   const [exported, setExported] = useState(false);
   const loadedArchiveKeyRef = useRef<string | null>(null);
-  const manuallyEditedCellsRef = useRef<Set<string>>(new Set());
 
   // ---------- Sprint 4: Arbeitsansicht ----------
   const [viewPreferences, setViewPreferences] = useState<PlanViewPreferences>(() =>
@@ -360,14 +120,7 @@ export default function PlanEditorPage() {
   const [planQuality, setPlanQuality] = useState<PlanQualityResult | null>(null);
   const [qualityLoading, setQualityLoading] = useState(false);
   const [intelligenceOpen, setIntelligenceOpen] = useState(false);
-  const auditEventsRef = useRef<PlanAuditEventInput[]>([]);
 
-  // ---------- Änderungsstatus (Aufgabe 3) ----------
-  const [isDirty, setIsDirty] = useState(false);
-  const [changeCount, setChangeCount] = useState(0);
-  const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [saveError, setSaveError] = useState("");
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   // ---------- Planprüfung (Sprint 3) ----------
@@ -378,21 +131,7 @@ export default function PlanEditorPage() {
   const [revalidateNonce, setRevalidateNonce] = useState(0);
   const cellIssueIndexRef = useRef<Map<string, PlanIssue[]>>(new Map());
 
-  // ---------- Undo/Redo (Aufgabe 3) ----------
   const gridApiRef = useRef<GridApi<PlanRow> | null>(null);
-  const [gridHistory, setGridHistory] = useState({ canUndo: false, canRedo: false });
-  // AG Grid zeichnet nur Änderungen aus aktiven Zell-/Zeilen-Editiervorgängen
-  // (bzw. Paste/Fill) in seinen Undo-Stack auf - programmatische Mutationen wie
-  // die Tagesplanung-Inline-Bearbeitung und die Kopieraktionen tauchen dort nie
-  // auf. Diese laufen deshalb über einen eigenen Aktions-Stack (eine komplette
-  // Kopieraktion = genau ein Eintrag = ein Undo-Schritt). actionOrderRef merkt
-  // sich die Chronologie beider Stacks, damit die Toolbar-Buttons immer die
-  // zuletzt passierte Aktion rückgängig machen, egal aus welcher Quelle.
-  const customUndoRef = useRef<PlanHistoryAction[]>([]);
-  const customRedoRef = useRef<PlanHistoryAction[]>([]);
-  const actionOrderRef = useRef<("grid" | "custom")[]>([]);
-  const redoOrderRef = useRef<("grid" | "custom")[]>([]);
-  const gridUndoInFlightRef = useRef(false);
 
   useEffect(() => {
     savePlanViewPreferences(viewPreferences);
@@ -405,36 +144,46 @@ export default function PlanEditorPage() {
     return dayLabels[todayIndex >= 0 ? todayIndex : 0] ?? "";
   }, [activeDay, dayLabels, weekDates]);
 
-  const refreshGridHistory = useCallback(() => {
-    const api = gridApiRef.current;
-    if (!api) return;
-    setGridHistory({
-      canUndo: api.getCurrentUndoSize() > 0 || customUndoRef.current.length > 0,
-      canRedo: api.getCurrentRedoSize() > 0 || customRedoRef.current.length > 0,
-    });
-  }, []);
-
-  const resetHistory = useCallback(() => {
-    customUndoRef.current = [];
-    customRedoRef.current = [];
-    actionOrderRef.current = [];
-    redoOrderRef.current = [];
-    setGridHistory({ canUndo: false, canRedo: false });
-  }, []);
-
-  const markDirty = useCallback((count = 1) => {
-    setIsDirty(true);
-    setChangeCount((current) => current + count);
-    setSaveState("idle");
-  }, []);
-
-  const clearDirty = useCallback(() => {
-    setIsDirty(false);
-    setChangeCount(0);
-    manuallyEditedCellsRef.current.clear();
-    auditEventsRef.current = [];
-    gridApiRef.current?.refreshCells({ force: true });
-  }, []);
+  // ---------- AP12: Referenzdaten laden, Dirty-Tracking, Speichern ----------
+  const persistence = usePlanPersistence({
+    gridApiRef,
+    rows,
+    dayLabels,
+    startDate,
+    resolvedTemplateWeekId,
+    loadedArchivedWeek,
+    onLoadedArchivedWeekChange: setLoadedArchivedWeek,
+    onMessage: setMessage,
+    onBusyChange: setBusy,
+    onReferenceDataLoaded: (storedWeeks) => {
+      if (!storedWeeks.some((week) => week.start_date === mondayIso())) {
+        setInitializing(false);
+      }
+    },
+    onReferenceDataError: (errorMessage) => {
+      setInitializing(false);
+      setMessage({ kind: "error", text: errorMessage });
+    },
+  });
+  const {
+    templates,
+    people,
+    artistPlans,
+    rehearsalPlans,
+    archivedWeeks,
+    isDirty,
+    changeCount,
+    saveState,
+    saveError,
+    manuallyEditedCellsRef,
+    auditEventsRef,
+    markDirty,
+    clearDirty,
+    resetSaveStatus,
+    recordAudit,
+    markManuallyEdited,
+    performSave,
+  } = persistence;
 
   // Globale Planprüfung (Sprint 3). Läuft synchron über den aktuellen
   // Wochenzustand - bei ~40 Zeilen/7 Tagen ausreichend schnell, keine
@@ -492,6 +241,16 @@ export default function PlanEditorPage() {
     effectiveActiveDay,
     dayStatuses,
   );
+
+  // ---------- AP12: Undo/Redo ----------
+  const history = usePlanHistory({
+    gridApiRef,
+    onMarkDirty: markDirty,
+    onRecordAudit: recordAudit,
+    onMarkManuallyEdited: markManuallyEdited,
+  });
+  const { gridHistory, refreshGridHistory, resetHistory, applyPlanChanges, commitDayEntry, handleUndo, handleRedo } =
+    history;
 
   useEffect(() => {
     if (!rows.length || !dayLabels.length) return;
@@ -561,67 +320,6 @@ export default function PlanEditorPage() {
   );
   const isAbsenceSection = useCallback((category: string) => ABSENCE_SECTIONS.has(category), []);
 
-  /** Wendet eine Menge von Zelländerungen als EINE zusammenhängende Aktion an
-   * (dieselbe Buchführung wie onCellValueChanged: dirty, Audit, Manuell-
-   * Markierung, Zell-Refresh) und legt sie als einen Eintrag im eigenen
-   * Undo-Stack ab - eine komplette Kopieraktion ist damit genau ein
-   * Undo-Schritt. */
-  const applyPlanChanges = useCallback(
-    (
-      requested: { row: PlanRow; dayLabel: string; nextValue: string }[],
-      cause: string,
-    ) => {
-      const changes: PlanHistoryChange[] = [];
-      for (const request of requested) {
-        const previousValue = request.row[request.dayLabel] ?? null;
-        const nextValue = request.nextValue.trim() ? request.nextValue : null;
-        if (previousValue === nextValue) continue;
-        changes.push({ row: request.row, dayLabel: request.dayLabel, previousValue, nextValue });
-      }
-      if (changes.length === 0) return;
-      for (const change of changes) {
-        change.row[change.dayLabel] = change.nextValue;
-        const key = cellIssueKey(rowKey(change.row), change.dayLabel);
-        manuallyEditedCellsRef.current.add(key);
-        auditEventsRef.current.push({
-          event_type: "cell_changed",
-          cause,
-          cell_key: key,
-          previous_value: change.previousValue,
-          new_value: change.nextValue,
-          metadata: { section: change.row.Abschnitt, row: change.row.Zeile, day: change.dayLabel },
-        });
-      }
-      customUndoRef.current.push({ changes });
-      customRedoRef.current = [];
-      redoOrderRef.current = [];
-      actionOrderRef.current.push("custom");
-      gridApiRef.current?.refreshCells({ force: true });
-      markDirty(changes.length);
-      refreshGridHistory();
-    },
-    [markDirty, refreshGridHistory],
-  );
-
-  const commitDayEntry = useCallback(
-    (row: PlanRow, dayLabel: string, rawNextValue: string) => {
-      applyPlanChanges([{ row, dayLabel, nextValue: rawNextValue }], "manual_edit");
-    },
-    [applyPlanChanges],
-  );
-
-  const revertOrReplayCustomAction = useCallback(
-    (action: PlanHistoryAction, direction: "undo" | "redo") => {
-      for (const change of action.changes) {
-        change.row[change.dayLabel] = direction === "undo" ? change.previousValue : change.nextValue;
-      }
-      auditEventsRef.current.push({ event_type: direction, cause: direction });
-      gridApiRef.current?.refreshCells({ force: true });
-      markDirty(action.changes.length);
-    },
-    [markDirty],
-  );
-
   /** Dieselbe Empfehlungslogik (recommendForCell), die die Wochenübersicht in
    * ihrem cellEditorSelector nutzt - für die Kandidatenliste in der
    * Tagesplanung-Inline-Bearbeitung. */
@@ -686,56 +384,6 @@ export default function PlanEditorPage() {
     }, 60);
   }
 
-  // AP8: `mountedRef` schützt sowohl den initialen Ladevorgang als auch den
-  // fokus-getriggerten Reload (useThrottledFocusReload) davor, nach einem
-  // Unmount noch State zu setzen - derselbe Zweck wie die bereits an anderer
-  // Stelle in dieser Datei verwendeten lokalen `active`/`cancelled`-Flags,
-  // hier komponentenweit, weil beide Aufrufer dieselbe Funktion teilen.
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const loadReferenceData = useCallback(() => {
-    return Promise.all([
-      getPlanTemplates(),
-      getActivePeople(),
-      getArtistPlans(),
-      getRehearsalPlans(),
-      getWeeks(),
-    ])
-      .then(([templateData, activePeople, storedArtistPlans, storedRehearsalPlans, storedWeeks]) => {
-        if (!mountedRef.current) return;
-        setTemplates(templateData);
-        setPeople(activePeople);
-        setArtistPlans(storedArtistPlans);
-        setRehearsalPlans(storedRehearsalPlans);
-        setArchivedWeeks(storedWeeks);
-        if (!storedWeeks.some((week) => week.start_date === mondayIso())) {
-          setInitializing(false);
-        }
-      })
-      .catch((error) => {
-        if (!mountedRef.current) return;
-        setInitializing(false);
-        setMessage({ kind: "error", text: error.message });
-      });
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(loadReferenceData, 0);
-    return () => window.clearTimeout(timer);
-  }, [loadReferenceData]);
-
-  // AP8: vorher lud `window.focus` ungedrosselt bei jedem Tab-Wechsel dieselben
-  // fünf Endpunkte neu - jetzt mit Mindestabstand (30s) und In-Flight-Schutz
-  // (siehe useThrottledFocusReload). Verhalten bezüglich Dirty State
-  // unverändert: `loadReferenceData` berührt weder `rows` noch `isDirty`.
-  useThrottledFocusReload(loadReferenceData);
-
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
@@ -772,8 +420,7 @@ export default function PlanEditorPage() {
         setActiveStep(3);
         // Frisch geladener Plan ist die neue Vergleichsbasis - keine Änderung.
         clearDirty();
-        setSaveState("idle");
-        setLastSavedAt(null);
+        resetSaveStatus();
         setInitializing(false);
       })
       .catch((error) => {
@@ -842,7 +489,6 @@ export default function PlanEditorPage() {
       complete: exported || Boolean(loadedArchivedWeek),
     },
   ];
-
 
   const handleDensityChange = useCallback((nextDensity: PlanDensity) => {
     setViewPreferences((current) => ({ ...current, density: nextDensity }));
@@ -1100,6 +746,11 @@ export default function PlanEditorPage() {
     activeDayStore,
     dayStatusesStore,
     selectDay,
+    // Stabile Refs aus usePlanPersistence - ESLint kann die Ref-Stabilität
+    // über die Hook-Grenze hinweg nicht erkennen; sie ändern ihre Identität
+    // nie, das Hinzufügen löst nie eine zusätzliche Neuberechnung aus.
+    auditEventsRef,
+    manuallyEditedCellsRef,
   ]);
 
   async function buildGeneratedPlan(recalculate: boolean) {
@@ -1291,98 +942,6 @@ export default function PlanEditorPage() {
     setMessage({ kind: "success", text: preview.successMessage });
   }
 
-  async function performSave(): Promise<boolean> {
-    if (!rows.length) return false;
-    if (!resolvedTemplateWeekId) {
-      setMessage({ kind: "error", text: "Bitte den Plan zuerst neu erstellen." });
-      return false;
-    }
-    setBusy(true);
-    setSaveState("saving");
-    try {
-      const result = await savePlan({
-        start_date: startDate,
-        end_date: addDays(startDate, 6),
-        template_week_id: resolvedTemplateWeekId,
-        existing_week_id: loadedArchivedWeek?.id,
-        day_labels: dayLabels,
-        rows,
-        audit_events: auditEventsRef.current,
-      });
-      const savedEndDate = addDays(startDate, 6);
-      const fallbackWeek: WeekSummary = {
-        id: result.week_plan_id,
-        kw: isoWeek(startDate),
-        start_date: startDate,
-        end_date: savedEndDate,
-        source: null,
-        label: `KW${isoWeek(startDate)} · ${formatDateRange(startDate, savedEndDate)}`,
-        assignment_count: 0,
-        absence_count: 0,
-      };
-      let savedWeek = result.week ?? fallbackWeek;
-      let refreshedWeeks: WeekSummary[] | null = null;
-
-      // Ältere, noch laufende Backend-Prozesse liefern nach dem Speichern nur
-      // week_plan_id. In diesem Fall laden wir die Archivübersicht nach und
-      // bleiben selbst dann funktionsfähig, wenn dieser zweite Abruf scheitert.
-      if (!result.week) {
-        try {
-          refreshedWeeks = await getWeeks();
-          savedWeek =
-            refreshedWeeks.find((week) => week.id === result.week_plan_id) ??
-            refreshedWeeks.find((week) => week.start_date === startDate) ??
-            fallbackWeek;
-        } catch {
-          // Der Plan selbst wurde bereits erfolgreich gespeichert. Die lokal
-          // erzeugte Zusammenfassung reicht bis zum nächsten Seitenabruf aus.
-        }
-      }
-      const saveWarnings = result.warnings ?? [];
-      // Ab dem ersten erfolgreichen Speichern ist dies ein bestehender
-      // Archivplan. Dadurch aktualisiert jeder weitere Klick exakt dieselbe
-      // Woche, statt einen zweiten Datensatz anzulegen.
-      setLoadedArchivedWeek(savedWeek);
-      setArchivedWeeks((current) =>
-        refreshedWeeks ?? [
-          savedWeek,
-          ...current.filter(
-            (week) =>
-              week.id !== savedWeek.id &&
-              week.start_date !== savedWeek.start_date,
-          ),
-        ],
-      );
-      setMessage({
-        kind: saveWarnings.length ? "info" : "success",
-        text: loadedArchivedWeek
-          ? `${savedWeek.label} wurde mit deinen Änderungen aktualisiert.${
-              saveWarnings.length
-                ? ` Planungs-Hinweis: ${saveWarnings.slice(0, 2).join(" · ")}`
-                : ""
-            }`
-          : `Plan gespeichert (Archiv-Nr. ${result.week_plan_id}).${
-              saveWarnings.length
-                ? ` Planungs-Hinweis: ${saveWarnings.slice(0, 2).join(" · ")}`
-                : ""
-            }`,
-      });
-      clearDirty();
-      setSaveState("saved");
-      setSaveError("");
-      setLastSavedAt(new Date());
-      return true;
-    } catch (error) {
-      const text = error instanceof Error ? error.message : "Speichern fehlgeschlagen.";
-      setMessage({ kind: "error", text });
-      setSaveState("error");
-      setSaveError(text);
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function performExport() {
     if (!xlsxSheet || !rows.length) return;
     setBusy(true);
@@ -1447,9 +1006,7 @@ export default function PlanEditorPage() {
     setExported(false);
     setActiveStep(1);
     clearDirty();
-    setSaveState("idle");
-    setSaveError("");
-    setLastSavedAt(null);
+    resetSaveStatus();
     resetHistory();
   }
 
@@ -1463,57 +1020,6 @@ export default function PlanEditorPage() {
 
   function closeConfirmDialog() {
     setPendingAction(null);
-  }
-
-  function popLastMarker(list: ("grid" | "custom")[], kind: "grid" | "custom") {
-    const index = list.lastIndexOf(kind);
-    if (index >= 0) list.splice(index, 1);
-  }
-
-  function handleUndo() {
-    const api = gridApiRef.current;
-    const gridCanUndo = (api?.getCurrentUndoSize() ?? 0) > 0;
-    const customCanUndo = customUndoRef.current.length > 0;
-    let kind = actionOrderRef.current[actionOrderRef.current.length - 1];
-    if (kind === "grid" && !gridCanUndo) kind = "custom";
-    if (kind === "custom" && !customCanUndo) kind = "grid";
-    if (!kind) kind = gridCanUndo ? "grid" : "custom";
-
-    if (kind === "custom" && customCanUndo) {
-      const action = customUndoRef.current.pop()!;
-      revertOrReplayCustomAction(action, "undo");
-      customRedoRef.current.push(action);
-      popLastMarker(actionOrderRef.current, "custom");
-      redoOrderRef.current.push("custom");
-    } else if (gridCanUndo) {
-      // Marker-Buchführung passiert im onUndoEnded-Handler des Grids, damit
-      // auch Grid-interne Tastatur-Undos (Strg+Z im Grid) erfasst werden.
-      api?.undoCellEditing();
-      auditEventsRef.current.push({ event_type: "undo", cause: "undo" });
-    }
-    refreshGridHistory();
-  }
-
-  function handleRedo() {
-    const api = gridApiRef.current;
-    const gridCanRedo = (api?.getCurrentRedoSize() ?? 0) > 0;
-    const customCanRedo = customRedoRef.current.length > 0;
-    let kind = redoOrderRef.current[redoOrderRef.current.length - 1];
-    if (kind === "grid" && !gridCanRedo) kind = "custom";
-    if (kind === "custom" && !customCanRedo) kind = "grid";
-    if (!kind) kind = gridCanRedo ? "grid" : "custom";
-
-    if (kind === "custom" && customCanRedo) {
-      const action = customRedoRef.current.pop()!;
-      revertOrReplayCustomAction(action, "redo");
-      customUndoRef.current.push(action);
-      popLastMarker(redoOrderRef.current, "custom");
-      actionOrderRef.current.push("custom");
-    } else if (gridCanRedo) {
-      api?.redoCellEditing();
-      auditEventsRef.current.push({ event_type: "redo", cause: "redo" });
-    }
-    refreshGridHistory();
   }
 
   const weekLabel = `KW ${isoWeek(startDate)} · ${selectedTemplate?.name ?? `Woche ${templateCode}`}`;
@@ -1579,108 +1085,18 @@ export default function PlanEditorPage() {
   );
 
   const gridSection = rows.length > 0 && (
-    <>
-      <section className="panel plan-grid-shell overflow-hidden">
-        <div className="plan-grid-scroll-shell">
-          <div className={`plan-grid plan-grid-week plan-density-${density} ${hasExistingPlan ? "h-[calc(100vh-244px)]" : "h-[calc(100vh-300px)]"} min-h-[520px]`}>
-            <AgGridReact<PlanRow>
-              theme={gridTheme}
-              rowData={rows}
-              columnDefs={columnDefs}
-              suppressFieldDotNotation
-              // Höher als der Standard, damit die Tageskacheln (Wochentag, Datum,
-              // "Heute", Status-Punkte) als Spaltenkopf Platz haben.
-              headerHeight={54}
-              defaultColDef={{ sortable: false, resizable: true }}
-              isFullWidthRow={(params) => params.rowNode.data?._row_type === "group"}
-              fullWidthCellRenderer={GroupHeaderRenderer}
-              getRowHeight={(params) => {
-                if (params.data?._row_type === "group") {
-                  return density === "compact" ? 30 : density === "large" ? 44 : 36;
-                }
-                return density === "compact" ? 32 : density === "large" ? 48 : 40;
-              }}
-              stopEditingWhenCellsLoseFocus
-              undoRedoCellEditing
-              undoRedoCellEditingLimit={30}
-              onGridReady={(params: GridReadyEvent<PlanRow>) => {
-                gridApiRef.current = params.api;
-                refreshGridHistory();
-              }}
-              onCellValueChanged={(event: CellValueChangedEvent<PlanRow>) => {
-                // KEIN setRows(...) hier: AG Grid mutiert event.data (dasselbe
-                // Objekt wie in rows) bereits direkt, und markDirty löst ohnehin
-                // einen Re-Render aus. Ein neues rowData-Array-Objekt an AG Grid
-                // zu geben, hätte hier den undoRedoCellEditing-Stack invalidiert
-                // (jede Zuweisung machte Rückgängig sofort wieder wirkungslos).
-                if (event.oldValue !== event.newValue) {
-                  const field = event.colDef.field;
-                  if (field && event.data) {
-                    const key = cellIssueKey(rowKey(event.data), field);
-                    manuallyEditedCellsRef.current.add(key);
-                    auditEventsRef.current.push({
-                      event_type: "cell_changed",
-                      cause: "manual_edit",
-                      cell_key: key,
-                      previous_value: event.oldValue == null ? null : String(event.oldValue),
-                      new_value: event.newValue == null ? null : String(event.newValue),
-                      metadata: {
-                        section: event.data.Abschnitt,
-                        row: event.data.Zeile,
-                        day: field,
-                      },
-                    });
-                    event.api.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
-                  }
-                  // Chronologie-Marker nur für echte Bearbeitungen - während
-                  // eines Grid-Undo/Redo feuert cellValueChanged ebenfalls,
-                  // erzeugt aber keinen neuen Undo-Eintrag.
-                  if (!gridUndoInFlightRef.current) {
-                    actionOrderRef.current.push("grid");
-                    customRedoRef.current = [];
-                    redoOrderRef.current = [];
-                  }
-                  markDirty(1);
-                }
-                refreshGridHistory();
-              }}
-              onUndoStarted={() => {
-                gridUndoInFlightRef.current = true;
-              }}
-              onUndoEnded={(event: { operationPerformed: boolean }) => {
-                gridUndoInFlightRef.current = false;
-                if (event.operationPerformed) {
-                  popLastMarker(actionOrderRef.current, "grid");
-                  redoOrderRef.current.push("grid");
-                }
-                refreshGridHistory();
-              }}
-              onRedoStarted={() => {
-                gridUndoInFlightRef.current = true;
-              }}
-              onRedoEnded={(event: { operationPerformed: boolean }) => {
-                gridUndoInFlightRef.current = false;
-                if (event.operationPerformed) {
-                  popLastMarker(redoOrderRef.current, "grid");
-                  actionOrderRef.current.push("grid");
-                }
-                refreshGridHistory();
-              }}
-              onCellClicked={(event: CellClickedEvent<PlanRow>) => {
-                const field = event.colDef.field;
-                // AP8: kein unnötiges setActiveDay, wenn der Tag bereits aktiv
-                // ist - vermeidet ein wirkungsloses Re-Render bei Klicks
-                // innerhalb derselben Spalte.
-                if (field && dayLabels.includes(field) && field !== activeDayStore.get()) {
-                  setActiveDay(field);
-                }
-              }}
-              getRowId={(params) => rowKey(params.data)}
-            />
-          </div>
-        </div>
-      </section>
-    </>
+    <PlanGrid
+      rows={rows}
+      columnDefs={columnDefs}
+      density={density}
+      hasExistingPlan={hasExistingPlan}
+      gridApiRef={gridApiRef}
+      onGridReady={refreshGridHistory}
+      dayLabels={dayLabels}
+      activeDayStore={activeDayStore}
+      onCellClickActivatesDay={setActiveDay}
+      historyEventHandlers={history.gridEventHandlers}
+    />
   );
 
   return (
@@ -1694,32 +1110,12 @@ export default function PlanEditorPage() {
           rehearsalPlanReady={Boolean(rehearsalPlanForWeek)}
           peopleCount={people.length}
           weekPicker={
-            <div className="plan-editor-week-nav" aria-label="Planwoche wechseln">
-              <button
-                type="button"
-                className="btn btn-icon plan-editor-week-arrow"
-                onClick={() => requestWeekChange(addDays(startDate, -7))}
-                aria-label="Vorherige Woche"
-                title="Vorherige Woche"
-              >
-                ‹
-              </button>
-              <WeekPicker
-                className="planner-week-picker plan-editor-summary-week-picker"
-                label="Andere Planwoche öffnen"
-                value={startDate}
-                onChange={requestWeekChange}
-              />
-              <button
-                type="button"
-                className="btn btn-icon plan-editor-week-arrow"
-                onClick={() => requestWeekChange(addDays(startDate, 7))}
-                aria-label="Nächste Woche"
-                title="Nächste Woche"
-              >
-                ›
-              </button>
-            </div>
+            <WeekNavigation
+              startDate={startDate}
+              weekPickerLabel="Andere Planwoche öffnen"
+              onChange={requestWeekChange}
+              addDays={addDays}
+            />
           }
         />
       ) : (
@@ -1735,32 +1131,12 @@ export default function PlanEditorPage() {
               <strong>KW {isoWeek(startDate)} · {selectedTemplate?.name ?? `Woche ${templateCode}`}</strong>
               <span>{selectedTemplate?.program ?? "Wochenprogramm"}</span>
             </div>
-            <div className="plan-editor-week-nav" aria-label="Planwoche wechseln">
-              <button
-                type="button"
-                className="btn btn-icon plan-editor-week-arrow"
-                onClick={() => requestWeekChange(addDays(startDate, -7))}
-                aria-label="Vorherige Woche"
-                title="Vorherige Woche"
-              >
-                ‹
-              </button>
-              <WeekPicker
-                className="planner-week-picker plan-editor-summary-week-picker"
-                label="Planwoche beginnt am"
-                value={startDate}
-                onChange={requestWeekChange}
-              />
-              <button
-                type="button"
-                className="btn btn-icon plan-editor-week-arrow"
-                onClick={() => requestWeekChange(addDays(startDate, 7))}
-                aria-label="Nächste Woche"
-                title="Nächste Woche"
-              >
-                ›
-              </button>
-            </div>
+            <WeekNavigation
+              startDate={startDate}
+              weekPickerLabel="Planwoche beginnt am"
+              onChange={requestWeekChange}
+              addDays={addDays}
+            />
           </section>
 
           <nav className="planner-steps" aria-label="Schritte der Dienstplanerstellung">
@@ -1789,110 +1165,31 @@ export default function PlanEditorPage() {
       {message && <div className={`status status-${message.kind}`}>{message.text}</div>}
 
       {!hasExistingPlan && activeStep === 1 && (
-        <section className="panel wizard-stage">
-          <div className="wizard-stage-head">
-            <span className="wizard-stage-number">01</span>
-            <div>
-              <h2>Künstlerprogramm vorbereiten</h2>
-              <p>Shows, Partys, DJs, Chillout und Aperitif werden später automatisch in den Dienstplan übernommen.</p>
-            </div>
-          </div>
-          <PreparationStatusCard
-            ready={Boolean(artistPlanForWeek)}
-            readyLabel={artistPlanForWeek?.sheet_name || artistPlanForWeek?.source_filename || "Künstlerplan"}
-            readyDetail={`${artistPlanForWeek?.filled_entries ?? 0} Programmeinträge`}
-            emptyIcon="K"
-            emptyTitle="Künstlerplan hochladen"
-            emptyDescription="Excel-Datei auswählen, Woche prüfen und für den Dienstplan aktivieren."
-            href="/artist-plan"
-            openLabel="Künstlerplan öffnen"
-          />
-          <div className="wizard-actions">
-            <span>Der Schritt wird automatisch abgehakt, sobald der Plan für diese Woche gespeichert ist.</span>
-            <button className="btn btn-primary" onClick={() => setActiveStep(2)}>
-              Weiter zum Probenplan
-            </button>
-          </div>
-        </section>
+        <ArtistPlanStep artistPlanForWeek={artistPlanForWeek} onContinue={() => setActiveStep(2)} />
       )}
 
       {!hasExistingPlan && activeStep === 2 && (
-        <section className="panel wizard-stage">
-          <div className="wizard-stage-head">
-            <span className="wizard-stage-number">02</span>
-            <div>
-              <h2>Proben und Verfügbarkeiten einlesen</h2>
-              <p>Teilnehmer und Tanzchoreografen werden während ihrer Probe automatisch für parallele Dienste gesperrt.</p>
-            </div>
-          </div>
-          <PreparationStatusCard
-            ready={Boolean(rehearsalPlanForWeek)}
-            readyLabel={rehearsalPlanForWeek?.source_filename || "Probenplan"}
-            readyDetail={`${rehearsalPlanForWeek?.rehearsal_count ?? 0} Proben`}
-            emptyIcon="P"
-            emptyTitle="Probenplan hochladen"
-            emptyDescription="PDF lokal auswerten, erkannte Zeiten prüfen und für diese Woche aktivieren."
-            href="/rehearsal-plan"
-            openLabel="Probenplan öffnen"
-          />
-          <div className="wizard-actions">
-            <button className="btn" onClick={() => setActiveStep(1)}>Zurück</button>
-            <button className="btn btn-primary" onClick={() => setActiveStep(3)}>
-              Weiter zur Dienstplanung
-            </button>
-          </div>
-        </section>
+        <RehearsalPlanStep
+          rehearsalPlanForWeek={rehearsalPlanForWeek}
+          onBack={() => setActiveStep(1)}
+          onContinue={() => setActiveStep(3)}
+        />
       )}
 
       {(hasExistingPlan || activeStep === 3) && (
         <>
           {!hasExistingPlan && (
-            <section className="panel wizard-stage">
-              <div className="wizard-stage-head compact">
-                <span className="wizard-stage-number">03</span>
-                <div>
-                  <h2>Dienstplan erstellen und bearbeiten</h2>
-                  <p>Grundwoche wählen, Vorschlag erzeugen und Zuweisungen direkt im Plan anpassen.</p>
-                </div>
-              </div>
-              <div className="planner-config">
-                <div className="field field-grow planner-template-field">
-                  <span className="field-label">Programm-Rhythmus</span>
-                  <div className="template-choice-grid">
-                    {templates.map((template) => (
-                      <button
-                        key={template.code}
-                        type="button"
-                        className={`template-choice ${templateCode === template.code ? "is-selected" : ""}`}
-                        onClick={() => setTemplateCode(template.code)}
-                      >
-                        <span>{template.name}</span>
-                        <strong>{template.program}</strong>
-                        <small>{template.code === "A" ? "Ungerade Kalenderwochen" : "Gerade Kalenderwochen"}</small>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {!rows.length && (
-                  <div className="planner-config-actions">
-                    <button className="btn btn-primary" disabled={busy} onClick={() => generate(false)}>
-                      {busy && <span className="spinner" />}
-                      Dienstplan erstellen
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="planner-source-status">
-                <span className={artistPlanForWeek ? "is-ready" : ""}>
-                  {artistPlanForWeek ? "✓" : "–"} Künstlerplan
-                </span>
-                <span className={rehearsalPlanForWeek ? "is-ready" : ""}>
-                  {rehearsalPlanForWeek ? "✓" : "–"} Probenplan
-                </span>
-                <span>✓ Planungsregeln</span>
-                <span>✓ {people.length} aktive MA</span>
-              </div>
-            </section>
+            <TemplateChoiceStep
+              templates={templates}
+              templateCode={templateCode}
+              onTemplateCodeChange={setTemplateCode}
+              hasRows={rows.length > 0}
+              busy={busy}
+              onGenerate={() => generate(false)}
+              artistPlanReady={Boolean(artistPlanForWeek)}
+              rehearsalPlanReady={Boolean(rehearsalPlanForWeek)}
+              activePeopleCount={people.length}
+            />
           )}
 
           {rows.length > 0 ? (
@@ -1943,189 +1240,42 @@ export default function PlanEditorPage() {
       )}
 
       {!hasExistingPlan && activeStep === 4 && (
-        <section className="panel wizard-stage">
-          <div className="wizard-stage-head">
-            <span className="wizard-stage-number">{exported ? "✓" : "04"}</span>
-            <div>
-              <h2>Dienstplan abschließen</h2>
-              <p>Den geprüften Plan im Archiv sichern und im Originaldesign als Excel-Datei ausgeben.</p>
-            </div>
-          </div>
-          {rows.length > 0 ? (
-            <div className="export-choice-grid">
-              <div className="export-choice">
-                <span className="export-choice-icon">A</span>
-                <div>
-                  <small>Interne Sicherung</small>
-                  <strong>Änderungen speichern</strong>
-                  <p>Der aktuelle Stand bleibt im Dashboard und in den Auswertungen verfügbar.</p>
-                </div>
-                <button className="btn" disabled={busy} onClick={save}>Speichern</button>
-              </div>
-              <div className={`export-choice is-primary ${exported ? "is-complete" : ""}`}>
-                <span className="export-choice-icon">{exported ? "✓" : "X"}</span>
-                <div>
-                  <small>{exported ? "Erfolgreich erstellt" : "Originalvorlage"}</small>
-                  <strong>Excel-Dienstplan herunterladen</strong>
-                  <p>Farben, Zeilen und verbundene Felder entsprechen der gewählten A-/B-Vorlage.</p>
-                </div>
-                <button className="btn btn-primary" disabled={busy || !xlsxSheet} onClick={exportExcel}>
-                  {exported ? "Erneut herunterladen" : "Excel erstellen"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="preparation-card">
-              <span className="preparation-icon">!</span>
-              <div className="preparation-copy">
-                <small>Noch kein Dienstplan</small>
-                <strong>Zuerst den Wochenplan erstellen</strong>
-                <span>Nach der Erstellung erscheint hier der Excel-Export.</span>
-              </div>
-              <button className="btn btn-primary" onClick={() => setActiveStep(3)}>Zur Dienstplanung</button>
-            </div>
-          )}
-          <div className="wizard-actions">
-            <button className="btn" onClick={() => setActiveStep(3)}>Plan nochmals prüfen</button>
-            {exported && <span className="wizard-complete-note">✓ Workflow abgeschlossen</span>}
-          </div>
-        </section>
-      )}
-
-      {pendingAction?.kind === "week-change" && (
-        <ConfirmDialog
-          open
-          title="Ungespeicherte Änderungen"
-          description={
-            <p>
-              Für die aktuelle Woche gibt es {changeCount} ungespeicherte {changeCount === 1 ? "Änderung" : "Änderungen"}.
-              Wenn du fortfährst, gehen diese verloren, sofern du sie nicht vorher speicherst.
-            </p>
-          }
-          actions={[
-            { label: "Abbrechen", onClick: closeConfirmDialog, variant: "default" },
-            {
-              label: "Änderungen verwerfen",
-              variant: "danger",
-              onClick: () => {
-                const next = pendingAction.nextDate;
-                closeConfirmDialog();
-                applyWeekChange(next);
-              },
-            },
-            {
-              label: "Änderungen speichern",
-              variant: "primary",
-              autoFocus: true,
-              onClick: async () => {
-                const next = pendingAction.nextDate;
-                closeConfirmDialog();
-                const ok = await performSave();
-                if (ok) applyWeekChange(next);
-              },
-            },
-          ]}
-          onDismiss={closeConfirmDialog}
-        />
-      )}
-
-      {pendingAction?.kind === "save-with-conflicts" && (
-        <ConfirmDialog
-          open
-          title="Dienstplan mit Konflikten speichern?"
-          description={
-            <>
-              <p>Der Plan enthält:</p>
-              <ul>
-                {validation.summary.errors > 0 && (
-                  <li>
-                    {validation.summary.errors} {validation.summary.errors === 1 ? "kritischen Konflikt" : "kritische Konflikte"}
-                  </li>
-                )}
-                {validation.summary.understaffed > 0 && (
-                  <li>
-                    {validation.summary.understaffed} {validation.summary.understaffed === 1 ? "unbesetzten Pflichtdienst" : "unbesetzte Pflichtdienste"}
-                  </li>
-                )}
-              </ul>
-              <p>Der Plan kann trotzdem gespeichert werden.</p>
-            </>
-          }
-          actions={[
-            { label: "Abbrechen", onClick: closeConfirmDialog, variant: "default" },
-            {
-              label: "Planprüfung öffnen",
-              variant: "default",
-              onClick: () => { closeConfirmDialog(); setIssuesPanelOpen(true); },
-            },
-            {
-              label: "Trotzdem speichern",
-              variant: "primary",
-              autoFocus: true,
-              onClick: () => { closeConfirmDialog(); void performSave(); },
-            },
-          ]}
-          onDismiss={closeConfirmDialog}
-        />
-      )}
-
-      {pendingAction?.kind === "export-with-conflicts" && (
-        <ConfirmDialog
-          open
-          title="Dienstplan mit Konflikten exportieren?"
-          description={
-            <p>
-              Der Export enthält {validation.summary.errors}{" "}
-              {validation.summary.errors === 1 ? "kritischen Konflikt" : "kritische Konflikte"}.
-            </p>
-          }
-          actions={[
-            { label: "Abbrechen", onClick: closeConfirmDialog, variant: "default" },
-            {
-              label: "Planprüfung öffnen",
-              variant: "default",
-              onClick: () => { closeConfirmDialog(); setIssuesPanelOpen(true); },
-            },
-            {
-              label: "Trotzdem exportieren",
-              variant: "primary",
-              autoFocus: true,
-              onClick: () => { closeConfirmDialog(); void performExport(); },
-            },
-          ]}
-          onDismiss={closeConfirmDialog}
-        />
-      )}
-
-      {automationPreview && (
-        <PlanPreviewDialog
-          open
-          title={automationPreview.title}
-          description={automationPreview.description}
-          diff={automationPreview.diff}
+        <ExportStep
+          exported={exported}
+          hasRows={rows.length > 0}
           busy={busy}
-          applyLabel={automationPreview.applyLabel}
-          onApply={applyAutomationPreview}
-          onDismiss={() => setAutomationPreview(null)}
+          onSave={() => void save()}
+          onExport={() => void exportExcel()}
+          xlsxSheet={xlsxSheet}
+          onBackToStep3={() => setActiveStep(3)}
         />
       )}
 
-      <PlanIssuesPanel
-        open={issuesPanelOpen}
-        issues={validation.issues}
-        summary={validation.summary}
-        failed={validation.failed}
-        onClose={() => setIssuesPanelOpen(false)}
-        onNavigate={(issue) => navigateToIssue(issue)}
-        onEdit={(issue) => navigateToIssue(issue, { openEditor: true })}
-        onRefresh={() => setRevalidateNonce((current) => current + 1)}
-      />
-      <PlanIntelligenceDialog
-        open={intelligenceOpen}
-        quality={planQuality}
+      <EditorDialogs
+        pendingAction={pendingAction}
+        changeCount={changeCount}
+        onCloseConfirmDialog={closeConfirmDialog}
+        onApplyWeekChange={applyWeekChange}
+        onPerformSave={performSave}
+        onPerformExport={performExport}
+        validationSummary={validation.summary}
+        onOpenIssuesPanel={() => setIssuesPanelOpen(true)}
+        automationPreview={automationPreview}
+        busy={busy}
+        onApplyAutomationPreview={applyAutomationPreview}
+        onDismissAutomationPreview={() => setAutomationPreview(null)}
+        issuesPanelOpen={issuesPanelOpen}
+        validationIssues={validation.issues}
+        validationFailed={validation.failed}
+        onCloseIssuesPanel={() => setIssuesPanelOpen(false)}
+        onNavigateToIssue={(issue) => navigateToIssue(issue)}
+        onEditIssue={(issue) => navigateToIssue(issue, { openEditor: true })}
+        onRefreshValidation={() => setRevalidateNonce((current) => current + 1)}
+        intelligenceOpen={intelligenceOpen}
+        planQuality={planQuality}
         weekPlanId={loadedArchivedWeek?.id}
         startDate={startDate}
-        onClose={() => setIntelligenceOpen(false)}
+        onCloseIntelligence={() => setIntelligenceOpen(false)}
       />
     </div>
   );

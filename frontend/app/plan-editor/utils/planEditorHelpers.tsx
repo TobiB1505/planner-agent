@@ -1,0 +1,204 @@
+// AP12: reine Hilfsfunktionen und kleine Präsentations-Komponenten aus
+// page.tsx - unverändertes Verhalten, nur ausgelagert.
+import type { ExtractedAbsence } from "@/lib/api";
+import { categoryColor, hexToRgba } from "@/lib/categoryColors";
+import { themeQuartz, type ICellRendererParams } from "ag-grid-community";
+import type { PlanRow } from "../types";
+
+export const ABSENCE_SECTIONS = new Set(["Urlaub/Krank", "Frei"]);
+
+export const gridTheme = themeQuartz.withParams({
+  accentColor: "#6c7bff",
+  backgroundColor: "var(--surface)",
+  foregroundColor: "var(--foreground)",
+  borderColor: "var(--border)",
+  headerBackgroundColor: "var(--background)",
+  oddRowBackgroundColor: "var(--surface)",
+  rowHoverColor: "var(--accent-soft)",
+  fontFamily: "var(--font-app)",
+  fontSize: 13,
+  headerFontSize: 12,
+  spacing: 7,
+});
+
+export function mondayIso(): string {
+  const now = new Date();
+  const weekday = now.getDay() || 7;
+  // Auf 12 Uhr mittags verankern: toISOString() rechnet in UTC um und würde sonst
+  // in den Nachtstunden (bzw. bei positivem UTC-Offset) einen Tag zurückspringen -
+  // die Planwoche startete dann auf einem Sonntag statt auf Montag.
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - weekday + 1, 12);
+  return monday.toISOString().slice(0, 10);
+}
+
+export function addDays(iso: string, amount: number): string {
+  const date = new Date(`${iso}T12:00:00`);
+  date.setDate(date.getDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+export function isoWeek(iso: string): number {
+  const date = new Date(`${iso}T12:00:00Z`);
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
+export function templateCodeForDate(iso: string): "A" | "B" {
+  return isoWeek(iso) % 2 === 1 ? "A" : "B";
+}
+
+export function formatDateRange(startIso: string, endIso: string): string {
+  const formatter = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return `${formatter.format(new Date(`${startIso}T12:00:00`))}–${formatter.format(new Date(`${endIso}T12:00:00`))}`;
+}
+
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat("de-DE", { weekday: "long" });
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" });
+
+export function weekdayLabelFor(iso?: string): string | undefined {
+  if (!iso) return undefined;
+  return WEEKDAY_FORMATTER.format(new Date(`${iso}T12:00:00`));
+}
+
+export function shortDateLabelFor(iso?: string): string | undefined {
+  if (!iso) return undefined;
+  // Intl hängt im de-DE-Format bei day+month bereits einen Punkt an ("27.07.").
+  return SHORT_DATE_FORMATTER.format(new Date(`${iso}T12:00:00`));
+}
+
+/** Löst Uhrzeitangaben aus dem Zeilentext ("KP3 19:00 - 21:15" -> "KP3"), damit der
+ *  Popup-Kopfbereich keine Zeit doppelt zeigt (die kommt separat aus serviceInterval). */
+export function serviceExtraLabel(zeile: string): string {
+  return zeile
+    .replace(/\d{1,2}[:.]\d{2}\s*(?:-|–|bis)\s*\d{1,2}[:.]\d{2}/gi, "")
+    .replace(/\d{1,2}[:.]\d{2}/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+export function splitNames(value: string): string[] {
+  return value
+    .split(/[,;\n]+/)
+    .map((part) => part.includes("|") ? part.split("|").at(-1)!.trim() : part.trim())
+    .filter(Boolean);
+}
+
+/** Bei kombinierten Zellen (z.B. `Boccia | Livia` oder Aperitif mit
+ * Ort/Uhrzeit/Künstler) gehört nur der Teil nach dem letzten Trenner zur
+ * automatischen MA-Zuweisung. Eine Neuverteilung darf den redaktionellen
+ * Präfix nicht nebenbei umformatieren. */
+export function mergeGeneratedPersonCell(
+  currentValue: string | null | undefined,
+  generatedValue: string | null | undefined,
+): string | null {
+  const current = currentValue ?? "";
+  const generated = generatedValue ?? "";
+  const currentSeparator = current.lastIndexOf("|");
+  const generatedSeparator = generated.lastIndexOf("|");
+  if (currentSeparator < 0 || generatedSeparator < 0) return generatedValue ?? null;
+  const generatedPeople = generated.slice(generatedSeparator + 1).trim();
+  const currentPrefix = current.slice(0, currentSeparator + 1).trimEnd();
+  return generatedPeople ? `${currentPrefix} ${generatedPeople}` : currentPrefix;
+}
+
+export function collectAbsences(
+  rows: PlanRow[],
+  dayLabels: string[],
+  weekDates: string[],
+): ExtractedAbsence[] {
+  const absences: ExtractedAbsence[] = [];
+  for (const row of rows) {
+    if (!ABSENCE_SECTIONS.has(row.Abschnitt)) continue;
+    dayLabels.forEach((label, index) => {
+      splitNames(row[label] ?? "").forEach((person) => {
+        absences.push({ date: weekDates[index], person, type: row.Abschnitt });
+      });
+    });
+  }
+  return absences;
+}
+
+export function rowCategory(row?: PlanRow): string {
+  return row?._category || row?.Abschnitt || "";
+}
+
+export function rowColor(row?: PlanRow): string {
+  return row?._group_color || categoryColor(rowCategory(row));
+}
+
+export function rowKey(row: PlanRow): string {
+  if (row._row_type === "group") return `group::${row._group_label}`;
+  return `${rowCategory(row)}::${row.Zeile}`;
+}
+
+export function GroupHeaderRenderer({ data }: ICellRendererParams<PlanRow>) {
+  const color = data?._group_color || "#6c7bff";
+  return (
+    <div
+      className="plan-group-row flex h-full w-full items-center px-4 text-left text-[12.5px] font-semibold tracking-[0.02em]"
+      style={{
+        backgroundColor: hexToRgba(color, 0.14),
+        borderLeft: `3px solid ${color}`,
+        color: "var(--foreground)",
+      }}
+    >
+      {data?._group_label}
+    </div>
+  );
+}
+
+export function PlanEditorInitialLoading({ startDate }: { startDate: string }) {
+  return (
+    <div className="plan-editor-initial-loading" role="status" aria-live="polite">
+      <section className="panel plan-editor-loading-summary">
+        <div className="plan-editor-loading-copy">
+          <span>Aktiver Dienstplan</span>
+          <strong>KW {isoWeek(startDate)} wird geöffnet</strong>
+          <small>
+            {formatDateRange(startDate, addDays(startDate, 6))} · Gespeicherte Planung wird wiederhergestellt
+          </small>
+        </div>
+        <div className="plan-editor-loading-indicator">
+          <span className="spinner" aria-hidden="true" />
+          Plan wird geladen
+        </div>
+      </section>
+
+      <div className="plan-editor-loading-toolbar" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+        <i />
+      </div>
+
+      <section className="panel plan-editor-loading-grid" aria-hidden="true">
+        <div className="plan-editor-loading-grid-head">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
+        {Array.from({ length: 9 }, (_, index) => (
+          <div className="plan-editor-loading-grid-row" key={index}>
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
