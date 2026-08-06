@@ -267,121 +267,124 @@ def generate_week_xlsx(
     Datenzellen, aktualisiert die Datumszeile und trägt Fairness-Vorschläge + Abwesenheiten
     an den passenden Zeilen ein. Inhalte-Zeilen (Show/Party, MOD, ...) bleiben leer."""
     wb = openpyxl.load_workbook(template_path)
-    src = wb[sheet_name]
+    try:
+        src = wb[sheet_name]
 
-    new_title = f"KW{new_start.isocalendar()[1]}_{new_start.strftime('%d.%m')}"[:31]
-    title, n = new_title, 1
-    while title in wb.sheetnames:
-        n += 1
-        title = f"{new_title}_{n}"[:31]
+        new_title = f"KW{new_start.isocalendar()[1]}_{new_start.strftime('%d.%m')}"[:31]
+        title, n = new_title, 1
+        while title in wb.sheetnames:
+            n += 1
+            title = f"{new_title}_{n}"[:31]
 
-    ws = wb.copy_worksheet(src)
-    ws.title = title
+        ws = wb.copy_worksheet(src)
+        ws.title = title
 
-    labels = _row_labels(ws)
-    day_col = {(new_start + timedelta(days=i)).isoformat(): 2 + i for i in range(7)}
+        labels = _row_labels(ws)
+        day_col = {(new_start + timedelta(days=i)).isoformat(): 2 + i for i in range(7)}
 
-    _, source_date_row = _sheet_dates(ws)
-    two_row_header = (
-        _normalize_label(str(ws.cell(row=1, column=1).value or "")) == "tag"
-        and _normalize_label(str(ws.cell(row=2, column=1).value or "")) == "datum"
-    )
-    date_row = 2 if two_row_header else source_date_row
-    for i in range(7):
-        col = 2 + i
-        d = new_start + timedelta(days=i)
-        if two_row_header:
-            ws.cell(row=1, column=col).value = grid.WEEKDAY_NAMES_DE[i]
-            ws.cell(row=2, column=col).value = d
-        else:
-            ws.cell(row=date_row, column=col).value = (
-                f"{grid.WEEKDAY_NAMES_DE[i][:2]}, {d.strftime('%d.%m.%Y')}"
-            )
-
-    for r in labels:
-        if r <= date_row:
-            continue
-        for c in range(2, 9):
-            ws.cell(row=r, column=c).value = None
-
-    slot_rows: dict[tuple[str, str], int] = {}
-    norm_rows: dict[str, int] = {}
-    for r, label in labels.items():
-        if r <= date_row:
-            continue
-        row_category = _canonical_category(label)
-        if row_category in grid.FAMILY_SLOT_LABELS:
-            slot = grid.slot_key_for_category(row_category, label)
-            slot_rows.setdefault((row_category, slot), r)
-        norm_rows.setdefault(_normalize_label(label), r)
-
-    def find_row(category: str, subcategory: str | None) -> int | None:
-        # Zeitbasierte Zuordnung nur für Kategorien, die wir selbst in mehrere Zeitschienen-
-        # Zeilen aufteilen (Sportprogramm, Kochdienste) - sonst könnten generische Uhrzeiten
-        # wie "11:00" fälschlich in eine unabhängige Zeile derselben Uhrzeit rutschen
-        # (z.B. OPS/WP -> Sportprogramm-Zeile "11:00 BVB").
-        if category in ("Sportprogramm", "Kochdienste") and subcategory:
-            sk = grid.slot_key_for_category(category, subcategory)
-            if (category, sk) in slot_rows:
-                return slot_rows[(category, sk)]
-        norm_cat = _normalize_label(category)
-        if not norm_cat:
-            return None
-        header_row = norm_rows.get(norm_cat)
-        if header_row is None:
-            for norm_label, r in norm_rows.items():
-                if norm_cat in norm_label or norm_label in norm_cat:
-                    header_row = r
-                    break
-        if header_row is None:
-            return None
-
-        if norm_cat in DETAIL_ROW_CATEGORIES:
-            for detail_row in range(header_row + 1, min(header_row + 3, ws.max_row + 1)):
-                detail_label = _normalize_label(labels.get(detail_row, ""))
-                if detail_label in GENERIC_DETAIL_LABELS:
-                    return detail_row
-        return header_row
-
-    absence_row = {label: r for r, label in labels.items() if label in grid.ABSENCE_ROWS}
-    cell_names: dict[tuple[int, int], list[str]] = {}
-    cell_text: dict[tuple[int, int], str] = {}
-    special_bvb_cells: set[tuple[int, int]] = set()
-
-    for a in absences:
-        row_label = "Frei" if a["type"] == "Frei" else "Urlaub/Krank"
-        r = absence_row.get(row_label)
-        col = day_col.get(a["date"])
-        if r and col:
-            cell_names.setdefault((r, col), []).append(a["person"])
-
-    for a in draft_rows:
-        r = find_row(a["category"], a.get("subcategory"))
-        col = day_col.get(a["date"])
-        if r and col and a.get("person"):
-            if planning_rules.is_guests_vs_robins_bvb(
-                a["category"], a.get("subcategory"), a.get("date")
-            ):
-                special_bvb_cells.add((r, col))
-            cell_names.setdefault((r, col), []).append(
-                grid.format_person_assignment(
-                    a["category"], a.get("subcategory"), a["person"]
+        _, source_date_row = _sheet_dates(ws)
+        two_row_header = (
+            _normalize_label(str(ws.cell(row=1, column=1).value or "")) == "tag"
+            and _normalize_label(str(ws.cell(row=2, column=1).value or "")) == "datum"
+        )
+        date_row = 2 if two_row_header else source_date_row
+        for i in range(7):
+            col = 2 + i
+            d = new_start + timedelta(days=i)
+            if two_row_header:
+                ws.cell(row=1, column=col).value = grid.WEEKDAY_NAMES_DE[i]
+                ws.cell(row=2, column=col).value = d
+            else:
+                ws.cell(row=date_row, column=col).value = (
+                    f"{grid.WEEKDAY_NAMES_DE[i][:2]}, {d.strftime('%d.%m.%Y')}"
                 )
-            )
-        elif r and col and a.get("raw_text"):
-            cell_text[(r, col)] = str(a["raw_text"]).strip()
 
-    for (r, c), text in cell_text.items():
-        ws.cell(row=r, column=c).value = text
+        for r in labels:
+            if r <= date_row:
+                continue
+            for c in range(2, 9):
+                ws.cell(row=r, column=c).value = None
 
-    for (r, c), names in cell_names.items():
-        value = ", ".join(names)
-        if (r, c) in special_bvb_cells:
-            value = f"(Gäste vs Robins BVB)\n{value}"
-        ws.cell(row=r, column=c).value = value
+        slot_rows: dict[tuple[str, str], int] = {}
+        norm_rows: dict[str, int] = {}
+        for r, label in labels.items():
+            if r <= date_row:
+                continue
+            row_category = _canonical_category(label)
+            if row_category in grid.FAMILY_SLOT_LABELS:
+                slot = grid.slot_key_for_category(row_category, label)
+                slot_rows.setdefault((row_category, slot), r)
+            norm_rows.setdefault(_normalize_label(label), r)
 
-    wb.save(output_path)
-    return output_path
+        def find_row(category: str, subcategory: str | None) -> int | None:
+            # Zeitbasierte Zuordnung nur für Kategorien, die wir selbst in mehrere Zeitschienen-
+            # Zeilen aufteilen (Sportprogramm, Kochdienste) - sonst könnten generische Uhrzeiten
+            # wie "11:00" fälschlich in eine unabhängige Zeile derselben Uhrzeit rutschen
+            # (z.B. OPS/WP -> Sportprogramm-Zeile "11:00 BVB").
+            if category in ("Sportprogramm", "Kochdienste") and subcategory:
+                sk = grid.slot_key_for_category(category, subcategory)
+                if (category, sk) in slot_rows:
+                    return slot_rows[(category, sk)]
+            norm_cat = _normalize_label(category)
+            if not norm_cat:
+                return None
+            header_row = norm_rows.get(norm_cat)
+            if header_row is None:
+                for norm_label, r in norm_rows.items():
+                    if norm_cat in norm_label or norm_label in norm_cat:
+                        header_row = r
+                        break
+            if header_row is None:
+                return None
+
+            if norm_cat in DETAIL_ROW_CATEGORIES:
+                for detail_row in range(header_row + 1, min(header_row + 3, ws.max_row + 1)):
+                    detail_label = _normalize_label(labels.get(detail_row, ""))
+                    if detail_label in GENERIC_DETAIL_LABELS:
+                        return detail_row
+            return header_row
+
+        absence_row = {label: r for r, label in labels.items() if label in grid.ABSENCE_ROWS}
+        cell_names: dict[tuple[int, int], list[str]] = {}
+        cell_text: dict[tuple[int, int], str] = {}
+        special_bvb_cells: set[tuple[int, int]] = set()
+
+        for a in absences:
+            row_label = "Frei" if a["type"] == "Frei" else "Urlaub/Krank"
+            r = absence_row.get(row_label)
+            col = day_col.get(a["date"])
+            if r and col:
+                cell_names.setdefault((r, col), []).append(a["person"])
+
+        for a in draft_rows:
+            r = find_row(a["category"], a.get("subcategory"))
+            col = day_col.get(a["date"])
+            if r and col and a.get("person"):
+                if planning_rules.is_guests_vs_robins_bvb(
+                    a["category"], a.get("subcategory"), a.get("date")
+                ):
+                    special_bvb_cells.add((r, col))
+                cell_names.setdefault((r, col), []).append(
+                    grid.format_person_assignment(
+                        a["category"], a.get("subcategory"), a["person"]
+                    )
+                )
+            elif r and col and a.get("raw_text"):
+                cell_text[(r, col)] = str(a["raw_text"]).strip()
+
+        for (r, c), text in cell_text.items():
+            ws.cell(row=r, column=c).value = text
+
+        for (r, c), names in cell_names.items():
+            value = ", ".join(names)
+            if (r, c) in special_bvb_cells:
+                value = f"(Gäste vs Robins BVB)\n{value}"
+            ws.cell(row=r, column=c).value = value
+
+        wb.save(output_path)
+        return output_path
+    finally:
+        wb.close()
 
 
 def extract_from_xlsx(path: str, sheet_name: str | None = None) -> dict:

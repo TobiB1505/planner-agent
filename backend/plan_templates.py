@@ -64,15 +64,17 @@ def build_template(conn, code: str, overwrite: bool = False) -> Path:
 
     TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
     wb = openpyxl.load_workbook(source)
-    source_sheet = spec["source_sheet"]
-    if source_sheet not in wb.sheetnames:
-        raise ValueError(f"Blatt '{source_sheet}' fehlt in {source.name}.")
-    for ws in list(wb.worksheets):
-        if ws.title != source_sheet:
-            wb.remove(ws)
-    wb[source_sheet].title = spec["sheet"]
-    wb.save(target)
-    wb.close()
+    try:
+        source_sheet = spec["source_sheet"]
+        if source_sheet not in wb.sheetnames:
+            raise ValueError(f"Blatt '{source_sheet}' fehlt in {source.name}.")
+        for ws in list(wb.worksheets):
+            if ws.title != source_sheet:
+                wb.remove(ws)
+        wb[source_sheet].title = spec["sheet"]
+        wb.save(target)
+    finally:
+        wb.close()
     return target
 
 

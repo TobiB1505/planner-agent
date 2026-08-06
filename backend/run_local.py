@@ -57,8 +57,10 @@ def check_database() -> list[str]:
         return problems
     try:
         conn = sqlite3.connect(str(paths.DATABASE_PATH))
-        result = conn.execute("PRAGMA integrity_check;").fetchone()
-        conn.close()
+        try:
+            result = conn.execute("PRAGMA integrity_check;").fetchone()
+        finally:
+            conn.close()
     except sqlite3.Error as exc:
         problems.append(f"Datenbank konnte nicht geprüft werden: {exc}")
         return problems

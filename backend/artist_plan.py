@@ -422,82 +422,84 @@ def export_artist_plan(
 ) -> str:
     """Schreibt eine gespeicherte Woche zurück in das echte Künstlerplan-Excel-Layout."""
     workbook = load_workbook(template_path)
-    source_sheet = plan_row["sheet_name"]
-    if source_sheet not in workbook.sheetnames:
-        # Für neue Wochen das jüngste reguläre 7-Tage-Blatt verwenden. Großflächig
-        # verbundene Sonderwochen eignen sich nicht als leere Standardvorlage.
-        source_sheet = next(
-            (
-                ws.title
-                for ws in reversed(workbook.worksheets)
-                if not any(
-                    merged.max_col - merged.min_col >= 1
-                    and merged.max_row - merged.min_row >= 5
-                    for merged in ws.merged_cells.ranges
-                )
-            ),
-            workbook.sheetnames[-1],
+    try:
+        source_sheet = plan_row["sheet_name"]
+        if source_sheet not in workbook.sheetnames:
+            # Für neue Wochen das jüngste reguläre 7-Tage-Blatt verwenden. Großflächig
+            # verbundene Sonderwochen eignen sich nicht als leere Standardvorlage.
+            source_sheet = next(
+                (
+                    ws.title
+                    for ws in reversed(workbook.worksheets)
+                    if not any(
+                        merged.max_col - merged.min_col >= 1
+                        and merged.max_row - merged.min_row >= 5
+                        for merged in ws.merged_cells.ranges
+                    )
+                ),
+                workbook.sheetnames[-1],
+            )
+        ws = workbook[source_sheet]
+        for other in list(workbook.worksheets):
+            if other is not ws:
+                workbook.remove(other)
+
+        start = datetime.strptime(plan_row["start_date"], "%Y-%m-%d").date()
+        entries = _entry_map(conn, plan_row["id"])
+        for day_index, column in enumerate(range(2, 9)):
+            _write_cell(ws, 2, column, start + timedelta(days=day_index))
+
+        lunch_row = _find_label_row(ws, "Mittagsgrill")
+        chillout_row = _find_label_row(ws, "Chillout")
+        gastro_row = _find_label_row(ws, "Gastrotainment")
+        evening_row = _find_label_row(ws, "Abend Programm", "Programm Abend")
+        schachbrett_row = _find_label_row(ws, "Schachbrett")
+        special_row = _find_label_row(ws, "Special")
+        nite_row = _find_label_row(ws, "Nite Club")
+        chill_end = _row_before_next(
+            chillout_row, gastro_row, evening_row, schachbrett_row, fallback=ws.max_row
         )
-    ws = workbook[source_sheet]
-    for other in list(workbook.worksheets):
-        if other is not ws:
-            workbook.remove(other)
+        gastro_end = _row_before_next(
+            gastro_row, evening_row, schachbrett_row, special_row, fallback=ws.max_row
+        )
+        chill_rows = _detail_row_map(ws, chillout_row, chill_end)
+        gastro_rows = _detail_row_map(ws, gastro_row, gastro_end)
 
-    start = datetime.strptime(plan_row["start_date"], "%Y-%m-%d").date()
-    entries = _entry_map(conn, plan_row["id"])
-    for day_index, column in enumerate(range(2, 9)):
-        _write_cell(ws, 2, column, start + timedelta(days=day_index))
+        # Nur die programmrelevanten Zellen leeren; Formatierungen und verbundene Zellen bleiben.
+        editable_rows = {
+            row
+            for row in [
+                lunch_row,
+                evening_row,
+                schachbrett_row,
+                special_row,
+                nite_row,
+                *chill_rows.values(),
+                *gastro_rows.values(),
+            ]
+            if row is not None
+        }
+        for row in editable_rows:
+            for column in range(2, 9):
+                _write_cell(ws, row, column, None)
 
-    lunch_row = _find_label_row(ws, "Mittagsgrill")
-    chillout_row = _find_label_row(ws, "Chillout")
-    gastro_row = _find_label_row(ws, "Gastrotainment")
-    evening_row = _find_label_row(ws, "Abend Programm", "Programm Abend")
-    schachbrett_row = _find_label_row(ws, "Schachbrett")
-    special_row = _find_label_row(ws, "Special")
-    nite_row = _find_label_row(ws, "Nite Club")
-    chill_end = _row_before_next(
-        chillout_row, gastro_row, evening_row, schachbrett_row, fallback=ws.max_row
-    )
-    gastro_end = _row_before_next(
-        gastro_row, evening_row, schachbrett_row, special_row, fallback=ws.max_row
-    )
-    chill_rows = _detail_row_map(ws, chillout_row, chill_end)
-    gastro_rows = _detail_row_map(ws, gastro_row, gastro_end)
+        for day_index, column in enumerate(range(2, 9)):
+            date_iso = (start + timedelta(days=day_index)).isoformat()
+            get = lambda key: entries.get((date_iso, key), "")
+            _write_cell(ws, lunch_row, column, get("lunch_dj"))
+            _write_cell(ws, chill_rows.get("time"), column, get("chillout_time"))
+            _write_cell(ws, chill_rows.get("location"), column, get("chillout_location"))
+            _write_cell(ws, chill_rows.get("artist"), column, get("chillout_artist"))
+            _write_cell(ws, gastro_rows.get("time"), column, get("gastro_time"))
+            _write_cell(ws, gastro_rows.get("location"), column, get("gastro_location"))
+            _write_cell(ws, gastro_rows.get("artist"), column, get("gastro_artist"))
+            _write_cell(ws, evening_row, column, get("evening_program"))
+            _write_cell(ws, schachbrett_row, column, get("evening_dj"))
+            _write_cell(ws, special_row, column, get("special"))
+            _write_cell(ws, nite_row, column, get("nite_club"))
 
-    # Nur die programmrelevanten Zellen leeren; Formatierungen und verbundene Zellen bleiben.
-    editable_rows = {
-        row
-        for row in [
-            lunch_row,
-            evening_row,
-            schachbrett_row,
-            special_row,
-            nite_row,
-            *chill_rows.values(),
-            *gastro_rows.values(),
-        ]
-        if row is not None
-    }
-    for row in editable_rows:
-        for column in range(2, 9):
-            _write_cell(ws, row, column, None)
-
-    for day_index, column in enumerate(range(2, 9)):
-        date_iso = (start + timedelta(days=day_index)).isoformat()
-        get = lambda key: entries.get((date_iso, key), "")
-        _write_cell(ws, lunch_row, column, get("lunch_dj"))
-        _write_cell(ws, chill_rows.get("time"), column, get("chillout_time"))
-        _write_cell(ws, chill_rows.get("location"), column, get("chillout_location"))
-        _write_cell(ws, chill_rows.get("artist"), column, get("chillout_artist"))
-        _write_cell(ws, gastro_rows.get("time"), column, get("gastro_time"))
-        _write_cell(ws, gastro_rows.get("location"), column, get("gastro_location"))
-        _write_cell(ws, gastro_rows.get("artist"), column, get("gastro_artist"))
-        _write_cell(ws, evening_row, column, get("evening_program"))
-        _write_cell(ws, schachbrett_row, column, get("evening_dj"))
-        _write_cell(ws, special_row, column, get("special"))
-        _write_cell(ws, nite_row, column, get("nite_club"))
-
-    ws.title = f"KW {start.isocalendar()[1]}_{start.strftime('%d.%m')}"[:31]
-    workbook.save(output_path)
-    workbook.close()
-    return output_path
+        ws.title = f"KW {start.isocalendar()[1]}_{start.strftime('%d.%m')}"[:31]
+        workbook.save(output_path)
+        return output_path
+    finally:
+        workbook.close()

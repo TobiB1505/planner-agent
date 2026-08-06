@@ -37,9 +37,11 @@ def health():
     if db.DATABASE_PATH.exists():
         try:
             conn = sqlite3.connect(str(db.DATABASE_PATH))
-            conn.execute("SELECT 1")
-            conn.close()
-            database_status = "connected"
+            try:
+                conn.execute("SELECT 1")
+                database_status = "connected"
+            finally:
+                conn.close()
         except sqlite3.Error:
             database_status = "error"
     return {
@@ -83,9 +85,11 @@ def system_diagnostics():
     if database_exists:
         try:
             conn = sqlite3.connect(str(db.DATABASE_PATH))
-            integrity = conn.execute("PRAGMA integrity_check;").fetchone()[0]
-            conn.close()
-            database_status = "connected" if integrity == "ok" else "error"
+            try:
+                integrity = conn.execute("PRAGMA integrity_check;").fetchone()[0]
+                database_status = "connected" if integrity == "ok" else "error"
+            finally:
+                conn.close()
         except sqlite3.Error as exc:
             database_status = "error"
             integrity = str(exc)
