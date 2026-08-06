@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from "react";
+
 export type PlanDensity = "compact" | "standard" | "large";
 export type PlanEditorViewMode = "day" | "week";
 
@@ -49,4 +51,43 @@ export function savePlanViewPreferences(preferences: PlanViewPreferences): void 
   } catch {
     // Der Editor bleibt auch bei deaktiviertem/vollem LocalStorage nutzbar.
   }
+}
+
+// Sprint 0 (S1-Fix, C5): useSyncExternalStore statt localStorage im
+// State-Initializer bzw. setState im Mount-Effekt (React/eslint markiert
+// Letzteres als Kaskaden-Render-Risiko). getServerSnapshot liefert bewusst
+// immer die Defaults, exakt das bereits im Projekt etablierte,
+// SSR-sichere Muster aus pwa-install-button.tsx - kein Hydration-Mismatch,
+// weil Server und erster Client-Render garantiert dasselbe rendern.
+let cachedPreferences: PlanViewPreferences | null = null;
+const listeners = new Set<() => void>();
+
+function getSnapshot(): PlanViewPreferences {
+  if (cachedPreferences === null) cachedPreferences = loadPlanViewPreferences();
+  return cachedPreferences;
+}
+
+function getServerSnapshot(): PlanViewPreferences {
+  return DEFAULT_PREFERENCES;
+}
+
+function subscribe(onStoreChange: () => void): () => void {
+  listeners.add(onStoreChange);
+  return () => listeners.delete(onStoreChange);
+}
+
+export type SetPlanViewPreferences = (
+  next: PlanViewPreferences | ((current: PlanViewPreferences) => PlanViewPreferences),
+) => void;
+
+const setPreferences: SetPlanViewPreferences = (next) => {
+  const resolved = typeof next === "function" ? next(getSnapshot()) : next;
+  cachedPreferences = resolved;
+  savePlanViewPreferences(resolved);
+  listeners.forEach((listener) => listener());
+};
+
+export function usePlanViewPreferences(): [PlanViewPreferences, SetPlanViewPreferences] {
+  const preferences = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  return [preferences, setPreferences];
 }

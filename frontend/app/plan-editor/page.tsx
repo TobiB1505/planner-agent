@@ -28,11 +28,9 @@ import { computeDayStatuses } from "@/lib/plan-editor/dayStatus";
 import { collectCategorySuggestions } from "@/lib/plan-editor/entryFieldType";
 import { useGridDayIndicators } from "@/lib/plan-editor/useGridDayIndicators";
 import {
-  loadPlanViewPreferences,
-  savePlanViewPreferences,
+  usePlanViewPreferences,
   type PlanDensity,
   type PlanEditorViewMode,
-  type PlanViewPreferences,
 } from "@/lib/plan-editor/viewPreferences";
 import {
   buildCellIssueIndex,
@@ -116,13 +114,19 @@ export default function PlanEditorPage() {
   const loadedArchiveKeyRef = useRef<string | null>(null);
 
   // ---------- Sprint 4: Arbeitsansicht ----------
-  const [viewPreferences, setViewPreferences] = useState<PlanViewPreferences>(() =>
-    loadPlanViewPreferences(),
-  );
+  // Sprint 0 (S1-Fix, C5): useSyncExternalStore statt localStorage im
+  // State-Initializer - Letzteres lief während des Renders, auch beim
+  // allerersten Client-Render vor der Hydration. Der Server kennt den
+  // gespeicherten Wert nie und rendert immer die Defaults; ein Client, der
+  // sofort den echten Wert einliest, weicht vom SSR-Markup ab
+  // (Hydration-Mismatch, sichtbar an plan-density-*). usePlanViewPreferences
+  // liefert serverseitig deterministisch die Defaults, zieht die echte
+  // Präferenz clientseitig sicher nach (siehe lib/plan-editor/viewPreferences.ts).
+  const [viewPreferences, setViewPreferences] = usePlanViewPreferences();
   const { density, viewMode } = viewPreferences;
   const setViewMode = useCallback((nextMode: PlanEditorViewMode) => {
     setViewPreferences((current) => ({ ...current, viewMode: nextMode }));
-  }, []);
+  }, [setViewPreferences]);
   const [activeDay, setActiveDay] = useState("");
   const [automationPreview, setAutomationPreview] = useState<AutomationPreview | null>(null);
 
@@ -142,10 +146,6 @@ export default function PlanEditorPage() {
   const cellIssueIndexRef = useRef<Map<string, PlanIssue[]>>(new Map());
 
   const gridApiRef = useRef<GridApi<PlanRow> | null>(null);
-
-  useEffect(() => {
-    savePlanViewPreferences(viewPreferences);
-  }, [viewPreferences]);
 
   const effectiveActiveDay = useMemo(() => {
     if (dayLabels.includes(activeDay)) return activeDay;
@@ -508,7 +508,7 @@ export default function PlanEditorPage() {
       api.refreshCells({ force: true });
       api.resetRowHeights();
     });
-  }, []);
+  }, [setViewPreferences]);
 
   const selectDay = useCallback((dayLabel: string) => {
     setActiveDay(dayLabel);
