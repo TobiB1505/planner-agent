@@ -402,6 +402,43 @@ export default function PlanEditorPage() {
     rowsRef.current = rows;
   }, [rows]);
 
+  // Sprint 2 (Phase 4.3): Rückgängig/Wiederholen waren zuvor ausschließlich
+  // über die Toolbar-Buttons erreichbar - Strg/Cmd+Z löste in dieser Session
+  // nachweislich nichts aus (AG Grids eigene, nicht mit dem vereinheitlichten
+  // handleUndo verzahnte Tastaturbehandlung griff hier nicht zuverlässig).
+  // Globaler Listener statt eines AG-Grid-internen Shortcuts, damit derselbe
+  // handleUndo/handleRedo-Pfad (inkl. Chronologie zwischen Grid- und
+  // Tagesansicht-Aktionen) unabhängig vom aktuellen Fokus greift. Textfelder
+  // (Zelleditor-Popups, Suchfelder, Dialoge) behalten ihr natives Undo -
+  // der Listener greift nur, wenn kein editierbares Element fokussiert ist.
+  useEffect(() => {
+    function isEditableTarget(target: EventTarget | null): boolean {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (isEditableTarget(event.target)) return;
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        handleUndo();
+      } else if ((key === "z" && event.shiftKey) || key === "y") {
+        event.preventDefault();
+        handleRedo();
+      }
+    }
+
+    // Capture-Phase: AG Grid registriert einen eigenen Keydown-Handler direkt
+    // auf dem Grid-Container und behandelt Strg/Cmd+Z dort teils selbst (mit
+    // stopPropagation) - ohne Capture käme unser Listener nie zum Zug, wenn
+    // der Fokus im Grid liegt (siehe auch DayEntryEditor.tsx für dasselbe Muster).
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
+  }, [handleUndo, handleRedo]);
+
   useEffect(() => {
     const archivedWeek = archivedWeeks.find((week) => week.start_date === startDate);
     if (!archivedWeek) return;
