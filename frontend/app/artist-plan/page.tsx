@@ -2,6 +2,7 @@
 
 import PageHeader from "@/components/PageHeader";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
 import ArtistTextCellEditor from "@/components/ArtistTextCellEditor";
 import FileDropzone from "@/components/FileDropzone";
 import PlanReviewHeader from "@/components/PlanReviewHeader";
@@ -82,6 +83,7 @@ function rgba(hex: string, alpha: number): string {
 }
 
 export default function ArtistPlanPage() {
+  const { toast } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [sheets, setSheets] = useState<string[]>([]);
   const [sheet, setSheet] = useState("");
@@ -300,7 +302,7 @@ export default function ArtistPlanPage() {
       setSelectedSavedId("");
       setSetupOpen(true);
       await refreshSaved();
-      setMessage({ kind: "success", text: "Künstlerplan wurde gelöscht." });
+      toast({ variant: "success", title: "Künstlerplan wurde gelöscht" });
       setDeleteConfirmOpen(false);
     } catch (error) {
       setMessage({

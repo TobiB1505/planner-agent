@@ -3,6 +3,7 @@
 import ArchiveImportFlow from "@/components/ArchiveImportFlow";
 import PageHeader from "@/components/PageHeader";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
 import {
   deleteWeek,
   getWeekDetail,
@@ -37,6 +38,7 @@ function valueOf(row: Record<string, unknown>, ...keys: string[]): string {
 }
 
 export default function ArchivPage() {
+  const { toast } = useToast();
   const [weeks, setWeeks] = useState<WeekSummary[]>([]);
   const [details, setDetails] = useState<Record<number, WeekDetail>>({});
   const [selectedWeekId, setSelectedWeekId] = useState<number | null>(null);
@@ -126,7 +128,7 @@ export default function ArchivPage() {
         delete next[week.id];
         return next;
       });
-      setMessage({ kind: "success", text: "Woche wurde aus dem Archiv gelöscht." });
+      toast({ variant: "success", title: "Woche wurde aus dem Archiv gelöscht" });
       setDeleteTarget(null);
       await load();
     } catch (error) {

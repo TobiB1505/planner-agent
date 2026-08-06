@@ -3,6 +3,7 @@
 import PageHeader from "@/components/PageHeader";
 import EmployeeIntelligenceDialog from "@/components/EmployeeIntelligenceDialog";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
 import {
   createPerson,
   deletePerson,
@@ -28,6 +29,7 @@ function currentMonday(): string {
 
 export default function TeamPage() {
   const departmentListId = useId();
+  const { toast } = useToast();
   const [people, setPeople] = useState<Person[]>([]);
   const [intelligence, setIntelligence] = useState<TeamIntelligenceOverview | null>(null);
   const [name, setName] = useState("");
@@ -232,9 +234,10 @@ export default function TeamPage() {
       await deletePerson(person.id);
       setPeople((current) => current.filter((entry) => entry.id !== person.id));
       await loadIntelligence();
-      setNotice({
-        kind: "success",
-        text: `${person.name} wurde gelöscht. Historische Dienstpläne bleiben erhalten.`,
+      toast({
+        variant: "success",
+        title: `${person.name} wurde gelöscht`,
+        description: "Historische Dienstpläne bleiben erhalten.",
       });
       setDeleteTarget(null);
     } catch (error) {

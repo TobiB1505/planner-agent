@@ -4,6 +4,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import InlineStatus from "@/components/ui/InlineStatus";
+import { useToast } from "@/components/ui/Toast";
 import {
   ApiError,
   ensureBackendRestarted,
@@ -54,6 +55,7 @@ function formatUptime(seconds: number): string {
 }
 
 export default function SystemPage() {
+  const { toast } = useToast();
   const [health, setHealth] = useState<HealthState>("checking");
   const [diagnostics, setDiagnostics] = useState<SystemDiagnostics | null>(null);
   const [diagnosticsError, setDiagnosticsError] = useState("");
@@ -180,7 +182,7 @@ export default function SystemPage() {
       const up = await checkHealth();
       if (up) {
         await loadDiagnostics();
-        setMessage({ kind: "success", text: "Backend wurde neu gestartet und ist wieder erreichbar." });
+        toast({ variant: "success", title: "Backend wurde neu gestartet", description: "Wieder erreichbar." });
         setRestarting(false);
         return;
       }

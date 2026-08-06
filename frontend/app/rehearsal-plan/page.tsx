@@ -2,6 +2,7 @@
 
 import PageHeader from "@/components/PageHeader";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
 import FileDropzone from "@/components/FileDropzone";
 import PlanReviewHeader from "@/components/PlanReviewHeader";
 import ReadingProgress from "@/components/ReadingProgress";
@@ -36,6 +37,7 @@ function shiftIsoDate(iso: string, days: number): string {
 }
 
 export default function RehearsalPlanPage() {
+  const { toast } = useToast();
   const [plans, setPlans] = useState<RehearsalPlanSummary[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [sheets, setSheets] = useState<string[]>([]);
@@ -236,7 +238,7 @@ export default function RehearsalPlanPage() {
       }
       setSetupOpen(true);
       await refreshPlans();
-      setMessage({ kind: "success", text: "Probenplan wurde gelöscht." });
+      toast({ variant: "success", title: "Probenplan wurde gelöscht" });
       setDeleteConfirmOpen(false);
     } catch (error) {
       setMessage({
