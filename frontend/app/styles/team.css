@@ -720,7 +720,12 @@
   min-height: 30px;
 }
 
-.team-empty-state {
+.team-status {
+  margin-bottom: 14px;
+}
+
+.team-member-list > .team-list-status,
+.team-member-list > .team-list-empty {
   grid-column: 1 / -1;
 }
 
@@ -877,15 +882,13 @@
 }
 
 @media (max-width: 680px) {
-  .archive-page-head,
-  .team-page-head {
+  .archive-page-head {
     align-items: stretch;
     flex-direction: column;
     gap: 0;
   }
 
-  .archive-import-trigger,
-  .team-add-trigger {
+  .archive-import-trigger {
     align-self: stretch;
     margin: -8px 0 14px;
   }
