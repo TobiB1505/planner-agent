@@ -367,7 +367,10 @@
   font-size: 9.5px;
 }
 
-@media (max-width: 820px) {
+/* Sprint 3: bereits ab Tablet-Breite einspaltig - bei 834px ragte der
+   Wochenpicker sonst rechts aus der Kopfkarte heraus (Summary-Grid
+   reservierte minmax(330px,470px) neben minmax(260px,1fr)). */
+@media (max-width: 1020px) {
   .plan-editor-summary-main {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
@@ -1555,6 +1558,8 @@ button.plan-validation-summary {
     width: 100%;
   }
 
+
+
   .plan-editor-toolbar-actions .plan-save-button {
     flex: 1 1 140px;
   }
@@ -2129,9 +2134,34 @@ button.plan-validation-summary {
   font-weight: 600;
 }
 
+/* Sprint 3: auf schmalen Viewports fließt die (mehrzeilig umgebrochene,
+   ~300px hohe) Toolbar mit der Seite statt dauerhaft ein Drittel des
+   Bildschirms zu belegen - sticky bleibt stattdessen die kompakte
+   Tagesnavigation (siehe unten). Speichern bleibt per Scroll erreichbar.
+   Media- statt Container-Query: die Toolbar ist selbst der Query-Container
+   und kann sich über @container nicht selbst stylen. */
+@media (max-width: 900px) {
+  .plan-editor-toolbar {
+    position: static;
+  }
+}
+
 @media (max-width: 760px) {
   .plan-day-view-bar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  /* Sprint 3 (Phase 9.3): Tagesnavigation bleibt beim Scrollen durch die
+     Abschnitts-Karten sichtbar - sie ist auf Mobile die primäre
+     Orientierung und mit einer Zeile kompakt genug dafür. */
+  .plan-day-view .plan-workspace-orientation-full {
+    position: sticky;
+    top: 0;
+    z-index: 25;
+    margin-inline: -4px;
+    padding: 6px 4px;
+    background: color-mix(in srgb, var(--background) 92%, transparent);
+    backdrop-filter: blur(8px);
   }
 }
