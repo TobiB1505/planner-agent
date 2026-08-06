@@ -40,6 +40,14 @@
   --status-critical: var(--cmd-high);
   --status-info:     var(--cmd-violet);
 
+  /* Sprint 0 (S1-Fix, C3): --danger folgt automatisch --status-critical
+     (foundation.css). --muted-strong/--border-strong/--shadow-sm brauchen
+     hier eigene, dunkeltaugliche Werte - die Light-Defaults aus
+     foundation.css wären auf #0a0b12 unsichtbar bzw. zu schwach. */
+  --muted-strong: #a9aec2;
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.35);
+
   color-scheme: dark;
 }
 
