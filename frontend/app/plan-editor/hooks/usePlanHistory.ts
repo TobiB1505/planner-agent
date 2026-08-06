@@ -15,7 +15,7 @@
 // onMarkManuallyEdited), damit die History-Mechanik nicht wissen muss, WIE
 // "geändert" gebucht wird, nur DASS sie es melden muss.
 import { useCallback, useRef, useState, type RefObject } from "react";
-import type { CellValueChangedEvent, GridApi } from "ag-grid-community";
+import type { CellValueChangedEvent, GridApi, IRowNode } from "ag-grid-community";
 import type { PlanAuditEventInput } from "@/lib/api";
 import { cellIssueKey } from "@/lib/planValidation";
 import type { PlanHistoryAction, PlanHistoryChange, PlanRow } from "../types";
@@ -53,6 +53,29 @@ export function usePlanHistory({
       canRedo: api.getCurrentRedoSize() > 0 || customRedoRef.current.length > 0,
     });
   }, [gridApiRef]);
+
+  /** Zieht ein gezieltes refreshCells() für genau die betroffenen Zeilen/Spalten
+   * nach - Sprint 2 (Phase 6): applyPlanChanges/revertOrReplayCustomAction
+   * riefen vorher refreshCells({force:true}) ohne rowNodes/columns auf, was
+   * bei AG Grid ein vollständiges Grid-Refresh auslöst. Batch-Aktionen (Tag
+   * kopieren, Tag leeren, Undo/Redo einer solchen Aktion) betreffen nur eine
+   * bekannte, meist kleine Menge an Zellen. */
+  const refreshAffectedCells = useCallback(
+    (changes: PlanHistoryChange[]) => {
+      const api = gridApiRef.current;
+      if (!api) return;
+      const rowNodes: IRowNode<PlanRow>[] = [];
+      const columns = new Set<string>();
+      for (const change of changes) {
+        const node = api.getRowNode(change.row._row_id);
+        if (node) rowNodes.push(node);
+        columns.add(change.dayLabel);
+      }
+      if (rowNodes.length === 0) return;
+      api.refreshCells({ rowNodes, columns: Array.from(columns), force: true });
+    },
+    [gridApiRef],
+  );
 
   const resetHistory = useCallback(() => {
     customUndoRef.current = [];
@@ -97,11 +120,11 @@ export function usePlanHistory({
       customRedoRef.current = [];
       redoOrderRef.current = [];
       actionOrderRef.current.push("custom");
-      gridApiRef.current?.refreshCells({ force: true });
+      refreshAffectedCells(changes);
       onMarkDirty(changes.length);
       refreshGridHistory();
     },
-    [gridApiRef, onMarkDirty, onMarkManuallyEdited, onRecordAudit, refreshGridHistory],
+    [onMarkDirty, onMarkManuallyEdited, onRecordAudit, refreshAffectedCells, refreshGridHistory],
   );
 
   const commitDayEntry = useCallback(
@@ -117,10 +140,10 @@ export function usePlanHistory({
         change.row[change.dayLabel] = direction === "undo" ? change.previousValue : change.nextValue;
       }
       onRecordAudit({ event_type: direction, cause: direction });
-      gridApiRef.current?.refreshCells({ force: true });
+      refreshAffectedCells(action.changes);
       onMarkDirty(action.changes.length);
     },
-    [gridApiRef, onMarkDirty, onRecordAudit],
+    [onMarkDirty, onRecordAudit, refreshAffectedCells],
   );
 
   const handleUndo = useCallback(() => {
