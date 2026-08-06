@@ -15,6 +15,7 @@ export default function PlanReviewHeader({
   title,
   description,
   active,
+  dirty = false,
   metrics,
   weekPicker,
   primaryLabel,
@@ -29,6 +30,8 @@ export default function PlanReviewHeader({
   title: string;
   description: string;
   active: boolean;
+  /** Ungespeicherte Änderungen - Chip analog zum Dienstplan-Editor. */
+  dirty?: boolean;
   metrics: string[];
   weekPicker?: ReactNode;
   primaryLabel: string;
@@ -48,6 +51,9 @@ export default function PlanReviewHeader({
             <span className={`plan-review-status ${active ? "is-active" : ""}`}>
               {active ? "✓ Für Dienstplan aktiv" : "Noch nicht aktiviert"}
             </span>
+            {dirty && (
+              <span className="plan-review-status is-dirty">Ungespeicherte Änderungen</span>
+            )}
           </div>
           <h2>{title}</h2>
           <p>{description}</p>

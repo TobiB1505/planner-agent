@@ -1,7 +1,8 @@
 "use client";
 
-import PageHeader from "@/components/PageHeader";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import InlineStatus from "@/components/ui/InlineStatus";
+import PageHeader from "@/components/ui/PageHeader";
 import { useToast } from "@/components/ui/Toast";
 import ArtistTextCellEditor from "@/components/ArtistTextCellEditor";
 import FileDropzone from "@/components/FileDropzone";
@@ -496,7 +497,12 @@ export default function ArtistPlanPage() {
       )}
 
       {message && (!busy || message.kind !== "info") && (
-        <div className={`status status-${message.kind}`}>{message.text}</div>
+        <InlineStatus
+          variant={message.kind === "error" ? "danger" : message.kind}
+          className="plan-page-status"
+        >
+          {message.text}
+        </InlineStatus>
       )}
 
       {plan && (
@@ -506,6 +512,7 @@ export default function ArtistPlanPage() {
             title={plan.sheet_name || "Künstlerprogramm der Woche"}
             description={`${plan.day_labels[0]} – ${plan.day_labels.at(-1)} · Zelle anklicken, um sie direkt zu bearbeiten.`}
             active={Boolean(plan.id)}
+            dirty={isDirty}
             metrics={[`${filledCount} gefüllte Felder`, `${plan.rows.length} Programmzeilen`]}
             weekPicker={
               <WeekPicker

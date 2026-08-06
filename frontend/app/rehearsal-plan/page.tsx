@@ -1,7 +1,8 @@
 "use client";
 
-import PageHeader from "@/components/PageHeader";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import InlineStatus from "@/components/ui/InlineStatus";
+import PageHeader from "@/components/ui/PageHeader";
 import { useToast } from "@/components/ui/Toast";
 import FileDropzone from "@/components/FileDropzone";
 import PlanReviewHeader from "@/components/PlanReviewHeader";
@@ -369,7 +370,12 @@ export default function RehearsalPlanPage() {
       )}
 
       {message && (!busy || message.kind !== "info") && (
-        <div className={`status status-${message.kind}`}>{message.text}</div>
+        <InlineStatus
+          variant={message.kind === "error" ? "danger" : message.kind}
+          className="plan-page-status"
+        >
+          {message.text}
+        </InlineStatus>
       )}
 
       {plan && (
@@ -379,6 +385,7 @@ export default function RehearsalPlanPage() {
             title={plan.source_filename || "Probenplan der Woche"}
             description="Erkannte Zeiten und Teilnehmer kurz prüfen. Überschneidungen werden danach automatisch in der Dienstplanung berücksichtigt."
             active={Boolean(plan.id)}
+            dirty={isDirty}
             metrics={[
               `${plan.rehearsals.length} Proben`,
               `${recognition.recognized} aktive MA erkannt`,
@@ -391,7 +398,7 @@ export default function RehearsalPlanPage() {
                 label="Planwoche"
               />
             }
-            primaryLabel={plan.id ? "Änderungen speichern" : "Prüfen & aktivieren"}
+            primaryLabel={plan.id ? "Änderungen speichern" : "Für Dienstplan aktivieren"}
             onPrimary={save}
             busy={busy}
             secondaryHref="/plan-editor"
