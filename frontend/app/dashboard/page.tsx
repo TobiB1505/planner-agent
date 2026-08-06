@@ -1,15 +1,17 @@
 "use client";
 
-import PageHeader from "@/components/PageHeader";
-import DashboardCommand from "@/components/DashboardCommand";
-import DashboardIntelligenceOverview from "@/components/DashboardIntelligenceOverview";
-import "@/app/styles/dashboard-command.css";
+import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
+import InlineStatus from "@/components/ui/InlineStatus";
+import MetricCard from "@/components/ui/MetricCard";
+import PageHeader from "@/components/ui/PageHeader";
 import {
   getDashboardInsights,
   getFairnessAlerts,
   getWeeks,
   type DashboardInsights,
   type FairnessAlert,
+  type PlanAuditEvent,
   type WeekSummary,
 } from "@/lib/api";
 import Link from "next/link";
@@ -48,6 +50,26 @@ function statusLabel(status: WorkloadEntry["status"]): string {
   if (status === "high") return "Hoch";
   if (status === "low") return "Niedrig";
   return "Ausgeglichen";
+}
+
+const AUDIT_LABELS: Record<PlanAuditEvent["event_type"], string> = {
+  cell_changed: "Zuweisung geändert",
+  recommendation_applied: "Empfehlung übernommen",
+  automation_applied: "Automatik übernommen",
+  undo: "Änderung zurückgenommen",
+  redo: "Änderung wiederholt",
+  plan_saved: "Plan gespeichert",
+};
+
+function auditTime(value: string): string {
+  const parsed = new Date(value.replace(" ", "T") + "Z");
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed);
 }
 
 export default function DashboardPage() {
@@ -144,6 +166,9 @@ export default function DashboardPage() {
     low: workload.filter((entry) => entry.status === "low").length,
   }), [workload]);
 
+  const openSignals = insights ? insights.quality.issues.length + alerts.length : 0;
+  const recentAudit = insights?.intelligence.recent_audit.slice(0, 6) ?? [];
+
   const actionItems = useMemo(() => {
     if (!insights) return [];
     const items: Array<{
@@ -207,6 +232,8 @@ export default function DashboardPage() {
         description: alertMessage(alert),
         tone: "warning",
         context: "Gespeicherte Woche",
+        href: "/plan-editor",
+        action: "Prüfen",
       });
     });
     insights.workload
@@ -218,6 +245,8 @@ export default function DashboardPage() {
           description: `${entry.services} Dienste, davon ${entry.cooking} Kochen und ${entry.late_duties} späte Dienste.`,
           tone: "warning",
           context: "Gespeicherte Woche",
+          href: "/plan-editor",
+          action: "Plan öffnen",
         });
       });
 
@@ -251,7 +280,12 @@ export default function DashboardPage() {
       <div className="dashboard-page-head">
         <PageHeader
           title="Dashboard"
-          subtitle="Planungsstand, offene Aufgaben und Team-Balance für die ausgewählte Woche"
+          subtitle={
+            selectedWeek
+              ? `Planungsstand, offene Aufgaben und Team-Balance · ${formatDate(selectedWeek.start_date)} – ${formatDate(selectedWeek.end_date)}`
+              : "Planungsstand, offene Aufgaben und Team-Balance für die ausgewählte Woche"
+          }
+          primaryAction={<Button href="/plan-editor">Planung öffnen</Button>}
         />
         <div className="dashboard-header-week" aria-label="Auswertungswoche auswählen">
           <span>Auswertungswoche</span>
@@ -294,43 +328,71 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {error && <div className="status status-error">{error}</div>}
-
-      <section className="dashboard-week-hero">
-        <div className="dashboard-week-copy">
-          <span className="dashboard-eyebrow">Ausgewählte Planwoche</span>
-          <h2>{selectedWeek?.label ?? "Planungswoche auswählen"}</h2>
-          <p>
-            {selectedWeek
-              ? `${formatDate(selectedWeek.start_date)} – ${formatDate(selectedWeek.end_date)}`
-              : "Noch keine gespeicherte Woche vorhanden."}
-          </p>
-        </div>
-        <div className="dashboard-planning-action">
-          <Link className="btn btn-primary" href="/plan-editor">
-            Planung öffnen
-          </Link>
-        </div>
-      </section>
+      {error && <InlineStatus variant="danger" className="dashboard-status">{error}</InlineStatus>}
+      {loading && insights && (
+        <InlineStatus variant="loading" className="dashboard-status">
+          Auswertungswoche wird geladen …
+        </InlineStatus>
+      )}
 
       {loading && !insights ? (
         <DashboardSkeleton />
       ) : insights ? (
         <>
-          <DashboardCommand
-            insights={insights}
-            alerts={alerts}
-            weekLabel={selectedWeek?.label}
-            weekSubLabel={
-              selectedWeek
-                ? `${formatDate(selectedWeek.start_date)} – ${formatDate(selectedWeek.end_date)}`
-                : undefined
-            }
-            onPrevWeek={() => selectRelativeWeek(1)}
-            onNextWeek={() => selectRelativeWeek(-1)}
-            canPrev={selectedIndex < weeks.length - 1}
-            canNext={selectedIndex > 0}
-          />
+          <section className="dashboard-metrics" aria-label="Kennzahlen der Woche">
+            <MetricCard
+              title="Planqualität"
+              value={String(insights.quality.score)}
+              unit={`/ ${insights.quality.max_score}`}
+              status={
+                insights.quality.status === "good"
+                  ? { label: "Gut", tone: "positive" }
+                  : insights.quality.status === "warning"
+                    ? { label: "Prüfen", tone: "warning" }
+                    : { label: "Kritisch", tone: "danger" }
+              }
+            />
+            <MetricCard
+              title="Offene Signale"
+              value={String(openSignals)}
+              change={{ label: "Qualitäts- und Fairness-Hinweise", tone: "neutral" }}
+              status={
+                openSignals > 0
+                  ? { label: "Offen", tone: "warning" }
+                  : { label: "Keine", tone: "positive" }
+              }
+            />
+            <MetricCard
+              title="Vorbereitung"
+              value={`${readinessCount} / 3`}
+              change={{ label: "Künstler-, Proben- und Dienstplan", tone: "neutral" }}
+              status={allPreparationReady ? { label: "Bereit", tone: "positive" } : undefined}
+            />
+            <MetricCard
+              title="Showtage"
+              value={String(insights.show_days.length)}
+              change={{ label: planningWeek?.label ?? "Aktuelle Planung", tone: "neutral" }}
+            />
+            <MetricCard
+              title="MA im Plan"
+              value={String(workload.length)}
+              change={
+                workloadCounts.high > 0
+                  ? { label: `${workloadCounts.high} hoch belastet`, tone: "negative" }
+                  : { label: "Belastung ausgeglichen", tone: "neutral" }
+              }
+            />
+            <MetricCard
+              title="Gedächtnis-Profile"
+              value={`${insights.intelligence.evidence_profiles} / ${insights.intelligence.active_people}`}
+              change={{
+                label: insights.intelligence.cold_start_people.length
+                  ? `${insights.intelligence.cold_start_people.length} ohne Historie`
+                  : "Alle Profile mit Historie",
+                tone: "neutral",
+              }}
+            />
+          </section>
 
           <section
             className={`dashboard-readiness-shell ${allPreparationReady ? "is-complete" : ""}`}
@@ -409,7 +471,34 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          <DashboardIntelligenceOverview insights={insights} fairnessAlerts={alerts.length} />
+          <section className="panel dashboard-actions-panel">
+            <SectionHeader
+              eyebrow="Handlungsbedarf"
+              title="Was diese Woche Aufmerksamkeit braucht"
+              description="Planungshinweise zur aktuellen Woche sowie Fairness der ausgewählten gespeicherten Woche."
+              badge={`${actionItems.filter((item) => item.tone !== "positive").length} offen`}
+            />
+            <div className="dashboard-action-list">
+              {actionItems.map((item, index) => (
+                <article
+                  key={item.id}
+                  className={`dashboard-action-item tone-${item.tone}`}
+                >
+                  <span className="dashboard-action-marker" aria-hidden="true">
+                    {item.tone === "positive" ? "✓" : String(index + 1).padStart(2, "0")}
+                  </span>
+                  <div>
+                    <small className="dashboard-action-context">{item.context}</small>
+                    <strong>{item.title}</strong>
+                    <p>{item.description}</p>
+                  </div>
+                  {item.href && (
+                    <Link href={item.href}>{item.action ?? "Prüfen"} <span>→</span></Link>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
 
           <section className="panel dashboard-show-panel dashboard-current-show-panel">
             <SectionHeader
@@ -441,37 +530,12 @@ export default function DashboardPage() {
                 })}
               </div>
             ) : (
-              <DashboardEmpty text="Für die aktuelle Planung wurden keine Showtage erkannt." />
+              <EmptyState
+                className="dashboard-panel-empty"
+                title="Keine Showtage erkannt"
+                description="Für die aktuelle Planung wurden keine Showtage erkannt."
+              />
             )}
-          </section>
-
-          <section className="panel dashboard-actions-panel">
-            <SectionHeader
-              eyebrow="Handlungsbedarf"
-              title="Was diese Woche Aufmerksamkeit braucht"
-              description="Planungshinweise zur aktuellen Woche sowie Fairness der ausgewählten gespeicherten Woche."
-              badge={`${actionItems.filter((item) => item.tone !== "positive").length} offen`}
-            />
-            <div className="dashboard-action-list">
-              {actionItems.map((item, index) => (
-                <article
-                  key={item.id}
-                  className={`dashboard-action-item tone-${item.tone}`}
-                >
-                  <span className="dashboard-action-marker" aria-hidden="true">
-                    {item.tone === "positive" ? "✓" : String(index + 1).padStart(2, "0")}
-                  </span>
-                  <div>
-                    <small className="dashboard-action-context">{item.context}</small>
-                    <strong>{item.title}</strong>
-                    <p>{item.description}</p>
-                  </div>
-                  {item.href && (
-                    <Link href={item.href}>{item.action ?? "Prüfen"} <span>→</span></Link>
-                  )}
-                </article>
-              ))}
-            </div>
           </section>
 
           <section className="panel dashboard-workload-panel">
@@ -537,15 +601,49 @@ export default function DashboardPage() {
                 )}
               </div>
             ) : (
-              <DashboardEmpty text="Für diese Woche liegen noch keine Mitarbeiter-Zuweisungen vor." />
+              <EmptyState
+                className="dashboard-panel-empty"
+                title="Noch keine Zuweisungen"
+                description="Für diese Woche liegen noch keine Mitarbeiter-Zuweisungen vor."
+              />
             )}
           </section>
 
+          <section className="panel dashboard-audit-panel">
+            <SectionHeader
+              eyebrow="Protokoll"
+              title="Letzte Änderungen"
+              description="Die jüngsten Bearbeitungen am Dienstplan aus dem Änderungsprotokoll."
+              badge={`${recentAudit.length} Einträge`}
+            />
+            {recentAudit.length ? (
+              <div className="dashboard-audit-list">
+                {recentAudit.map((event) => (
+                  <div key={event.id}>
+                    <span className={`dashboard-audit-icon type-${event.event_type}`} aria-hidden="true" />
+                    <span>
+                      <strong>{AUDIT_LABELS[event.event_type]}</strong>
+                      <small>{auditTime(event.created_at)} · {event.user}</small>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                className="dashboard-panel-empty"
+                title="Noch keine Änderungen protokolliert"
+                description="Sobald der Dienstplan bearbeitet wird, erscheinen die letzten Schritte hier."
+              />
+            )}
+          </section>
         </>
       ) : (
         <section className="panel dashboard-no-week">
-          <DashboardEmpty text="Noch keine Planungswoche vorhanden. Erstelle zuerst einen Dienstplan." />
-          <Link className="btn btn-primary" href="/plan-editor">Dienstplan erstellen</Link>
+          <EmptyState
+            title="Noch keine Planungswoche vorhanden"
+            description="Erstelle zuerst einen Dienstplan, um Auswertungen zu sehen."
+            primaryAction={<Button href="/plan-editor">Dienstplan erstellen</Button>}
+          />
         </section>
       )}
     </div>
@@ -619,15 +717,6 @@ function WorkloadFact({
       <small>{label}</small>
       <strong>{value}</strong>
     </span>
-  );
-}
-
-function DashboardEmpty({ text }: { text: string }) {
-  return (
-    <div className="dashboard-empty">
-      <span aria-hidden="true">–</span>
-      <p>{text}</p>
-    </div>
   );
 }
 
