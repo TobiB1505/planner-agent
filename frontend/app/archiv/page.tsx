@@ -2,6 +2,7 @@
 
 import ArchiveImportFlow from "@/components/ArchiveImportFlow";
 import PageHeader from "@/components/PageHeader";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
   deleteWeek,
   getWeekDetail,
@@ -45,6 +46,8 @@ export default function ArchivPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [message, setMessage] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WeekSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -107,8 +110,14 @@ export default function ArchivPage() {
     }
   }
 
-  async function remove(week: WeekSummary) {
-    if (!window.confirm(`${week.label} wirklich aus dem Archiv löschen?`)) return;
+  function remove(week: WeekSummary) {
+    setDeleteTarget(week);
+  }
+
+  async function confirmRemove() {
+    const week = deleteTarget;
+    if (!week) return;
+    setDeleting(true);
     try {
       await deleteWeek(week.id);
       setSelectedWeekId(null);
@@ -118,12 +127,15 @@ export default function ArchivPage() {
         return next;
       });
       setMessage({ kind: "success", text: "Woche wurde aus dem Archiv gelöscht." });
+      setDeleteTarget(null);
       await load();
     } catch (error) {
       setMessage({
         kind: "error",
         text: error instanceof Error ? error.message : "Woche konnte nicht gelöscht werden.",
       });
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -365,6 +377,19 @@ export default function ArchivPage() {
           )}
         </div>
       </section>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        variant="danger"
+        title={deleteTarget ? `${deleteTarget.label} aus dem Archiv löschen?` : "Woche löschen?"}
+        description={<p>Die archivierte Woche wird unwiderruflich gelöscht und kann nicht mehr als Grundlage für neue Dienstpläne verwendet werden.</p>}
+        onDismiss={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        actions={[
+          { label: "Abbrechen", variant: "default", autoFocus: true, disabled: deleting, onClick: () => setDeleteTarget(null) },
+          { label: deleting ? "Löscht …" : "Endgültig löschen", variant: "danger", disabled: deleting, onClick: () => void confirmRemove() },
+        ]}
+      />
     </div>
   );
 }

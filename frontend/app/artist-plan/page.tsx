@@ -1,6 +1,7 @@
 "use client";
 
 import PageHeader from "@/components/PageHeader";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ArtistTextCellEditor from "@/components/ArtistTextCellEditor";
 import FileDropzone from "@/components/FileDropzone";
 import PlanReviewHeader from "@/components/PlanReviewHeader";
@@ -100,6 +101,7 @@ export default function ArtistPlanPage() {
   // abweicht (Zellbearbeitung, Wochenwechsel-Remap); false nach jedem neuen
   // Ausgangspunkt (Import, Laden, Speichern, leere Woche, Löschen).
   const [isDirty, setIsDirty] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   useUnsavedChangesGuard(isDirty, {
     message: "Der Künstlerplan hat ungespeicherte Änderungen, die dabei verloren gehen.",
   });
@@ -290,7 +292,6 @@ export default function ArtistPlanPage() {
 
   async function removeCurrent() {
     if (!plan?.id) return;
-    if (!window.confirm("Diesen Künstlerplan wirklich löschen?")) return;
     setBusy(true);
     try {
       await deleteArtistPlan(plan.id);
@@ -300,6 +301,7 @@ export default function ArtistPlanPage() {
       setSetupOpen(true);
       await refreshSaved();
       setMessage({ kind: "success", text: "Künstlerplan wurde gelöscht." });
+      setDeleteConfirmOpen(false);
     } catch (error) {
       setMessage({
         kind: "error",
@@ -522,7 +524,7 @@ export default function ArtistPlanPage() {
             secondaryHref="/plan-editor"
             menuItems={plan.id ? [
               { label: "Excel herunterladen", onClick: () => void downloadExcel() },
-              { label: "Künstlerplan löschen", onClick: () => void removeCurrent(), danger: true },
+              { label: "Künstlerplan löschen", onClick: () => setDeleteConfirmOpen(true), danger: true },
             ] : []}
           />
 
@@ -557,6 +559,19 @@ export default function ArtistPlanPage() {
           </div>
         </>
       )}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        variant="danger"
+        title="Künstlerplan endgültig löschen?"
+        description={<p>Der Künstlerplan für diese Woche wird unwiderruflich gelöscht. Bereits gespeicherte Dienstpläne bleiben unverändert erhalten.</p>}
+        onDismiss={() => {
+          if (!busy) setDeleteConfirmOpen(false);
+        }}
+        actions={[
+          { label: "Abbrechen", variant: "default", autoFocus: true, disabled: busy, onClick: () => setDeleteConfirmOpen(false) },
+          { label: busy ? "Löscht …" : "Endgültig löschen", variant: "danger", disabled: busy, onClick: () => void removeCurrent() },
+        ]}
+      />
     </div>
   );
 }

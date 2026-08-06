@@ -1,6 +1,7 @@
 "use client";
 
 import PageHeader from "@/components/PageHeader";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import FileDropzone from "@/components/FileDropzone";
 import PlanReviewHeader from "@/components/PlanReviewHeader";
 import ReadingProgress from "@/components/ReadingProgress";
@@ -49,6 +50,7 @@ export default function RehearsalPlanPage() {
   } | null>(null);
   // Sprint 0 (S1-Fix, C2): bislang ungeschützte Tabellen-Änderungen.
   const [isDirty, setIsDirty] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   useUnsavedChangesGuard(isDirty, {
     message: "Der Probenplan hat ungespeicherte Änderungen, die dabei verloren gehen.",
   });
@@ -225,7 +227,6 @@ export default function RehearsalPlanPage() {
   }
 
   async function removePlan(id: number) {
-    if (!window.confirm("Diesen Probenplan wirklich löschen?")) return;
     setBusy(true);
     try {
       await deleteRehearsalPlan(id);
@@ -236,6 +237,7 @@ export default function RehearsalPlanPage() {
       setSetupOpen(true);
       await refreshPlans();
       setMessage({ kind: "success", text: "Probenplan wurde gelöscht." });
+      setDeleteConfirmOpen(false);
     } catch (error) {
       setMessage({
         kind: "error",
@@ -394,7 +396,7 @@ export default function RehearsalPlanPage() {
             menuItems={plan.id ? [
               {
                 label: "Probenplan löschen",
-                onClick: () => void removePlan(plan.id!),
+                onClick: () => setDeleteConfirmOpen(true),
                 danger: true,
               },
             ] : []}
@@ -478,6 +480,19 @@ export default function RehearsalPlanPage() {
           </section>
         </>
       )}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        variant="danger"
+        title="Probenplan endgültig löschen?"
+        description={<p>Der Probenplan für diese Woche wird unwiderruflich gelöscht. Bereits gespeicherte Dienstpläne bleiben unverändert erhalten.</p>}
+        onDismiss={() => {
+          if (!busy) setDeleteConfirmOpen(false);
+        }}
+        actions={[
+          { label: "Abbrechen", variant: "default", autoFocus: true, disabled: busy, onClick: () => setDeleteConfirmOpen(false) },
+          { label: busy ? "Löscht …" : "Endgültig löschen", variant: "danger", disabled: busy, onClick: () => plan?.id && void removePlan(plan.id) },
+        ]}
+      />
     </div>
   );
 }

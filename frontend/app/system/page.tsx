@@ -1,6 +1,9 @@
 "use client";
 
-import PageHeader from "@/components/PageHeader";
+import PageHeader from "@/components/ui/PageHeader";
+import Button from "@/components/ui/Button";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import InlineStatus from "@/components/ui/InlineStatus";
 import {
   ApiError,
   ensureBackendRestarted,
@@ -57,6 +60,7 @@ export default function SystemPage() {
   const [restarting, setRestarting] = useState(false);
   const [message, setMessage] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
   const pollTimer = useRef<number | null>(null);
 
   const checkHealth = useCallback(async () => {
@@ -148,9 +152,7 @@ export default function SystemPage() {
   }
 
   async function handleRestart() {
-    if (!window.confirm("Backend jetzt (neu) starten? Die Verbindung ist dabei kurz unterbrochen.")) {
-      return;
-    }
+    setRestartConfirmOpen(false);
     setRestarting(true);
     setMessage({ kind: "info", text: "Neustart wird ausgelöst …" });
     try {
@@ -284,19 +286,19 @@ export default function SystemPage() {
               <article>
                 <span className="system-action-icon"><SystemGlyph kind="refresh" /></span>
                 <div><strong>Backend neu starten</strong><small>Startet die Planungs- und Datenebene neu. Deine Daten bleiben erhalten.</small></div>
-                <button type="button" className="btn btn-primary" onClick={handleRestart} disabled={restarting}>
-                  {restarting ? "Startet …" : "Neu starten"}
-                </button>
+                <Button variant="primary" size="sm" loading={restarting} onClick={() => setRestartConfirmOpen(true)}>
+                  Neu starten
+                </Button>
               </article>
               <article>
                 <span className="system-action-icon"><SystemGlyph kind="screen" /></span>
                 <div><strong>Oberfläche neu laden</strong><small>Lädt die aktuelle Ansicht frisch, ohne das Backend zu verändern.</small></div>
-                <button type="button" className="btn" onClick={handleFrontendReload}>Neu laden</button>
+                <Button variant="secondary" size="sm" onClick={handleFrontendReload}>Neu laden</Button>
               </article>
               <article>
                 <span className="system-action-icon"><SystemGlyph kind="check" /></span>
                 <div><strong>Diagnose aktualisieren</strong><small>Prüft Vorlagen, Ordner, Speicher und Datenbank erneut.</small></div>
-                <button type="button" className="btn" onClick={() => refreshAll()} disabled={restarting}>Jetzt prüfen</button>
+                <Button variant="secondary" size="sm" disabled={restarting} onClick={() => refreshAll()}>Jetzt prüfen</Button>
               </article>
             </div>
 
@@ -315,7 +317,14 @@ export default function SystemPage() {
               />
             </div>
 
-            {message && <div className={`status status-${message.kind}`}>{message.text}</div>}
+            {message && (
+              <InlineStatus
+                variant={message.kind === "success" ? "success" : message.kind === "error" ? "danger" : "info"}
+                className="mt-3"
+              >
+                {message.text}
+              </InlineStatus>
+            )}
           </div>
         </section>
 
@@ -342,7 +351,11 @@ export default function SystemPage() {
         </section>
       </div>
 
-      {diagnosticsError && <div className="status status-error system-diagnostics-error">{diagnosticsError}</div>}
+      {diagnosticsError && (
+        <InlineStatus variant="danger" className="system-diagnostics-error">
+          {diagnosticsError}
+        </InlineStatus>
+      )}
 
       {diagnostics && (
         <div className="system-diagnostics-grid">
@@ -387,6 +400,16 @@ export default function SystemPage() {
           </section>
         </div>
       )}
+      <ConfirmDialog
+        open={restartConfirmOpen}
+        title="Backend jetzt neu starten?"
+        description={<p>Die Verbindung zur Planungsebene ist dabei kurz unterbrochen. Deine Daten bleiben unverändert erhalten.</p>}
+        onDismiss={() => setRestartConfirmOpen(false)}
+        actions={[
+          { label: "Abbrechen", variant: "default", autoFocus: true, onClick: () => setRestartConfirmOpen(false) },
+          { label: "Neu starten", variant: "primary", onClick: () => void handleRestart() },
+        ]}
+      />
     </div>
   );
 }
