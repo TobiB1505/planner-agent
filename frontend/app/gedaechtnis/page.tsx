@@ -1,7 +1,11 @@
 "use client";
 
 import EmployeeIntelligenceDialog from "@/components/EmployeeIntelligenceDialog";
-import PageHeader from "@/components/PageHeader";
+import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
+import InlineStatus from "@/components/ui/InlineStatus";
+import PageHeader from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import {
   getMemory,
   getTeamIntelligenceOverview,
@@ -13,7 +17,6 @@ import {
   type TeamIntelligenceOverview,
   type TeamIntelligencePerson,
 } from "@/lib/api";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 const SHOW_CHOICES = [
@@ -84,6 +87,7 @@ export default function GedaechtnisPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [addShow, setAddShow] = useState("");
+  const { toast } = useToast();
 
   useEffect(() => {
     let active = true;
@@ -139,7 +143,6 @@ export default function GedaechtnisPage() {
       withSkills: teamIntelligence?.summary.with_skills ?? 0,
       attention: teamIntelligence?.summary.attention_people
         ?? active.filter((person) => person.data_quality.cold_start).length,
-      coldStart: active.filter((p) => p.data_quality.cold_start).length,
     };
   }, [people, teamIntelligence]);
 
@@ -161,11 +164,12 @@ export default function GedaechtnisPage() {
     }));
   }
 
-  async function mutate(action: () => Promise<PersonMemory>) {
+  async function mutate(action: () => Promise<PersonMemory>, successTitle: string) {
     setBusy(true);
     setError("");
     try {
       applyUpdate(await action());
+      toast({ variant: "success", title: successTitle });
       void refreshIntelligence();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Änderung fehlgeschlagen.");
@@ -178,7 +182,10 @@ export default function GedaechtnisPage() {
     const current = new Set(person.free.weekdays);
     if (current.has(weekday)) current.delete(weekday);
     else current.add(weekday);
-    return mutate(() => setMemoryFree(person.person_id, [...current].sort((a, b) => a - b)));
+    return mutate(
+      () => setMemoryFree(person.person_id, [...current].sort((a, b) => a - b)),
+      "Frei-Muster gespeichert",
+    );
   }
 
   function choosePool(inactive: boolean) {
@@ -191,13 +198,11 @@ export default function GedaechtnisPage() {
 
   return (
     <div className="memory-page">
-      <div className="memory-page-head">
-        <PageHeader
-          title="MA-Gedächtnis"
-          subtitle="Was die Planung über jeden Mitarbeiter gelernt hat – und was du korrigierst"
-        />
-        <Link href="/team" className="btn">Zur Teamverwaltung</Link>
-      </div>
+      <PageHeader
+        title="MA-Gedächtnis"
+        subtitle="Was die Planung über jeden Mitarbeiter gelernt hat – und was du korrigierst"
+        secondaryActions={<Button variant="secondary" href="/team">Zur Teamverwaltung</Button>}
+      />
 
       <section className="memory-overview-grid" aria-label="Übersicht Gedächtnis">
         <article className="memory-overview-card is-primary">
@@ -218,11 +223,15 @@ export default function GedaechtnisPage() {
         <article className={`memory-overview-card ${summary.attention ? "is-warning" : "is-positive"}`}>
           <span>Aufmerksamkeit</span>
           <strong>{loading ? "…" : summary.attention}</strong>
-          <small>{summary.coldStart} neue Profile ohne Historie</small>
+          <small>
+            {summary.attention
+              ? "Profile mit Hinweisen oder Datenlücken"
+              : "keine Hinweise oder Datenlücken"}
+          </small>
         </article>
       </section>
 
-      {error && <div className="status status-error">{error}</div>}
+      {error && <InlineStatus variant="danger" className="memory-status">{error}</InlineStatus>}
 
       <section className="panel memory-layout">
         <div className="memory-list">
@@ -250,9 +259,28 @@ export default function GedaechtnisPage() {
             </div>
           </div>
 
-          {loading && <div className="dashboard-empty">Gedächtnis wird geladen …</div>}
+          {loading && (
+            <InlineStatus variant="loading" className="memory-status">
+              Gedächtnis wird geladen …
+            </InlineStatus>
+          )}
           {!loading && visible.length === 0 && (
-            <div className="dashboard-empty">Keine Mitarbeiter gefunden.</div>
+            <EmptyState
+              variant={query ? "filtered" : "empty"}
+              title="Keine Mitarbeiter gefunden"
+              description={
+                query
+                  ? "Kein Treffer für die aktuelle Suche."
+                  : `Im Pool „${showInactive ? "Inaktiv" : "Aktiv"}“ gibt es keine Mitarbeiter.`
+              }
+              primaryAction={
+                query ? (
+                  <Button variant="secondary" onClick={() => setQuery("")}>
+                    Suche zurücksetzen
+                  </Button>
+                ) : undefined
+              }
+            />
           )}
           {visible.map((person) => {
             const personIntelligence = intelligenceByPerson.get(person.person_id);
@@ -314,16 +342,16 @@ export default function GedaechtnisPage() {
             </div>
 
             {selected.data_quality.cold_start && (
-              <div className="status status-warning">
+              <InlineStatus variant="warning" className="memory-status">
                 Für {selected.person} gibt es noch keine Dienste in der Historie. Ergänze unten von
                 Hand, welche Aufgaben und Shows übernommen werden können.
-              </div>
+              </InlineStatus>
             )}
             {(data?.meta.rehearsal_weeks ?? 0) < 2 && selected.shows.length > 0 && (
-              <div className="status status-warning">
+              <InlineStatus variant="warning" className="memory-status">
                 Erst {data?.meta.rehearsal_weeks} Probenwoche importiert – die Show-Besetzung ist
                 bisher nur eine Vermutung. Sie wird mit jedem weiteren Probenplan genauer.
-              </div>
+              </InlineStatus>
             )}
 
             <nav className="memory-section-tabs" aria-label="Gedächtnisbereiche">
@@ -377,9 +405,10 @@ export default function GedaechtnisPage() {
               </div>
 
               {selected.shows.length === 0 && (
-                <div className="dashboard-empty">
-                  Keine Show-Besetzung bekannt. Unten von Hand ergänzen.
-                </div>
+                <EmptyState
+                  title="Keine Show-Besetzung bekannt"
+                  description="Unten von Hand ergänzen."
+                />
               )}
 
               <div className="memory-show-list">
@@ -405,18 +434,25 @@ export default function GedaechtnisPage() {
                     <div className="memory-show-actions">
                       <button
                         type="button" className="btn" disabled={busy}
-                        onClick={() => mutate(() => setMemoryShow(
-                          selected.person_id, show.show_key,
-                          show.source === "abgeleitet" ? "confirmed" : null,
-                        ))}
+                        onClick={() => mutate(
+                          () => setMemoryShow(
+                            selected.person_id, show.show_key,
+                            show.source === "abgeleitet" ? "confirmed" : null,
+                          ),
+                          show.source === "abgeleitet"
+                            ? `${show.label} bestätigt`
+                            : `${show.label} wieder automatisch`,
+                        )}
                         title={show.source === "abgeleitet" ? "Bestätigen" : "Auf Automatik zurücksetzen"}
                       >
                         {show.source === "abgeleitet" ? "✓ Bestätigen" : "↺ Automatik"}
                       </button>
                       <button
                         type="button" className="btn btn-danger" disabled={busy}
-                        onClick={() => mutate(() =>
-                          setMemoryShow(selected.person_id, show.show_key, "removed"))}
+                        onClick={() => mutate(
+                          () => setMemoryShow(selected.person_id, show.show_key, "removed"),
+                          `${show.label} entfernt`,
+                        )}
                       >× Entfernen</button>
                     </div>
                   </div>
@@ -440,11 +476,14 @@ export default function GedaechtnisPage() {
                 <button
                   type="button" className="btn btn-primary"
                   disabled={!addShow || busy}
-                  onClick={() => mutate(async () => {
-                    const result = await setMemoryShow(selected.person_id, addShow, "added");
-                    setAddShow("");
-                    return result;
-                  })}
+                  onClick={() => mutate(
+                    async () => {
+                      const result = await setMemoryShow(selected.person_id, addShow, "added");
+                      setAddShow("");
+                      return result;
+                    },
+                    `${SHOW_CHOICES.find((choice) => choice.key === addShow)?.label ?? "Show"} ergänzt`,
+                  )}
                 >Hinzufügen</button>
               </div>
 
@@ -461,8 +500,10 @@ export default function GedaechtnisPage() {
                       </span>
                       <button
                         type="button" className="btn" disabled={busy}
-                        onClick={() => mutate(() =>
-                          setMemoryShow(selected.person_id, show.show_key, null))}
+                        onClick={() => mutate(
+                          () => setMemoryShow(selected.person_id, show.show_key, null),
+                          `${show.label} zurückgeholt`,
+                        )}
                       >Zurückholen</button>
                     </div>
                   ))}
@@ -485,19 +526,21 @@ export default function GedaechtnisPage() {
               </div>
 
               {selected.free.source === "manuell" && (
-                <div className="status status-info">Von dir festgelegt – Automatik ist überschrieben.</div>
+                <InlineStatus variant="info" className="memory-status">
+                  Von dir festgelegt – Automatik ist überschrieben.
+                </InlineStatus>
               )}
               {selected.free.source === "abgeleitet" && selected.free.pattern === "flat" && (
-                <div className="dashboard-empty">
+                <InlineStatus variant="info" className="memory-status">
                   Kein klares Muster erkennbar – dieser MA bekommt keinen automatischen
                   Frei-Vorschlag. Du kannst unten selbst Tage festlegen.
-                </div>
+                </InlineStatus>
               )}
               {selected.free.source === "abgeleitet" && selected.free.pattern === "insufficient" && (
-                <div className="dashboard-empty">
+                <InlineStatus variant="info" className="memory-status">
                   Noch zu wenige Daten ({selected.free.total_free_days} Frei-Tage). Ab etwa 6
                   Frei-Tagen wird ein Muster erkannt.
-                </div>
+                </InlineStatus>
               )}
 
               <div className="memory-weekdays">
@@ -528,7 +571,10 @@ export default function GedaechtnisPage() {
               {selected.free.source === "manuell" && (
                 <button
                   type="button" className="btn" disabled={busy}
-                  onClick={() => mutate(() => setMemoryFree(selected.person_id, null))}
+                  onClick={() => mutate(
+                    () => setMemoryFree(selected.person_id, null),
+                    "Frei-Muster wieder automatisch",
+                  )}
                 >Auf Automatik zurücksetzen</button>
               )}
             </section>}
@@ -541,7 +587,10 @@ export default function GedaechtnisPage() {
               </div>
 
               {selected.tasks.length === 0 && (
-                <div className="dashboard-empty">Noch keine Dienste in der Historie.</div>
+                <EmptyState
+                  title="Noch keine Dienste in der Historie"
+                  description="Das Aufgabenprofil entsteht automatisch aus gespeicherten Dienstplänen."
+                />
               )}
 
               {selected.tasks.map((task) => (
@@ -558,10 +607,15 @@ export default function GedaechtnisPage() {
                   <span className="memory-task-last">{germanDate(task.last_date)}</span>
                   <button
                     type="button" className="btn" disabled={busy}
-                    onClick={() => mutate(() => setMemoryTask(
-                      selected.person_id, task.category,
-                      task.state === "removed" ? null : "removed",
-                    ))}
+                    onClick={() => mutate(
+                      () => setMemoryTask(
+                        selected.person_id, task.category,
+                        task.state === "removed" ? null : "removed",
+                      ),
+                      task.state === "removed"
+                        ? `${task.category} wieder automatisch`
+                        : `${task.category} wird selten eingeplant`,
+                    )}
                   >{task.state === "removed" ? "↺ Automatik" : "Selten einplanen"}</button>
                 </div>
               ))}
@@ -574,8 +628,10 @@ export default function GedaechtnisPage() {
                       <span>{category}</span>
                       <button
                         type="button" className="btn" disabled={busy}
-                        onClick={() => mutate(() =>
-                          setMemoryTask(selected.person_id, category, "added"))}
+                        onClick={() => mutate(
+                          () => setMemoryTask(selected.person_id, category, "added"),
+                          `${category} als Aufgabe ergänzt`,
+                        )}
                       >Kann er trotzdem</button>
                     </div>
                   ))}
