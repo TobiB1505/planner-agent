@@ -9,7 +9,6 @@ import SoftsportCellEditor from "@/components/SoftsportCellEditor";
 import DayHeaderCell from "@/components/plan-editor/DayHeaderCell";
 import EditorViewControls from "@/components/plan-editor/EditorViewControls";
 import PlanDayView from "@/components/plan-editor/PlanDayView";
-import PlanViewSwitcher from "@/components/plan-editor/PlanViewSwitcher";
 import {
   generatePlan,
   getArchivedPlan,
@@ -143,6 +142,11 @@ export default function PlanEditorPage() {
   const cellIssueIndexRef = useRef<Map<string, PlanIssue[]>>(new Map());
 
   const gridApiRef = useRef<GridApi<PlanRow> | null>(null);
+  // "Latest ref" für den Strg/Cmd+S-Shortcut: save() wird pro Render neu
+  // erzeugt (hängt an rows/validation) - der globale Keydown-Listener soll
+  // deshalb nicht bei jedem Render neu abonniert werden, sondern liest die
+  // jeweils aktuelle Funktion über diesen Ref.
+  const saveRef = useRef<() => Promise<boolean>>(async () => false);
 
   const effectiveActiveDay = useMemo(() => {
     if (dayLabels.includes(activeDay)) return activeDay;
@@ -420,8 +424,17 @@ export default function PlanEditorPage() {
 
     function handleKeyDown(event: KeyboardEvent) {
       if (!(event.ctrlKey || event.metaKey)) return;
-      if (isEditableTarget(event.target)) return;
       const key = event.key.toLowerCase();
+      // Sprint 3 (Phase 13): Strg/Cmd+S speichert den Plan statt den
+      // Browser-Dialog "Seite speichern" zu öffnen - bewusst AUCH bei
+      // fokussiertem Eingabefeld (der Browserstandard soll im aktiven
+      // Editor nie greifen; saveRef zeigt auf das Konflikt-Gate save()).
+      if (key === "s") {
+        event.preventDefault();
+        void saveRef.current();
+        return;
+      }
+      if (isEditableTarget(event.target)) return;
       if (key === "z" && !event.shiftKey) {
         event.preventDefault();
         handleUndo();
@@ -1033,6 +1046,11 @@ export default function PlanEditorPage() {
     }
     return performSave();
   }
+  // Nach jedem Render die aktuelle save-Funktion für den Strg/Cmd+S-Listener
+  // hinterlegen (bewusst ohne Dependency-Array - "latest ref"-Muster).
+  useEffect(() => {
+    saveRef.current = save;
+  });
 
   async function exportExcel() {
     if (validation.summary.blockingIssues > 0) {
@@ -1075,8 +1093,6 @@ export default function PlanEditorPage() {
     setPendingAction(null);
   }
 
-  const weekLabel = `KW ${isoWeek(startDate)} · ${selectedTemplate?.name ?? `Woche ${templateCode}`}`;
-  const visibleRowCount = rows.filter((row) => row._row_type !== "group").length;
 
   if (initializing) {
     return (
@@ -1088,8 +1104,6 @@ export default function PlanEditorPage() {
 
   const toolbar = rows.length > 0 && (
     <PlanEditorToolbar
-      weekLabel={weekLabel}
-      rowCount={visibleRowCount}
       canUndo={gridHistory.canUndo}
       canRedo={gridHistory.canRedo}
       onUndo={handleUndo}
@@ -1130,6 +1144,8 @@ export default function PlanEditorPage() {
       onOpenIntelligence={() => setIntelligenceOpen(true)}
       viewControls={
         <EditorViewControls
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
           density={density}
           onDensityChange={handleDensityChange}
         />
@@ -1255,7 +1271,6 @@ export default function PlanEditorPage() {
           {rows.length > 0 ? (
             <>
               {toolbar}
-              <PlanViewSwitcher mode={viewMode} onChange={setViewMode} />
               <div style={viewMode === "day" ? undefined : { display: "none" }}>
                 <PlanDayView
                   rows={rows}

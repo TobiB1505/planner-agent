@@ -426,10 +426,7 @@
   gap: 6px 12px;
   min-width: 0;
   min-height: 42px;
-  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--background) 58%, transparent);
-  padding: 7px 10px;
+  padding: 2px 2px 2px 4px;
 }
 
 .plan-editor-toolbar-identity {
@@ -454,10 +451,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
   border-radius: 999px;
   background: var(--background);
-  padding: 4px 9px;
+  padding: 5px 11px;
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
@@ -496,10 +492,15 @@
 
 .plan-editor-toolbar-actions {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.plan-editor-toolbar-actions .plan-save-button {
+  min-height: 42px;
+  padding-inline: 18px;
 }
 
 .plan-editor-toolbar-actions .btn,
@@ -667,20 +668,20 @@ button.plan-validation-summary {
   color: var(--muted);
 }
 
+/* Sprint 3: neutrale Chip-Umrandung, Status nur über Symbol + Text -
+   die farbig umrandeten Badges konkurrierten visuell mit echten Aktionen
+   (siehe EDITOR_VISUAL_BASELINE.md, Frage 3). */
 .plan-validation-summary.is-clean {
-  border-color: rgba(45, 169, 112, 0.35);
-  color: #2da970;
+  color: var(--status-positive);
 }
 
 .plan-validation-summary.is-warning {
-  border-color: rgba(196, 124, 37, 0.4);
-  color: #c47c25;
+  color: var(--status-warning);
 }
 
 .plan-validation-summary.is-error,
 .plan-validation-summary.is-failed {
-  border-color: rgba(219, 75, 86, 0.45);
-  color: #db4b56;
+  color: var(--status-critical);
 }
 
 .plan-validation-summary-cta {
@@ -1440,14 +1441,15 @@ button.plan-validation-summary {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Sprint 3: flexibles Umbruchverhalten statt starrer 4-Spalten-Grid -
+     das alte Raster ließ bei 390px den Speichern-Button mit dem
+     Planqualität-Chip kollidieren (siehe EDITOR_VISUAL_BASELINE.md). */
   .plan-editor-toolbar-actions {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
     width: 100%;
   }
 
-  .plan-editor-toolbar-actions .btn-primary {
-    width: 100%;
+  .plan-editor-toolbar-actions .plan-save-button {
+    flex: 1 1 140px;
   }
 
   .plan-editor-toolbar-view {
@@ -1506,45 +1508,6 @@ button.plan-validation-summary {
 }
 
 /* ---------- Sprint 6: Tagesplanung / Wochenübersicht ---------- */
-
-.plan-view-switcher {
-  display: flex;
-  gap: 6px;
-  margin: 10px 1px 6px;
-}
-
-.plan-view-switcher button {
-  display: grid;
-  flex: 1;
-  gap: 1px;
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  background: var(--surface);
-  padding: 8px 14px;
-  color: var(--muted);
-  text-align: left;
-}
-
-.plan-view-switcher button strong {
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 730;
-}
-
-.plan-view-switcher button small {
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.plan-view-switcher button.is-active {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: var(--accent-soft);
-}
-
-.plan-view-switcher button.is-active strong,
-.plan-view-switcher button.is-active small {
-  color: var(--accent);
-}
 
 .plan-day-navigator-status {
   display: flex;
@@ -2060,10 +2023,6 @@ button.plan-validation-summary {
 }
 
 @media (max-width: 760px) {
-  .plan-view-switcher {
-    flex-direction: column;
-  }
-
   .plan-day-view-bar {
     flex-direction: column;
     align-items: stretch;
