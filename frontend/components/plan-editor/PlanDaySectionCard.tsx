@@ -11,7 +11,7 @@ import type { PlanIssue } from "@/lib/planValidation";
 import { useState } from "react";
 
 function dataRowKey(row: PlanRowLike): string {
-  return `${row._category || row.Abschnitt}::${row.Zeile}`;
+  return row._row_id;
 }
 
 export default function PlanDaySectionCard({

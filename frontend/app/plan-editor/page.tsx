@@ -47,7 +47,7 @@ import {
   type ColDef,
   type GridApi,
 } from "ag-grid-community";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 
 import EditorDialogs from "./components/EditorDialogs";
 import PlanGrid from "./components/PlanGrid";
@@ -60,6 +60,7 @@ import {
   ABSENCE_SECTIONS,
   PlanEditorInitialLoading,
   addDays,
+  assignRowIds,
   collectAbsences,
   formatDateRange,
   isoWeek,
@@ -82,7 +83,16 @@ export default function PlanEditorPage() {
   const [templateCode, setTemplateCode] = useState<"A" | "B">(() => templateCodeForDate(initialStart));
   const [resolvedTemplateWeekId, setResolvedTemplateWeekId] = useState<number | null>(null);
   const [startDate, setStartDate] = useState(initialStart);
-  const [rows, setRows] = useState<PlanRow[]>([]);
+  const [rows, setRowsRaw] = useState<PlanRow[]>([]);
+  // Sprint 0 (S1-Fix, C4): einziger Weg, `rows` zu setzen - normalisiert dabei
+  // immer über assignRowIds(), damit jede Zeile eine stabile, eindeutige
+  // _row_id trägt (Grid-Identität, manuell-bearbeitet-Markierung,
+  // Planprüfung). Bereits vergebene IDs bleiben unverändert erhalten.
+  const setRows = useCallback((update: SetStateAction<PlanRow[]>) => {
+    setRowsRaw((previous) =>
+      assignRowIds(typeof update === "function" ? (update as (prev: PlanRow[]) => PlanRow[])(previous) : update),
+    );
+  }, []);
   const rowsRef = useRef<PlanRow[]>([]);
   const [dayLabels, setDayLabels] = useState<string[]>([]);
   const [weekDates, setWeekDates] = useState<string[]>([]);
@@ -656,7 +666,7 @@ export default function PlanEditorPage() {
               auditEventsRef.current.push({
                 event_type: "recommendation_applied",
                 cause: "recommendation",
-                cell_key: cellIssueKey(rowKey(params.data), dayLabel),
+                cell_key: cellIssueKey(params.data._row_id, dayLabel),
                 new_value: name,
                 metadata: { category, subcategory: params.data.Zeile, day: dayLabel },
               });
@@ -684,20 +694,20 @@ export default function PlanEditorPage() {
           Boolean(
             params.data &&
               params.data._row_type !== "group" &&
-              manuallyEditedCellsRef.current.has(cellIssueKey(rowKey(params.data), label)),
+              manuallyEditedCellsRef.current.has(cellIssueKey(params.data._row_id, label)),
           ),
         "plan-cell-issue-error": (params) =>
           Boolean(
             params.data &&
               params.data._row_type !== "group" &&
               cellIssueIndexRef.current
-                .get(cellIssueKey(rowKey(params.data), label))
+                .get(cellIssueKey(params.data._row_id, label))
                 ?.some((issue) => issue.severity === "error"),
           ),
         "plan-cell-issue-warning": (params) => {
           if (!params.data || params.data._row_type === "group") return false;
           const list = cellIssueIndexRef.current.get(
-            cellIssueKey(rowKey(params.data), label),
+            cellIssueKey(params.data._row_id, label),
           );
           return Boolean(
             list &&
@@ -709,7 +719,7 @@ export default function PlanEditorPage() {
       tooltipValueGetter: (params) => {
         if (!params.data || params.data._row_type === "group") return undefined;
         const list = cellIssueIndexRef.current.get(
-          cellIssueKey(rowKey(params.data), label),
+          cellIssueKey(params.data._row_id, label),
         );
         const issueText = list?.length
           ? `${list.length > 1 ? `${list.length} Probleme: ` : ""}${list
@@ -779,7 +789,7 @@ export default function PlanEditorPage() {
         // tatsächlich anwendbaren Stand.
         const merged = { ...row };
         for (const label of result.day_labels) {
-          if (manuallyEditedCellsRef.current.has(cellIssueKey(rowKey(old), label))) {
+          if (manuallyEditedCellsRef.current.has(cellIssueKey(old._row_id, label))) {
             merged[label] = old[label];
           } else {
             merged[label] = mergeGeneratedPersonCell(old[label], row[label]);

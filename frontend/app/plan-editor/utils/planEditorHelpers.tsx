@@ -128,9 +128,37 @@ export function rowColor(row?: PlanRow): string {
   return row?._group_color || categoryColor(rowCategory(row));
 }
 
+/** Fachlicher Lookup-Schlüssel für assignmentRules (Backend-Vertrag
+ *  `${category}::${slot}`, siehe routers/plans.py) - NICHT für Grid-/
+ *  Zeilenidentität verwenden, dafür gibt es row._row_id (assignRowIds). */
 export function rowKey(row: PlanRow): string {
   if (row._row_type === "group") return `group::${row._group_label}`;
   return `${rowCategory(row)}::${row.Zeile}`;
+}
+
+/** Sprint 0 (S1-Fix, C4): vergibt jeder Zeile eine stabile, eindeutige
+ *  technische ID. rowKey() allein (Kategorie::Zeile) ist nicht eindeutig -
+ *  zwei Zeilen mit identischem Text kollidieren dort und dadurch auch in
+ *  AG-Grid-getRowId, manuell-bearbeitet-Markierung und Planprüfung.
+ *
+ *  Deterministisch und ordnungsabhängig (nicht zufällig): die n-te Zeile mit
+ *  einem bestimmten rowKey bekommt immer denselben `${rowKey}::${n}`-Suffix,
+ *  solange sich die Reihenfolge/Zusammensetzung des Wochenrasters nicht
+ *  ändert. Das hält bestehende IDs über Neu-Generieren/Neuladen stabil
+ *  (dieselbe Vorlage → dieselbe Zeilenreihenfolge), ohne dass diese Funktion
+ *  den alten Zeilenbestand kennen muss. Bereits vorhandene _row_id-Werte
+ *  (z.B. aus einer laufenden Bearbeitung) werden beibehalten, nicht neu
+ *  vergeben - nur wirklich neue/noch nicht normalisierte Zeilen erhalten
+ *  eine frische ID. */
+export function assignRowIds(rows: PlanRow[]): PlanRow[] {
+  const occurrences = new Map<string, number>();
+  return rows.map((row) => {
+    const base = rowKey(row);
+    const index = occurrences.get(base) ?? 0;
+    occurrences.set(base, index + 1);
+    if (row._row_id) return row;
+    return { ...row, _row_id: `${base}::${index}` };
+  });
 }
 
 export function GroupHeaderRenderer({ data }: ICellRendererParams<PlanRow>) {

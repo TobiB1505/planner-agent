@@ -14,7 +14,7 @@ import type { GridApi } from "ag-grid-community";
 import type { ReadableStore } from "@/lib/plan-editor/useGridDayIndicators";
 import type { PlanDensity } from "@/lib/plan-editor/viewPreferences";
 import type { PlanRow } from "../types";
-import { GroupHeaderRenderer, gridTheme, rowKey } from "../utils/planEditorHelpers";
+import { GroupHeaderRenderer, gridTheme } from "../utils/planEditorHelpers";
 
 export interface PlanGridEventHandlers {
   onCellValueChanged: (event: CellValueChangedEvent<PlanRow>) => void;
@@ -99,7 +99,9 @@ export default function PlanGrid({
                 onCellClickActivatesDay(field);
               }
             }}
-            getRowId={(params) => rowKey(params.data)}
+            // Sprint 0 (S1-Fix, C4): _row_id statt Kategorie::Zeile - zwei
+            // inhaltlich gleiche Zeilen kollidierten sonst in AG Grid.
+            getRowId={(params) => params.data._row_id}
           />
         </div>
       </div>

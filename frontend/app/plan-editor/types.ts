@@ -11,6 +11,14 @@ export type PlanRow = Record<string, string | null> & {
   _category: string;
   _group_label: string | null;
   _group_color: string | null;
+  /** Sprint 0 (S1-Fix): stabile, eindeutige Zeilenidentität, vergeben von
+   *  assignRowIds() beim Laden/Erzeugen. Unabhängig von Abschnitt/Zeile-Text,
+   *  damit AG-Grid-getRowId, manuell-bearbeitet-Markierung und Planprüfung
+   *  bei zwei inhaltlich gleichen Zeilen nicht kollidieren (siehe
+   *  planEditorHelpers.assignRowIds). NICHT mit rowKey() verwechseln, das
+   *  weiterhin für den fachlichen assignmentRules-Lookup (Backend-Vertrag
+   *  category::zeile) verwendet wird. */
+  _row_id: string;
 };
 
 export type SaveState = "idle" | "saving" | "saved" | "error";

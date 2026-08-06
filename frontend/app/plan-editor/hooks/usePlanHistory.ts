@@ -19,7 +19,6 @@ import type { CellValueChangedEvent, GridApi } from "ag-grid-community";
 import type { PlanAuditEventInput } from "@/lib/api";
 import { cellIssueKey } from "@/lib/planValidation";
 import type { PlanHistoryAction, PlanHistoryChange, PlanRow } from "../types";
-import { rowKey } from "../utils/planEditorHelpers";
 
 export interface UsePlanHistoryOptions {
   gridApiRef: RefObject<GridApi<PlanRow> | null>;
@@ -83,7 +82,7 @@ export function usePlanHistory({
       if (changes.length === 0) return;
       for (const change of changes) {
         change.row[change.dayLabel] = change.nextValue;
-        const key = cellIssueKey(rowKey(change.row), change.dayLabel);
+        const key = cellIssueKey(change.row._row_id, change.dayLabel);
         onMarkManuallyEdited(key);
         onRecordAudit({
           event_type: "cell_changed",
@@ -183,7 +182,7 @@ export function usePlanHistory({
       if (event.oldValue !== event.newValue) {
         const field = event.colDef.field;
         if (field && event.data) {
-          const key = cellIssueKey(rowKey(event.data), field);
+          const key = cellIssueKey(event.data._row_id, field);
           onMarkManuallyEdited(key);
           onRecordAudit({
             event_type: "cell_changed",

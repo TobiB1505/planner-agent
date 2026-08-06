@@ -9,6 +9,10 @@ export type RecommendationRow = Record<string, string | null> & {
   Zeile: string;
   _row_type: "data" | "group";
   _category: string;
+  /** Sprint 0 (S1-Fix): stabile Zeilenidentität, siehe PlanRow in
+   *  app/plan-editor/types.ts. Optional, weil einzelne Aufrufer (z.B.
+   *  PersonCellEditor-Kandidatenlisten) Zeilen ohne Editor-Kontext prüfen. */
+  _row_id?: string;
 };
 
 export const RELIEF_CATEGORIES = new Set(["Ausschlafen", "Barfrei"]);

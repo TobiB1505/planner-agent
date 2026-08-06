@@ -7,6 +7,9 @@ export type PlanRowLike = Record<string, string | null> & {
   _category: string;
   _group_label: string | null;
   _group_color: string | null;
+  /** Sprint 0 (S1-Fix, C4): stabile Zeilenidentität, siehe PlanRow in
+   *  app/plan-editor/types.ts. */
+  _row_id: string;
 };
 
 export interface DaySection<TRow extends PlanRowLike = PlanRowLike> {
@@ -45,7 +48,7 @@ export function buildDaySections<TRow extends PlanRowLike>(rows: TRow[]): DaySec
       continue;
     }
     sections.push({
-      key: `row::${row.Abschnitt}::${row.Zeile}`,
+      key: `row::${row._row_id}`,
       title: row.Abschnitt,
       color: categoryColor(row._category || row.Abschnitt),
       isGroup: false,
