@@ -882,17 +882,6 @@
 }
 
 @media (max-width: 680px) {
-  .archive-page-head {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 0;
-  }
-
-  .archive-import-trigger {
-    align-self: stretch;
-    margin: -8px 0 14px;
-  }
-
   .archive-overview-main,
   .team-overview-main {
     padding: 17px;

@@ -1112,6 +1112,19 @@ export default function PlanEditorPage() {
     }
   }
 
+  // Sprint 4 (Archiv): ?start=YYYY-MM-DD öffnet direkt die gewünschte Woche
+  // über denselben Pfad wie der Wochenpicker (inkl. Archiv-Autoload). Als
+  // Makrotask geplant, damit der Wechsel nicht in den Hydration-Render fällt;
+  // das bereits gestartete Erstladen bricht der AbortController-Pfad ab.
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get("start");
+    if (!param || !/^\d{4}-\d{2}-\d{2}$/.test(param) || param === initialStart) return;
+    const timer = window.setTimeout(() => applyWeekChange(param), 0);
+    return () => window.clearTimeout(timer);
+    // Nur beim ersten Rendern auswerten - spätere Wochenwechsel laufen über den Picker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function closeConfirmDialog() {
     setPendingAction(null);
   }

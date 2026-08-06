@@ -1,8 +1,11 @@
 "use client";
 
 import ArchiveImportFlow from "@/components/ArchiveImportFlow";
-import PageHeader from "@/components/PageHeader";
+import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import EmptyState from "@/components/ui/EmptyState";
+import InlineStatus from "@/components/ui/InlineStatus";
+import PageHeader from "@/components/ui/PageHeader";
 import { useToast } from "@/components/ui/Toast";
 import {
   deleteWeek,
@@ -50,6 +53,7 @@ export default function ArchivPage() {
   const [message, setMessage] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<WeekSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showAllAssignments, setShowAllAssignments] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -97,6 +101,7 @@ export default function ArchivPage() {
   async function selectWeek(weekId: number) {
     setSelectedWeekId(weekId);
     setMessage(null);
+    setShowAllAssignments(false);
     if (details[weekId]) return;
     setDetailLoading(true);
     try {
@@ -164,20 +169,20 @@ export default function ArchivPage() {
 
   return (
     <div className="archive-page">
-      <div className="archive-page-head">
-        <PageHeader
-          title="Archiv"
-          subtitle="Gespeicherte Dienstpläne schnell finden, prüfen und als Grundlage weiterverwenden"
-        />
-        <button
-          type="button"
-          className={`btn btn-primary archive-import-trigger ${importOpen ? "is-open" : ""}`}
-          onClick={() => setImportOpen((current) => !current)}
-        >
-          <span aria-hidden="true">{importOpen ? "×" : "+"}</span>
-          {importOpen ? "Import schließen" : "Alten Dienstplan archivieren"}
-        </button>
-      </div>
+      <PageHeader
+        title="Archiv"
+        subtitle="Gespeicherte Dienstpläne schnell finden, prüfen und als Grundlage weiterverwenden"
+        primaryAction={
+          <button
+            type="button"
+            className={`btn btn-primary archive-import-trigger ${importOpen ? "is-open" : ""}`}
+            onClick={() => setImportOpen((current) => !current)}
+          >
+            <span aria-hidden="true">{importOpen ? "×" : "+"}</span>
+            {importOpen ? "Import schließen" : "Alten Dienstplan archivieren"}
+          </button>
+        }
+      />
 
       <section className="archive-overview" aria-label="Archivübersicht">
         <div className="archive-overview-main">
@@ -203,7 +208,14 @@ export default function ArchivPage() {
         <ArchiveImportFlow onClose={() => setImportOpen(false)} onSaved={handleSaved} />
       )}
 
-      {message && <div className={`status status-${message.kind}`}>{message.text}</div>}
+      {message && (
+        <InlineStatus
+          variant={message.kind === "error" ? "danger" : message.kind}
+          className="archive-status"
+        >
+          {message.text}
+        </InlineStatus>
+      )}
 
       <section className="archive-library">
         <div className="archive-library-head">
@@ -246,10 +258,9 @@ export default function ArchivPage() {
         <div className={`archive-library-layout ${selectedWeek ? "has-detail" : ""}`}>
           <div className="archive-week-list">
             {loading && (
-              <div className="archive-empty-state">
-                <span className="spinner" />
-                <strong>Archiv wird geladen …</strong>
-              </div>
+              <InlineStatus variant="loading" className="archive-list-status">
+                Archiv wird geladen …
+              </InlineStatus>
             )}
             {!loading && filteredWeeks.map((week) => {
               const detail = details[week.id];
@@ -284,11 +295,32 @@ export default function ArchivPage() {
               );
             })}
             {!loading && filteredWeeks.length === 0 && (
-              <div className="archive-empty-state">
-                <span aria-hidden="true">⌕</span>
-                <strong>Keine passende Woche gefunden</strong>
-                <p>Ändere Suche oder Filter – oder archiviere oben einen alten Dienstplan.</p>
-              </div>
+              <EmptyState
+                variant={query || filter !== "all" ? "filtered" : "empty"}
+                title={
+                  query || filter !== "all"
+                    ? "Keine passende Woche gefunden"
+                    : "Noch keine gespeicherten Wochen"
+                }
+                description={
+                  query || filter !== "all"
+                    ? "Ändere Suche oder Filter – oder archiviere oben einen alten Dienstplan."
+                    : "Archiviere oben einen alten Dienstplan oder speichere eine Woche im Editor."
+                }
+                primaryAction={
+                  query || filter !== "all" ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setQuery("");
+                        setFilter("all");
+                      }}
+                    >
+                      Filter zurücksetzen
+                    </Button>
+                  ) : undefined
+                }
+              />
             )}
           </div>
 
@@ -331,7 +363,10 @@ export default function ArchivPage() {
                     <div className="archive-detail-section">
                       <h4>Zuweisungen</h4>
                       <div className="archive-detail-list">
-                        {selectedDetail.assignments.slice(0, 120).map((row, index) => (
+                        {(showAllAssignments
+                          ? selectedDetail.assignments
+                          : selectedDetail.assignments.slice(0, 120)
+                        ).map((row, index) => (
                           <div className="archive-detail-row" key={`assignment-${index}`}>
                             <span>{germanDate(valueOf(row, "date"))}</span>
                             <div>
@@ -344,6 +379,16 @@ export default function ArchivPage() {
                             </div>
                           </div>
                         ))}
+                        {!showAllAssignments && selectedDetail.assignments.length > 120 && (
+                          <button
+                            type="button"
+                            className="archive-detail-more"
+                            onClick={() => setShowAllAssignments(true)}
+                          >
+                            Alle {selectedDetail.assignments.length} Zuweisungen anzeigen
+                            ({selectedDetail.assignments.length - 120} weitere)
+                          </button>
+                        )}
                         {selectedDetail.assignments.length === 0 && (
                           <p className="archive-detail-empty">Keine Zuweisungen gespeichert.</p>
                         )}
@@ -371,6 +416,9 @@ export default function ArchivPage() {
               ) : null}
 
               <div className="archive-detail-actions">
+                <Button href={`/plan-editor?start=${selectedWeek.start_date}`}>
+                  Im Editor öffnen
+                </Button>
                 <button type="button" className="btn btn-danger" onClick={() => void remove(selectedWeek)}>
                   Woche löschen
                 </button>
