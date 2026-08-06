@@ -35,5 +35,9 @@ local_data/archives/dienstplanarchiv/*
 local_data/uploads/
 local_data/exports/
 
+# Lokale Datenbank-Backups (Sprint 1, Teil 3) - enthalten dieselben
+# Mitarbeiter-/Planungsdaten wie local_data/database/, nie versionieren.
+local_data/backups/
+
 # Log des Next.js-Backend-Supervisors (frontend/lib/backend-supervisor.ts).
 local_data/.backend-supervisor.log

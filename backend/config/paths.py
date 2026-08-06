@@ -39,6 +39,7 @@ DIENSTPLAN_ARCHIVE_DIR = ARCHIVE_DIR / "dienstplanarchiv"
 
 UPLOAD_DIR = LOCAL_DATA_DIR / "uploads"
 EXPORT_DIR = LOCAL_DATA_DIR / "exports"
+BACKUP_DIR = LOCAL_DATA_DIR / "backups"
 
 DATABASE_PATH = DATABASE_DIR / "dienstplaene.db"
 
@@ -61,6 +62,7 @@ def ensure_runtime_directories() -> None:
         DIENSTPLAN_ARCHIVE_DIR,
         UPLOAD_DIR,
         EXPORT_DIR,
+        BACKUP_DIR,
     )
 
     for directory in directories:
