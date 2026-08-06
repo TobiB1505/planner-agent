@@ -22,6 +22,27 @@ from .config import paths
 _relative = paths.relative_to_project
 
 
+def check_data_dir_for_environment() -> list[str]:
+    """In Preview/Production muss PLANNER_DATA_DIR explizit gesetzt sein.
+
+    Der lokale Default (local_data/ im Projektstamm) läge in einem Container
+    typischerweise im flüchtigen Schreib-Layer und wäre nach jedem Neu-Deploy
+    verloren. Ob das gemountete Volume tatsächlich persistent ist, kann diese
+    Prüfung nicht technisch beweisen - nur, dass die Variable bewusst gesetzt
+    wurde, statt still auf den lokalen Default zurückzufallen.
+    """
+    if os.getenv("APP_ENV", "local") not in ("preview", "production"):
+        return []
+    if os.getenv("PLANNER_DATA_DIR"):
+        return []
+    return [
+        f"APP_ENV={os.getenv('APP_ENV')} verlangt ein explizit gesetztes "
+        "PLANNER_DATA_DIR (Pfad zu einem persistenten Volume, z.B. /data) - "
+        "der lokale Standardordner local_data/ liegt im flüchtigen "
+        "Container-Dateisystem."
+    ]
+
+
 def check_runtime_directories() -> list[str]:
     """Legt die Laufzeitordner an und prüft, dass lokal geschrieben werden kann."""
     problems: list[str] = []
@@ -115,11 +136,20 @@ def _resolve_port(raw: str, source: str) -> int:
     return port
 
 
+def resolve_backend_port() -> int:
+    """PORT vor BACKEND_PORT: viele Container-Hosting-Plattformen (Render,
+    Railway, Fly.io) injizieren PORT und erwarten, dass der Prozess genau
+    darauf bindet - BACKEND_PORT bleibt der lokale/dokumentierte Name."""
+    raw_port = os.getenv("PORT") or os.getenv("BACKEND_PORT", "8000")
+    return _resolve_port(raw_port, "PORT/BACKEND_PORT")
+
+
 def run_checks() -> None:
     print("Planner-Agent Backend - Vorprüfung")
     print(f"Datenordner: {_relative(paths.LOCAL_DATA_DIR)}")
 
-    problems = check_runtime_directories()
+    problems = check_data_dir_for_environment()
+    problems += check_runtime_directories()
     problems += check_database()
 
     for warning in check_templates():
@@ -140,7 +170,7 @@ def main() -> None:
     run_checks()
 
     host = os.getenv("BACKEND_HOST", "127.0.0.1")
-    port = _resolve_port(os.getenv("BACKEND_PORT", "8000"), "BACKEND_PORT")
+    port = resolve_backend_port()
     # reload=True ist eine Entwickler-Bequemlichkeit (Auto-Neustart bei
     # Code-Änderungen) und lief lange als Standard - das war ein Fehler:
     # ein normaler Nutzer bearbeitet keinen Code, bekommt davon nur einen

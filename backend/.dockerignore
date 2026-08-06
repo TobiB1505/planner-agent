@@ -1,0 +1,8 @@
+# Build-Kontext ist backend/ selbst (siehe Dockerfile-Kopfkommentar) - .env,
+# .git/ und frontend/ liegen dadurch bereits ausserhalb des Kontexts. Hier
+# nur noch das ausschliessen, was innerhalb von backend/ selbst nicht ins
+# Image soll.
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
