@@ -23,6 +23,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend import api, db
+from backend.routers import imports as imports_router
 
 
 def _init_db(tmp_path, monkeypatch, filename: str):
@@ -58,7 +59,7 @@ def test_health_responds_quickly_during_slow_pdf_import(tmp_path, monkeypatch):
             "assignments": [], "absences": [],
         }
 
-    monkeypatch.setattr(api, "extract_dienstplan", slow_extract)
+    monkeypatch.setattr(imports_router, "extract_dienstplan", slow_extract)
 
     results: dict[str, float] = {}
     import_started = threading.Event()
@@ -160,7 +161,7 @@ def test_pdf_import_success_returns_mocked_extraction(tmp_path, monkeypatch):
         ],
         "absences": [],
     }
-    monkeypatch.setattr(api, "extract_dienstplan", lambda content, api_key=None: expected)
+    monkeypatch.setattr(imports_router, "extract_dienstplan", lambda content, api_key=None: expected)
 
     with TestClient(api.app) as client:
         resp = client.post(
@@ -190,7 +191,7 @@ def test_pdf_import_extraction_error_returns_500(tmp_path, monkeypatch):
     def raising_extract(content, api_key=None):
         raise RuntimeError("Gemini nicht erreichbar")
 
-    monkeypatch.setattr(api, "extract_dienstplan", raising_extract)
+    monkeypatch.setattr(imports_router, "extract_dienstplan", raising_extract)
 
     with TestClient(api.app) as client:
         resp = client.post(

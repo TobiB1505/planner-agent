@@ -15,7 +15,8 @@ gegen die echte lokale Mitarbeiterdatenbank.
 """
 from __future__ import annotations
 
-from backend import api, db, memory
+from backend import db, memory
+from backend.routers import plans
 
 
 def _conn(tmp_path, monkeypatch, filename: str):
@@ -116,8 +117,8 @@ def test_person_creation_within_a_single_save_is_not_duplicated(tmp_path, monkey
     conn = _conn(tmp_path, monkeypatch, "create-once.db")
     lookup = db.load_person_lookup(conn)
 
-    first_id = api._resolve_or_create(conn, "Brandneu", lookup)
-    second_id = api._resolve_or_create(conn, "Brandneu", lookup)
+    first_id = plans._resolve_or_create(conn, "Brandneu", lookup)
+    second_id = plans._resolve_or_create(conn, "Brandneu", lookup)
     conn.commit()
 
     assert first_id == second_id
@@ -196,9 +197,9 @@ def test_assignment_warnings_are_equivalent_with_and_without_preloaded_lookup(tm
          "person": "Kitti", "raw_text": None},
     ]
 
-    warnings_default = api._assignment_warnings(conn, assignments, "2026-07-27")
+    warnings_default = plans._assignment_warnings(conn, assignments, "2026-07-27")
     lookup = db.load_person_lookup(conn)
-    warnings_with_lookup = api._assignment_warnings(conn, assignments, "2026-07-27", lookup)
+    warnings_with_lookup = plans._assignment_warnings(conn, assignments, "2026-07-27", lookup)
 
     assert warnings_default == warnings_with_lookup
     assert warnings_default, "Testszenario sollte tatsächlich eine Warnung auslösen"
@@ -266,7 +267,7 @@ def test_assignment_warnings_lookup_queries_do_not_grow_with_assignment_count(tm
             for i in range(n_assignments)
         ]
         _, counts = _count_lookup_statements(
-            conn, api._assignment_warnings, conn, assignments, "2026-07-27"
+            conn, plans._assignment_warnings, conn, assignments, "2026-07-27"
         )
         return counts
 

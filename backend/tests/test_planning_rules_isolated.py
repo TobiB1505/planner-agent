@@ -10,7 +10,7 @@ import sqlite3
 import pytest
 
 from backend import assignment, db, planning_rules, rehearsal_plan, stats
-from backend.api import _assignment_warnings
+from backend.routers.plans import _assignment_warnings
 
 
 TEAM = [
