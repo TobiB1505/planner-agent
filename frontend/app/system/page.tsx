@@ -124,13 +124,17 @@ export default function SystemPage() {
 
   useEffect(() => {
     if (!autoRefresh) return;
+    // Sprint 0 (S1-Fix, C16): pollte bislang nur checkHealth() und ließ die
+    // Diagnose (Datenbankstatus, Speicher, Vorlagen) veralten, obwohl das
+    // Label "Backend- und Datenbankstatus" verspricht. refreshAll() deckt
+    // beides ab, exakt wie der "Jetzt prüfen"-Button.
     pollTimer.current = window.setInterval(() => {
-      checkHealth();
+      refreshAll();
     }, HEALTH_POLL_INTERVAL_MS);
     return () => {
       if (pollTimer.current) window.clearInterval(pollTimer.current);
     };
-  }, [autoRefresh, checkHealth]);
+  }, [autoRefresh, refreshAll]);
 
   async function toggleAutoRefresh() {
     const next = !autoRefresh;
