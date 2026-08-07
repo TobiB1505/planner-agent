@@ -14,6 +14,7 @@ import {
   type WeekDetail,
   type WeekSummary,
 } from "@/lib/api";
+import { useScrollDetailIntoView } from "@/lib/useScrollDetailIntoView";
 import { useEffect, useMemo, useState } from "react";
 
 type ArchiveFilter = "all" | "imported" | "generated";
@@ -54,6 +55,7 @@ export default function ArchivPage() {
   const [deleteTarget, setDeleteTarget] = useState<WeekSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showAllAssignments, setShowAllAssignments] = useState(false);
+  const markUserSelection = useScrollDetailIntoView(selectedWeekId, ".archive-detail");
 
   async function load() {
     setLoading(true);
@@ -99,6 +101,7 @@ export default function ArchivPage() {
   const importedCount = weeks.filter((week) => !isGenerated(week)).length;
 
   async function selectWeek(weekId: number) {
+    markUserSelection();
     setSelectedWeekId(weekId);
     setMessage(null);
     setShowAllAssignments(false);

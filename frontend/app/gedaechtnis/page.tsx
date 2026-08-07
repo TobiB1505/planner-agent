@@ -17,6 +17,7 @@ import {
   type TeamIntelligenceOverview,
   type TeamIntelligencePerson,
 } from "@/lib/api";
+import { useScrollDetailIntoView } from "@/lib/useScrollDetailIntoView";
 import { useEffect, useMemo, useState } from "react";
 
 const SHOW_CHOICES = [
@@ -88,6 +89,7 @@ export default function GedaechtnisPage() {
   const [error, setError] = useState("");
   const [addShow, setAddShow] = useState("");
   const { toast } = useToast();
+  const markUserSelection = useScrollDetailIntoView(selectedId, ".memory-detail");
 
   useEffect(() => {
     let active = true;
@@ -290,6 +292,7 @@ export default function GedaechtnisPage() {
               key={person.person_id}
               className={`memory-person-card ${person.person_id === selectedId ? "is-active" : ""}`}
               onClick={() => {
+                markUserSelection();
                 setSelectedId(person.person_id);
                 setAddShow("");
                 setSection("overview");
