@@ -63,15 +63,23 @@ export default function SystemPage() {
   const [message, setMessage] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  // Sprint 4: Polling pausiert, solange der Tab nicht sichtbar ist -
+  // keine 5-Sekunden-Anfragen im Hintergrund.
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
   const pollTimer = useRef<number | null>(null);
 
   const checkHealth = useCallback(async () => {
     try {
       await healthCheck();
       setHealth("up");
+      setLastChecked(new Date());
       return true;
     } catch {
       setHealth("down");
+      setLastChecked(new Date());
       return false;
     }
   }, []);
@@ -100,10 +108,13 @@ export default function SystemPage() {
       .then(() => {
         if (!active) return;
         setHealth("up");
+        setLastChecked(new Date());
         return loadDiagnostics();
       })
       .catch(() => {
-        if (active) setHealth("down");
+        if (!active) return;
+        setHealth("down");
+        setLastChecked(new Date());
       });
 
     return () => {
@@ -128,8 +139,20 @@ export default function SystemPage() {
     };
   }, []);
 
+  // Sichtbarkeit des Tabs verfolgen; bei Rückkehr sofort einmal prüfen,
+  // damit der Status nicht bis zum nächsten Intervall veraltet bleibt.
   useEffect(() => {
-    if (!autoRefresh) return;
+    function onVisibilityChange() {
+      const visible = document.visibilityState === "visible";
+      setPageVisible(visible);
+      if (visible) void refreshAll();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [refreshAll]);
+
+  useEffect(() => {
+    if (!autoRefresh || !pageVisible) return;
     // Sprint 0 (S1-Fix, C16): pollte bislang nur checkHealth() und ließ die
     // Diagnose (Datenbankstatus, Speicher, Vorlagen) veralten, obwohl das
     // Label "Backend- und Datenbankstatus" verspricht. refreshAll() deckt
@@ -140,7 +163,7 @@ export default function SystemPage() {
     return () => {
       if (pollTimer.current) window.clearInterval(pollTimer.current);
     };
-  }, [autoRefresh, refreshAll]);
+  }, [autoRefresh, pageVisible, refreshAll]);
 
   async function toggleAutoRefresh() {
     const next = !autoRefresh;
@@ -232,13 +255,28 @@ export default function SystemPage() {
           </h2>
           <p>
             {health === "checking" && "Verbindung und Datenbankstatus werden gerade geladen."}
-            {health === "up" && "Die lokale Planung läuft. Der Status wird automatisch alle fünf Sekunden geprüft."}
+            {health === "up" && (autoRefresh
+              ? "Die lokale Planung läuft. Der Status wird automatisch alle fünf Sekunden geprüft, solange dieser Tab sichtbar ist."
+              : "Die lokale Planung läuft. Die automatische Prüfung ist ausgeschaltet.")}
             {health === "down" && "Starte das Backend neu oder öffne den Planner-Agent über das Startskript."}
           </p>
         </div>
-        <span className="system-live-badge">
-          <i aria-hidden="true" />
-          {health === "checking" ? "Prüfung läuft" : health === "up" ? "Live verbunden" : "Offline"}
+        <span className="system-live-meta">
+          <span className="system-live-badge">
+            <i aria-hidden="true" />
+            {health === "checking" ? "Prüfung läuft" : health === "up" ? "Live verbunden" : "Offline"}
+          </span>
+          {lastChecked && (
+            <small className="system-last-checked">
+              Zuletzt geprüft{" "}
+              {new Intl.DateTimeFormat("de-DE", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              }).format(lastChecked)}{" "}
+              Uhr
+            </small>
+          )}
         </span>
       </section>
 

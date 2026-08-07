@@ -1,16 +1,29 @@
 "use client";
 
 import PageHeader from "@/components/ui/PageHeader";
+import Button from "@/components/ui/Button";
 import MetricCard from "@/components/ui/MetricCard";
 import InlineStatus from "@/components/ui/InlineStatus";
 import PlanningRulesPanel from "@/components/PlanningRulesPanel";
 import { getPlanningRules, type PlanningRule } from "@/lib/api";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export default function PlanningLogicPage() {
   const [rules, setRules] = useState<PlanningRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setRules(await getPlanningRules());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Planungslogik konnte nicht geladen werden.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -61,7 +74,12 @@ export default function PlanningLogicPage() {
       {loading ? (
         <InlineStatus variant="loading" className="mt-3">Planungsregeln werden geladen …</InlineStatus>
       ) : error ? (
-        <InlineStatus variant="danger" className="mt-3">{error}</InlineStatus>
+        <div className="planning-logic-error-row">
+          <InlineStatus variant="danger">{error}</InlineStatus>
+          <Button variant="secondary" onClick={() => void load()}>
+            Erneut versuchen
+          </Button>
+        </div>
       ) : (
         <PlanningRulesPanel rules={rules} defaultOpen />
       )}
