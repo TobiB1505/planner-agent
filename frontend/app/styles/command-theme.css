@@ -123,6 +123,40 @@
   color: var(--status-critical);
 }
 
+/* 6b) A11y (Sprint 5): Warn-/Fehler-Chiptexte auf Dark anheben ---------
+   Die Seiten-Stylesheets nutzen historisch die Light-Töne (#c47c25,
+   #bd771d, #c84f4f) als Textfarbe auf getönten Chips. Auf dem dunklen
+   Command-Theme liegen diese Paare gemessen bei 3,7-4,3:1 (< 4,5:1).
+   Hier zentral auf die hellen Command-Statusfarben angehoben - die
+   Chip-Hintergründe (Tönungen) bleiben unverändert. */
+:root[data-theme="command"] .dashboard-quality-status.is-warning,
+:root[data-theme="command"] .dashboard-balance-label.is-high,
+:root[data-theme="command"] .dashboard-action-item.tone-warning .dashboard-action-marker,
+:root[data-theme="command"] .dashboard-rules-summary > .tone-warning,
+:root[data-theme="command"] .dashboard-rule-row.tone-warning .dashboard-rule-tone,
+:root[data-theme="command"] .planning-logic-overview article.tone-warning > strong,
+:root[data-theme="command"] .plan-issue-card.is-warning,
+:root[data-theme="command"] .plan-issue-card.is-warning .plan-issue-card-label,
+:root[data-theme="command"] .plan-day-badge.is-warning,
+:root[data-theme="command"] .copy-panel-summary .is-warning,
+:root[data-theme="command"] .plan-preview-stats .is-changed strong,
+:root[data-theme="command"] .plan-review-status.is-dirty {
+  color: var(--status-warning);
+}
+
+:root[data-theme="command"] .dashboard-quality-status.is-critical,
+:root[data-theme="command"] .dashboard-signal-orb.is-warning,
+:root[data-theme="command"] .planning-logic-error {
+  color: var(--status-critical);
+}
+
+/* Muted-Text auf Surface-2-Chips lag bei 4,49:1 - minimal anheben.
+   Die grüne is-ready-Variante behält ihre Statusfarbe. */
+:root[data-theme="command"] .dashboard-readiness-card:not(.is-ready) .dashboard-readiness-meta,
+:root[data-theme="command"] .dashboard-action-context {
+  color: var(--muted-strong);
+}
+
 /* 7) Scrollbars -------------------------------------------------------- */
 :root[data-theme="command"] * {
   scrollbar-color: var(--surface-2) transparent;

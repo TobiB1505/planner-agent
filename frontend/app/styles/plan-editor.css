@@ -1031,6 +1031,12 @@ button.plan-validation-summary {
   font: inherit;
 }
 
+/* A11y (Sprint 5): outline:0 oben entfernte den einzigen Fokusindikator. */
+.plan-density-select select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .plan-editor-tools-menu > div button {
   display: grid;
   gap: 2px;
