@@ -403,18 +403,6 @@ button.person-candidate {
   white-space: pre-wrap;
 }
 
-.page-header h1 {
-  font-size: clamp(1.6rem, 2vw, 2rem);
-  font-weight: 780;
-  letter-spacing: -0.035em;
-  line-height: 1.1;
-}
-
-.page-header p {
-  max-width: 760px;
-  line-height: 1.55;
-}
-
 .week-picker {
   position: relative;
   display: grid;
