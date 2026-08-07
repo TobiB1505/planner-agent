@@ -4,6 +4,29 @@ Begleitdokument zu `DESIGN_SYSTEM.md`. Hält fest, was in Sprint 1 neu
 entstanden ist, was migriert wurde, was als Legacy bewusst stehen bleibt,
 und in welcher Reihenfolge künftige Sprints weitermachen sollten.
 
+> **Stand nach Sprint 4:** Abschnitt 0 (unten) dokumentiert den
+> aktuellen Migrationsstand; die Abschnitte 1–8 beschreiben den
+> historischen Sprint-1-Stand und bleiben als Begründungsarchiv erhalten.
+
+## 0. Migrationsstand nach Sprint 4
+
+Alle acht Kernseiten nutzen den zentralen Seitenkopf und das zentrale
+Feedback-Modell (Details: `CORE_PAGES_SPEC.md`, `FEEDBACK_MATRIX.md`,
+`SPRINT_4_RESULT.md`):
+
+| Bereich | Status |
+|---|---|
+| `ui/PageHeader` | Auf allen 8 Kernseiten + Editor-Wizard; alte `components/PageHeader.tsx` **gelöscht** |
+| `.status`-Banner | **0 Verwendungen** – vollständig durch `InlineStatus` ersetzt (inkl. `EmployeeIntelligenceDialog`) |
+| `window.confirm`/`alert` | weiterhin **0 Verwendungen** |
+| Erfolgs-Feedback | Toast für Mutationen auf Team/Gedächtnis/Archiv/Planseiten/System; keine stillen Erfolge mehr |
+| `EmptyState` | Team, Gedächtnis, Archiv, Dashboard (Panels + keine-Woche-Fall) inkl. `filtered`-Variante mit Zurücksetzen |
+| Dashboard-Legacy | `DashboardCommand`, `DashboardIntelligenceOverview`, `dashboard-command.css` **gelöscht** (C8 konsolidiert) |
+| Dirty-State | `PlanReviewHeader` mit Dirty-Chip auf Künstler-/Probenplan (analog Editor-Status-Chip) |
+| Verbleibende Ad-hoc-Buttons | `.btn`-Familie weiterhin auf Planseiten/Detailflächen aktiv – bewusst nicht in Sprint 4 (mechanischer Sprint-5/6-Task ohne UX-Effekt) |
+| Verbleibende Karten-Klassen | seitenspezifische `*card*`-Klassen bestehen weiter, aber je Seite konsistent; keine vollständige `Card`-Ablösung erzwungen |
+| Statusfarb-Literale | Restbestand unverändert (mechanische Migration, siehe Abschnitt 4) |
+
 ## 1. Neue zentrale Komponenten (Sprint 1)
 
 Siehe `DESIGN_SYSTEM.md` Abschnitt 12 für die vollständige Liste. Alle in
