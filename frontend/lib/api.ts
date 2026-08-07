@@ -42,8 +42,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let hasDetail = false;
     try {
       const parsed = JSON.parse(text);
-      message = parsed.detail ?? text;
-      hasDetail = typeof parsed.detail === "string";
+      if (typeof parsed.detail === "string") {
+        message = parsed.detail;
+        hasDetail = true;
+      } else if (parsed.detail !== undefined) {
+        // FastAPI-Validierungsfehler (422) liefern detail als Objektliste -
+        // die darf nie als "[object Object]" im UI landen.
+        message = "Ungültige Eingabe – bitte die Angaben prüfen.";
+        hasDetail = true;
+      }
     } catch {
       // keep raw text
     }

@@ -108,6 +108,25 @@ body {
   .route-transition {
     animation: none;
   }
+
+  /* Großflächige Dauer-Animationen (Skeleton-Shimmer, Fortschritts-Slides,
+     Puls) ruhen bei Reduced Motion - der Ladezustand bleibt über Text und
+     role="status" vermittelt. Kleine, isolierte Spinner bleiben erhalten. */
+  .dashboard-skeleton > div,
+  .plan-editor-loading-grid i,
+  .plan-editor-loading-toolbar i,
+  .reading-progress-track span,
+  .reading-progress-pulse {
+    animation: none;
+  }
+}
+
+/* Fehler-/404-Seiten: zentriert im Inhaltsbereich, Sidebar bleibt nutzbar. */
+.route-error-shell {
+  display: grid;
+  min-height: 60vh;
+  place-items: center;
+  padding: var(--space-6);
 }
 
 button,
