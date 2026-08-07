@@ -33,12 +33,14 @@ Netto **−943 Zeilen** über den Sprint (771 hinzugefügt, 1 714 entfernt).
   `DashboardIntelligenceOverview` (180 Z.), `dashboard-command.css`
   (275 Z.), Hero-Wochenkarte, doppelte Audit-/Workload-/Show-Blöcke,
   „Studio Dashboard · Command Center"-Jargon.
-- **Neue Informationshierarchie:** PageHeader (mit Wochenzeitraum im
-  Untertitel und „Planung öffnen" als Primäraktion) → 6 MetricCards
-  (Planqualität, offene Signale, Vorbereitung n/3, Showtage, MA im Plan,
-  Gedächtnis-Profile; 3/2/1-spaltig responsive) → einklappbarer
-  Vorbereitungsstatus → Handlungsbedarf → Show-/Probentage →
-  Team-Balance → Letzte Änderungen. Jede Information genau einmal
+- **Neue Informationshierarchie** (nach Nutzer-Feedback in der
+  ursprünglichen Command-Karten-Optik umgesetzt): PageHeader +
+  Wochensteuerung → Hero-Wochenkarte („Planung öffnen") →
+  einklappbarer Vorbereitungsstatus → Intelligence-Zeile mit je einer
+  Karte für Planqualität (Ring + Dimensionen), Entscheidungsbedarf
+  (Signal-Aufschlüsselung, verlinkt), Datenbasis (Gedächtnis-Abdeckung)
+  und Letzte Änderungen → Handlungsbedarf → Show-/Probentage →
+  Team-Balance. Jede Information genau einmal
   (Matrix: `CORE_PAGES_SPEC.md` §2).
 - **Action Items:** einziges Aktionszentrum; **alle** Items verlinkt
   (Vorbereitung → jeweilige Seite; Qualität/Fairness/Belastung →

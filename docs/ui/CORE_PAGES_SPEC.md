@@ -32,25 +32,32 @@ dreifach angezeigt, es gibt genau eine Wochensteuerung, jedes Action-Item
 führt zu einem Ziel.** Die Matrix legt fest, welcher Block der einzige
 Ort für welche Information ist:
 
+Die visuelle Sprache ist die der ursprünglichen Command-Karten
+(Nutzerentscheid nach Sprint 4): Hero-Wochenkarte und die
+Intelligence-Zeile mit Qualitäts-Ring bleiben - aber jede Information
+existiert nur einmal.
+
 | Information | Einziger Ort | Bemerkung |
 |---|---|---|
 | Auswertungswoche (Auswahl) | Wochensteuerung neben dem PageHeader (Select + Pfeile) | einziges `<select>` der Seite |
-| Wochenzeitraum (Datum) | PageHeader-Untertitel | vorher zusätzlich Hero-Karte + Command-Kopf |
-| Planqualität (Score) | MetricCard „Planqualität" | vorher 3× (Chip, Donut, Ring) |
-| Offene Signale (Anzahl) | MetricCard „Offene Signale" | Summe Qualitäts-Issues + Fairness-Alerts |
-| Vorbereitung n/3 | MetricCard „Vorbereitung" + einklappbare Detailkarten | Detailkarten sind die Aktionsfläche (Links) |
-| Showtage | MetricCard „Showtage" + Panel „Show- und Probentage" | Karte = Zahl, Panel = Detail; keine dritte Stelle |
-| MA im Plan / Belastung | MetricCard „MA im Plan" + Panel „Team-Balance" | Panel enthält die Personen-Karten (einmalig) |
-| Gedächtnis-Abdeckung | MetricCard „Gedächtnis-Profile" | vorher Coverage-Balken + Prozentwert doppelt |
+| Wochenzeitraum (Datum) | Hero-Wochenkarte (mit „Planung öffnen" als Primäraktion) | PageHeader-Untertitel bleibt generisch |
+| Planqualität (Score + Dimensionen) | Karte „Planqualität" (Ring + Dimensionsbalken) | vorher 3× (Chip, Donut, Ring) |
+| Offene Signale (Anzahl + Aufschlüsselung) | Karte „Entscheidungsbedarf" (Konflikte/Fairness/Belastung) | verlinkt auf den Handlungsbedarf; Detailtexte nur dort |
+| Vorbereitung n/3 | einklappbarer Planungsstatus mit Detailkarten | Detailkarten sind die Aktionsfläche (Links) |
+| Showtage | Panel „Show- und Probentage" (Badge = Zahl) | keine zweite Stelle |
+| MA im Plan / Belastung | Panel „Team-Balance" (Badge + Personen-Karten) | „Belastung"-Zähler der Signal-Karte ist Aggregat, kein Duplikat der Karten |
+| Gedächtnis-Abdeckung | Karte „Datenbasis" (Coverage-Balken + Fakten + Cold-Start-Hinweis) | verlinkt auf `/gedaechtnis` |
 | Handlungsbedarf | Panel „Was diese Woche Aufmerksamkeit braucht" | einziges Aktionszentrum; **alle** Items verlinkt |
-| Letzte Änderungen | Panel „Letzte Änderungen" (Audit-Protokoll) | vorher 2× Audit-Feed |
+| Letzte Änderungen | Audit-Karte in der Intelligence-Zeile | vorher 2× Audit-Feed |
 
 Action-Item-Ziele: fehlender Künstler-/Probenplan → jeweilige Seite;
 Dienstplan offen → `/plan-editor`; Qualitäts-, Fairness- und
 Belastungs-Hinweise → `/plan-editor` (dort wird korrigiert).
 
-Entfernt: `DashboardCommand` (433 Zeilen), `DashboardIntelligenceOverview`
-(180 Zeilen), `dashboard-command.css` (275 Zeilen), Hero-Wochenkarte.
+Entfernt bleiben: `DashboardCommand` (433 Zeilen),
+`DashboardIntelligenceOverview` (180 Zeilen), `dashboard-command.css`
+(275 Zeilen) - die Intelligence-Zeile ist direkt in der Seite
+implementiert und zeigt jede Kennzahl genau einmal.
 
 ## 3. Team und MA-Gedächtnis – fachliche Trennung
 
@@ -116,7 +123,7 @@ die kleineren Bausteine (EmptyState, InlineStatus, Badges, Karten).
 
 | Seite | Desktop | ~1024–834 | ≤ ~680–560 |
 |---|---|---|---|
-| Dashboard | Metrics 3-spaltig, Panels 2-spaltig | Panels 1-spaltig | Metrics 2→1-spaltig, Kopf stapelt |
+| Dashboard | Intelligence-Zeile 12-Spalten-Raster (5/3/4 + Audit voll), Panels 2-spaltig | Qualitätskarte volle Breite, Rest 2-spaltig; Panels 1-spaltig | Karten 1-spaltig, Hero und Kopf stapeln |
 | Team | Kartengrid mehrspaltig | 2-spaltig | 1-spaltig, Aktionen unter Trennlinie |
 | Gedächtnis | Liste + Detail nebeneinander | Detail unter Liste | KPI-Karten 1-spaltig |
 | Archiv | Liste + Detail-Aside | Detail unter Liste | Kopf/Tools stapeln |

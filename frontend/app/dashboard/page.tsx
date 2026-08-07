@@ -3,7 +3,6 @@
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import InlineStatus from "@/components/ui/InlineStatus";
-import MetricCard from "@/components/ui/MetricCard";
 import PageHeader from "@/components/ui/PageHeader";
 import {
   getDashboardInsights,
@@ -166,8 +165,17 @@ export default function DashboardPage() {
     low: workload.filter((entry) => entry.status === "low").length,
   }), [workload]);
 
-  const openSignals = insights ? insights.quality.issues.length + alerts.length : 0;
-  const recentAudit = insights?.intelligence.recent_audit.slice(0, 6) ?? [];
+  const conflictCount = insights
+    ? insights.quality.issues.filter((issue) => issue.severity === "conflict").length
+    : 0;
+  const openSignals = conflictCount + alerts.length + workloadCounts.high;
+  const recentAudit = insights?.intelligence.recent_audit.slice(0, 4) ?? [];
+  const profileCoverage = insights?.intelligence.active_people
+    ? Math.round((insights.intelligence.evidence_profiles / insights.intelligence.active_people) * 100)
+    : 0;
+  const memoryCoverage = insights?.intelligence.active_people
+    ? Math.round((insights.intelligence.memory_profiles / insights.intelligence.active_people) * 100)
+    : 0;
 
   const actionItems = useMemo(() => {
     if (!insights) return [];
@@ -280,12 +288,7 @@ export default function DashboardPage() {
       <div className="dashboard-page-head">
         <PageHeader
           title="Dashboard"
-          subtitle={
-            selectedWeek
-              ? `Planungsstand, offene Aufgaben und Team-Balance · ${formatDate(selectedWeek.start_date)} – ${formatDate(selectedWeek.end_date)}`
-              : "Planungsstand, offene Aufgaben und Team-Balance für die ausgewählte Woche"
-          }
-          primaryAction={<Button href="/plan-editor">Planung öffnen</Button>}
+          subtitle="Planungsstand, offene Aufgaben und Team-Balance für die ausgewählte Woche"
         />
         <div className="dashboard-header-week" aria-label="Auswertungswoche auswählen">
           <span>Auswertungswoche</span>
@@ -335,65 +338,27 @@ export default function DashboardPage() {
         </InlineStatus>
       )}
 
+      <section className="dashboard-week-hero">
+        <div className="dashboard-week-copy">
+          <span className="dashboard-eyebrow">Ausgewählte Planwoche</span>
+          <h2>{selectedWeek?.label ?? "Planungswoche auswählen"}</h2>
+          <p>
+            {selectedWeek
+              ? `${formatDate(selectedWeek.start_date)} – ${formatDate(selectedWeek.end_date)}`
+              : "Noch keine gespeicherte Woche vorhanden."}
+          </p>
+        </div>
+        <div className="dashboard-planning-action">
+          <Link className="btn btn-primary" href="/plan-editor">
+            Planung öffnen
+          </Link>
+        </div>
+      </section>
+
       {loading && !insights ? (
         <DashboardSkeleton />
       ) : insights ? (
         <>
-          <section className="dashboard-metrics" aria-label="Kennzahlen der Woche">
-            <MetricCard
-              title="Planqualität"
-              value={String(insights.quality.score)}
-              unit={`/ ${insights.quality.max_score}`}
-              status={
-                insights.quality.status === "good"
-                  ? { label: "Gut", tone: "positive" }
-                  : insights.quality.status === "warning"
-                    ? { label: "Prüfen", tone: "warning" }
-                    : { label: "Kritisch", tone: "danger" }
-              }
-            />
-            <MetricCard
-              title="Offene Signale"
-              value={String(openSignals)}
-              change={{ label: "Qualitäts- und Fairness-Hinweise", tone: "neutral" }}
-              status={
-                openSignals > 0
-                  ? { label: "Offen", tone: "warning" }
-                  : { label: "Keine", tone: "positive" }
-              }
-            />
-            <MetricCard
-              title="Vorbereitung"
-              value={`${readinessCount} / 3`}
-              change={{ label: "Künstler-, Proben- und Dienstplan", tone: "neutral" }}
-              status={allPreparationReady ? { label: "Bereit", tone: "positive" } : undefined}
-            />
-            <MetricCard
-              title="Showtage"
-              value={String(insights.show_days.length)}
-              change={{ label: planningWeek?.label ?? "Aktuelle Planung", tone: "neutral" }}
-            />
-            <MetricCard
-              title="MA im Plan"
-              value={String(workload.length)}
-              change={
-                workloadCounts.high > 0
-                  ? { label: `${workloadCounts.high} hoch belastet`, tone: "negative" }
-                  : { label: "Belastung ausgeglichen", tone: "neutral" }
-              }
-            />
-            <MetricCard
-              title="Gedächtnis-Profile"
-              value={`${insights.intelligence.evidence_profiles} / ${insights.intelligence.active_people}`}
-              change={{
-                label: insights.intelligence.cold_start_people.length
-                  ? `${insights.intelligence.cold_start_people.length} ohne Historie`
-                  : "Alle Profile mit Historie",
-                tone: "neutral",
-              }}
-            />
-          </section>
-
           <section
             className={`dashboard-readiness-shell ${allPreparationReady ? "is-complete" : ""}`}
             aria-label="Vorbereitungsstatus"
@@ -471,7 +436,124 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          <section className="panel dashboard-actions-panel">
+          <section className="dashboard-intelligence-overview" aria-label="Plan Intelligence">
+            <article className={`dashboard-command-card dashboard-quality-card is-${insights.quality.status}`}>
+              <header>
+                <div>
+                  <span className="dashboard-eyebrow">Plan Intelligence · {selectedWeek?.label ?? insights.week.label}</span>
+                  <h2>Planqualität</h2>
+                </div>
+                <span className={`dashboard-quality-status is-${insights.quality.status}`}>
+                  {insights.quality.status === "good"
+                    ? "Stabil"
+                    : insights.quality.status === "warning"
+                      ? "Prüfen"
+                      : "Handlungsbedarf"}
+                </span>
+              </header>
+              <div className="dashboard-quality-main">
+                <div
+                  className="dashboard-quality-ring"
+                  style={{ "--quality-score": `${insights.quality.score * 3.6}deg` } as React.CSSProperties}
+                  aria-label={`Planqualität ${insights.quality.score} von ${insights.quality.max_score}`}
+                >
+                  <strong>{insights.quality.score}</strong>
+                  <span>/{insights.quality.max_score}</span>
+                </div>
+                <div className="dashboard-quality-dimensions">
+                  {insights.quality.dimensions.map((dimension) => (
+                    <div key={dimension.key}>
+                      <span><strong>{dimension.label}</strong><small>{dimension.score}/{dimension.max_score}</small></span>
+                      <i aria-hidden="true"><b style={{ width: `${(dimension.score / dimension.max_score) * 100}%` }} /></i>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <Link href="/plan-editor">Plananalyse öffnen <span>→</span></Link>
+            </article>
+
+            <article className="dashboard-command-card dashboard-risk-card">
+              <header>
+                <div>
+                  <span className="dashboard-eyebrow">Entscheidungsbedarf</span>
+                  <h2>{openSignals ? `${openSignals} Signale prüfen` : "Keine kritischen Signale"}</h2>
+                </div>
+                <span className={`dashboard-signal-orb ${openSignals ? "is-warning" : "is-clear"}`}>
+                  {openSignals || "✓"}
+                </span>
+              </header>
+              <div className="dashboard-signal-metrics">
+                <span><strong>{conflictCount}</strong><small>Konflikte</small></span>
+                <span><strong>{alerts.length}</strong><small>Fairness</small></span>
+                <span><strong>{workloadCounts.high}</strong><small>Belastung</small></span>
+              </div>
+              <Link href="#dashboard-actions">Handlungsbedarf ansehen <span>→</span></Link>
+            </article>
+
+            <article className="dashboard-command-card dashboard-data-card">
+              <header>
+                <div>
+                  <span className="dashboard-eyebrow">Mitarbeiter Intelligence</span>
+                  <h2>Datenbasis</h2>
+                </div>
+                <Link href="/gedaechtnis">Profile <span>→</span></Link>
+              </header>
+              <div className="dashboard-coverage-list">
+                <CoverageRow
+                  label="Profile mit Historie"
+                  value={insights.intelligence.evidence_profiles}
+                  total={insights.intelligence.active_people}
+                  percent={profileCoverage}
+                />
+                <CoverageRow
+                  label="Strukturiertes Memory"
+                  value={insights.intelligence.memory_profiles}
+                  total={insights.intelligence.active_people}
+                  percent={memoryCoverage}
+                />
+              </div>
+              <div className="dashboard-data-facts">
+                <span><strong>{insights.intelligence.historical_weeks}</strong><small>Dienstplanwochen</small></span>
+                <span><strong>{insights.intelligence.rehearsal_weeks}</strong><small>Probenwochen</small></span>
+                <span><strong>{insights.intelligence.manual_skills}</strong><small>manuelle Skills</small></span>
+              </div>
+              {insights.intelligence.cold_start_people.length > 0 && (
+                <p className="dashboard-data-note">
+                  Noch ohne Historie: {insights.intelligence.cold_start_people.slice(0, 4).join(", ")}
+                  {insights.intelligence.cold_start_people.length > 4
+                    ? ` +${insights.intelligence.cold_start_people.length - 4}`
+                    : ""}
+                </p>
+              )}
+            </article>
+
+            <article className="dashboard-command-card dashboard-audit-card">
+              <header>
+                <div>
+                  <span className="dashboard-eyebrow">Nachvollziehbarkeit</span>
+                  <h2>Letzte Änderungen</h2>
+                </div>
+                <span className="dashboard-audit-count">{recentAudit.length}</span>
+              </header>
+              <div className="dashboard-audit-list">
+                {recentAudit.map((event) => (
+                  <div key={event.id}>
+                    <span className={`dashboard-audit-icon type-${event.event_type}`} aria-hidden="true" />
+                    <span>
+                      <strong>{AUDIT_LABELS[event.event_type]}</strong>
+                      <small>{auditTime(event.created_at)} · {event.user}</small>
+                    </span>
+                  </div>
+                ))}
+                {!recentAudit.length && (
+                  <p className="dashboard-audit-empty">Der Änderungsverlauf beginnt mit dem nächsten Speichern.</p>
+                )}
+              </div>
+              <Link href="/plan-editor">Änderungsverlauf im Plan <span>→</span></Link>
+            </article>
+          </section>
+
+          <section className="panel dashboard-actions-panel" id="dashboard-actions">
             <SectionHeader
               eyebrow="Handlungsbedarf"
               title="Was diese Woche Aufmerksamkeit braucht"
@@ -609,33 +691,6 @@ export default function DashboardPage() {
             )}
           </section>
 
-          <section className="panel dashboard-audit-panel">
-            <SectionHeader
-              eyebrow="Protokoll"
-              title="Letzte Änderungen"
-              description="Die jüngsten Bearbeitungen am Dienstplan aus dem Änderungsprotokoll."
-              badge={`${recentAudit.length} Einträge`}
-            />
-            {recentAudit.length ? (
-              <div className="dashboard-audit-list">
-                {recentAudit.map((event) => (
-                  <div key={event.id}>
-                    <span className={`dashboard-audit-icon type-${event.event_type}`} aria-hidden="true" />
-                    <span>
-                      <strong>{AUDIT_LABELS[event.event_type]}</strong>
-                      <small>{auditTime(event.created_at)} · {event.user}</small>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                className="dashboard-panel-empty"
-                title="Noch keine Änderungen protokolliert"
-                description="Sobald der Dienstplan bearbeitet wird, erscheinen die letzten Schritte hier."
-              />
-            )}
-          </section>
         </>
       ) : (
         <section className="panel dashboard-no-week">
@@ -698,6 +753,26 @@ function SectionHeader({
       </div>
       {badge && <span className="dashboard-section-badge">{badge}</span>}
     </header>
+  );
+}
+
+function CoverageRow({
+  label,
+  value,
+  total,
+  percent,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  percent: number;
+}) {
+  return (
+    <div className="dashboard-coverage-row">
+      <span><strong>{label}</strong><small>{value} von {total}</small></span>
+      <i aria-hidden="true"><b style={{ width: `${percent}%` }} /></i>
+      <em>{percent}%</em>
+    </div>
   );
 }
 
