@@ -1,6 +1,7 @@
 "use client";
 
 import PlanValidationSummary, { type ValidationStatus } from "@/components/PlanValidationSummary";
+import Button from "@/components/ui/Button";
 import type { PlanValidationSummary as ValidationSummaryData } from "@/lib/planValidation";
 import { formatSaveStatus, type SaveState } from "@/lib/plan-editor/saveStatus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -14,9 +15,20 @@ export interface PlanToolbarTool {
   disabled?: boolean;
 }
 
+/**
+ * Editor-Toolbar (Sprint 3 restrukturiert). Zwei Gruppen-Zeilen:
+ *
+ *   Zeile 1 - Status & Bearbeitung: Speicherstatus, Undo/Redo,
+ *             Speichern (einzige Primäraktion, mit sichtbarem Label),
+ *             Planqualität- und Konflikt-Status als ruhige Chips.
+ *   Zeile 2 - Ansicht & Sekundäres: Woche/Tag-Umschalter, Dichte,
+ *             "Plan optimieren"-Menü, Excel-Export.
+ *
+ * Wochenlabel und Zeilenanzahl wurden entfernt - beides steht bereits im
+ * Seitenkopf (PlanEditorSummary bzw. Wochen-Kontextkarte) und hatte hier
+ * keinen operativen Nutzen (siehe EDITOR_VISUAL_BASELINE.md, Frage 2).
+ */
 export default function PlanEditorToolbar({
-  weekLabel,
-  rowCount,
   canUndo,
   canRedo,
   onUndo,
@@ -25,7 +37,7 @@ export default function PlanEditorToolbar({
   isDirty,
   saveError,
   onSave,
-  saveLabel = "Änderungen speichern",
+  saveLabel = "Speichern",
   onExport,
   exportDisabled,
   exportLabel = "Excel exportieren",
@@ -40,8 +52,6 @@ export default function PlanEditorToolbar({
   onOpenIntelligence,
   viewControls,
 }: {
-  weekLabel: string;
-  rowCount: number;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -90,16 +100,12 @@ export default function PlanEditorToolbar({
     <div className="plan-editor-toolbar" role="toolbar" aria-label="Dienstplan-Werkzeuge">
       <div className="plan-editor-toolbar-primary">
         <div className="plan-editor-toolbar-context">
-          <div className="plan-editor-toolbar-identity">
-            <span className="plan-editor-toolbar-week">{weekLabel}</span>
-            <span className="plan-editor-toolbar-count">{rowCount} Planzeilen</span>
-          </div>
           <span className={`plan-editor-save-status ${statusTone}`} role="status">
             <span aria-hidden="true" />
             {statusText}
           </span>
           {saveState === "error" && saveError && (
-            <span className="plan-editor-save-error">{saveError}</span>
+            <span className="plan-editor-save-error" role="alert">{saveError}</span>
           )}
         </div>
 
@@ -126,26 +132,16 @@ export default function PlanEditorToolbar({
               ↷
             </button>
           </div>
-          <button
-            type="button"
-            className="btn btn-primary btn-save"
+          <Button
+            variant="primary"
+            className="plan-save-button"
+            loading={saveState === "saving"}
             disabled={busy || !isDirty}
-            title={isDirty ? saveLabel : "Alle Änderungen sind bereits gespeichert"}
-            aria-label={saveLabel}
+            title={isDirty ? `${saveLabel} (Strg/Cmd+S)` : "Alle Änderungen sind bereits gespeichert"}
             onClick={onSave}
           >
-            {saveState === "saving" ? (
-              <span className="spinner" />
-            ) : (
-              <svg className="btn-save-icon" viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M4 3.5h9.5L16.5 6.5v10a1 1 0 0 1-1 1h-11.5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1z" />
-                <path d="M6.5 3.5v4h6v-4" />
-                <path d="M6 12h8" />
-                <path d="M6 15h5" />
-              </svg>
-            )}
-            <span className={`btn-save-dot ${statusTone}`} aria-hidden="true" />
-          </button>
+            {saveLabel}
+          </Button>
           {onOpenIntelligence && (
             <button
               type="button"

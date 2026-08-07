@@ -1,7 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
+import InternalNavigationGuard from "@/components/InternalNavigationGuard";
 import Sidebar from "@/components/Sidebar";
+import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 import "./styles/foundation.css";
+import "./styles/tokens.css";
 import "./styles/sidebar.css";
 import "./styles/shared-components.css";
 import "./styles/planning-workflow.css";
@@ -16,6 +20,19 @@ import "./styles/plan-editor.css";
 import "./styles/intelligence.css";
 import "./styles/badges.css";
 import "./styles/command-theme.css";
+import "./styles/ui-primitives.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono-loaded",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -50,10 +67,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="de" className="h-full antialiased" data-theme="command">
+    <html
+      lang="de"
+      className={`h-full antialiased ${inter.variable} ${jetbrainsMono.variable}`}
+      data-theme="command"
+    >
       <body className="flex h-full min-h-screen overflow-hidden">
-        <Sidebar />
-        <main className="app-main min-w-0 flex-1 overflow-y-auto px-5 py-5 md:px-8 md:py-6">{children}</main>
+        <ToastProvider>
+          <InternalNavigationGuard />
+          <Sidebar />
+          <main className="app-main min-w-0 flex-1 overflow-y-auto px-5 py-5 md:px-8 md:py-6">{children}</main>
+        </ToastProvider>
       </body>
     </html>
   );

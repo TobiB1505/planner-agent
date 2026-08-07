@@ -403,18 +403,6 @@ button.person-candidate {
   white-space: pre-wrap;
 }
 
-.page-header h1 {
-  font-size: clamp(1.6rem, 2vw, 2rem);
-  font-weight: 780;
-  letter-spacing: -0.035em;
-  line-height: 1.1;
-}
-
-.page-header p {
-  max-width: 760px;
-  line-height: 1.55;
-}
-
 .week-picker {
   position: relative;
   display: grid;
@@ -1278,6 +1266,11 @@ button.person-candidate {
   color: #2da970;
 }
 
+.plan-review-status.is-dirty {
+  background: rgba(211, 138, 50, 0.13);
+  color: #c47c25;
+}
+
 .plan-review-copy h2 {
   margin-top: 6px;
   font-size: 17px;
@@ -1400,6 +1393,10 @@ button.person-candidate {
   padding: 10px 18px;
   font-size: 11px;
   line-height: 1.45;
+}
+
+.plan-page-status {
+  margin-block: 12px;
 }
 
 .plan-sync-note {

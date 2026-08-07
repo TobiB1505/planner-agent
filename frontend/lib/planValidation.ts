@@ -48,7 +48,10 @@ export type PlanIssueCategory =
   | "data_quality";
 
 export interface PlanCellReference {
-  /** Entspricht rowKey(row) aus page.tsx - stabil, solange Abschnitt/Zeile-Text gleich bleibt. */
+  /** Entspricht row._row_id (assignRowIds in app/plan-editor/utils/planEditorHelpers.tsx) -
+   *  stabil und eindeutig, auch bei zwei Zeilen mit identischem Abschnitt/Zeile-Text
+   *  (Sprint 0, S1-Fix C4). Identisch mit dem Wert, den AG-Grid getRowId liefert,
+   *  damit navigateToIssue() die Zelle über api.getRowNode(rowId) findet. */
   rowId: string;
   /** AG-Grid-Spaltenfeld, identisch mit dayLabel. */
   columnId: string;
@@ -174,6 +177,9 @@ export function validatePlan({
 }): PlanValidationResult {
   const issues: PlanIssue[] = [];
   const knownPeople = new Set(people.map((name) => name.toLocaleLowerCase("de")));
+  // Fallback nur zur Absicherung fremder Aufrufer ohne normalisierte Zeilen
+  // (row._row_id wird für den Plan-Editor selbst immer von assignRowIds
+  // gesetzt, siehe app/plan-editor/utils/planEditorHelpers.tsx).
   const rowIdOf = (category: string, zeile: string) => `${category}::${zeile}`;
 
   const assignmentsByPersonDay = new Map<string, AssignmentEntry[]>();
@@ -203,7 +209,7 @@ export function validatePlan({
       if (row._row_type === "group") continue;
       const category = categoryOf(row);
       const zeile = row.Zeile ?? "";
-      const rowId = rowIdOf(category, zeile);
+      const rowId = row._row_id ?? rowIdOf(category, zeile);
       const isAbsenceRow = category === "Frei" || category === "Urlaub/Krank";
 
       if (isAbsenceRow) {

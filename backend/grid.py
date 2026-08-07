@@ -71,8 +71,16 @@ ROW_TYPE_COL = "_row_type"
 CATEGORY_COL = "_category"
 GROUP_LABEL_COL = "_group_label"
 GROUP_COLOR_COL = "_group_color"
+# Sprint 0 (S1-Fix, C4): stabile Zeilenidentität, vom Frontend seit
+# assignRowIds() auf jeder Zeile mitgeschickt (siehe
+# app/plan-editor/types.ts PlanRow._row_id). Rein clientseitige Buchführung,
+# kein Tagesspalten-Wert - gehört deshalb wie die anderen Meta-Spalten hier
+# in den Ausschluss, sonst würde parse_grid() sie fälschlich als Tagesspalte
+# behandeln (harmlos, aber unsauber: day_iso_by_label kennt sie nicht, die
+# Zelle wird stillschweigend übersprungen).
+ROW_ID_COL = "_row_id"
 META_COLS = {
-    LABEL_COL, SLOT_COL, ROW_TYPE_COL, CATEGORY_COL, GROUP_LABEL_COL, GROUP_COLOR_COL,
+    LABEL_COL, SLOT_COL, ROW_TYPE_COL, CATEGORY_COL, GROUP_LABEL_COL, GROUP_COLOR_COL, ROW_ID_COL,
 }
 # AP9: zentrale Quelle in template_spec.py (Abteilungs-Kurzcodes + "keine
 # Zuweisung"-Marker "-"/"KEINE"/"KEIN"/"NIEMAND") - vorher eine eigene, wertgleiche

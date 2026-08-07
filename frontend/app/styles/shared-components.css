@@ -122,6 +122,14 @@
   color: var(--accent);
 }
 
+/* Sprint 0 (S1-Fix, C18/C3): .status-warning fehlte komplett - Verwendung
+   z.B. app/gedaechtnis/page.tsx rendert bislang unformatiert. */
+.status-warning {
+  border-color: color-mix(in srgb, var(--status-warning) 22%, transparent);
+  background: color-mix(in srgb, var(--status-warning) 13%, transparent);
+  color: var(--status-warning);
+}
+
 .stat-card {
   min-width: 0;
   border: 1px solid var(--border);

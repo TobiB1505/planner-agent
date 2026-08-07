@@ -121,65 +121,6 @@
   to { background-position: -100% 0; }
 }
 
-.btn-danger-solid {
-  border-color: rgba(219, 75, 86, 0.35);
-  background: #db4b56;
-  color: #fff;
-}
-
-.btn-danger-solid:hover {
-  background: #c73f4a;
-  border-color: rgba(219, 75, 86, 0.5);
-}
-
-/* Bestätigungsdialog */
-
-.confirm-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: grid;
-  place-items: center;
-  background: rgba(10, 10, 20, 0.45);
-  padding: 20px;
-}
-
-.confirm-dialog {
-  width: 100%;
-  max-width: 460px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--background);
-  box-shadow: 0 24px 60px rgba(10, 10, 24, 0.28);
-  padding: 22px;
-}
-
-.confirm-dialog h2 {
-  margin: 0 0 10px;
-  font-size: 17px;
-  font-weight: 780;
-}
-
-.confirm-dialog-description {
-  display: grid;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.confirm-dialog-description p {
-  margin: 0;
-}
-
-.confirm-dialog-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 18px;
-}
-
 /* Responsiver Bearbeitungsmodus-Header ----------------------------------- */
 
 .plan-editor-summary {
@@ -367,7 +308,10 @@
   font-size: 9.5px;
 }
 
-@media (max-width: 820px) {
+/* Sprint 3: bereits ab Tablet-Breite einspaltig - bei 834px ragte der
+   Wochenpicker sonst rechts aus der Kopfkarte heraus (Summary-Grid
+   reservierte minmax(330px,470px) neben minmax(260px,1fr)). */
+@media (max-width: 1020px) {
   .plan-editor-summary-main {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
@@ -426,10 +370,7 @@
   gap: 6px 12px;
   min-width: 0;
   min-height: 42px;
-  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--background) 58%, transparent);
-  padding: 7px 10px;
+  padding: 2px 2px 2px 4px;
 }
 
 .plan-editor-toolbar-identity {
@@ -454,10 +395,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
   border-radius: 999px;
   background: var(--background);
-  padding: 4px 9px;
+  padding: 5px 11px;
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
@@ -496,10 +436,15 @@
 
 .plan-editor-toolbar-actions {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.plan-editor-toolbar-actions .plan-save-button {
+  min-height: 42px;
+  padding-inline: 18px;
 }
 
 .plan-editor-toolbar-actions .btn,
@@ -667,20 +612,20 @@ button.plan-validation-summary {
   color: var(--muted);
 }
 
+/* Sprint 3: neutrale Chip-Umrandung, Status nur über Symbol + Text -
+   die farbig umrandeten Badges konkurrierten visuell mit echten Aktionen
+   (siehe EDITOR_VISUAL_BASELINE.md, Frage 3). */
 .plan-validation-summary.is-clean {
-  border-color: rgba(45, 169, 112, 0.35);
-  color: #2da970;
+  color: var(--status-positive);
 }
 
 .plan-validation-summary.is-warning {
-  border-color: rgba(196, 124, 37, 0.4);
-  color: #c47c25;
+  color: var(--status-warning);
 }
 
 .plan-validation-summary.is-error,
 .plan-validation-summary.is-failed {
-  border-color: rgba(219, 75, 86, 0.45);
-  color: #db4b56;
+  color: var(--status-critical);
 }
 
 .plan-validation-summary-cta {
@@ -951,6 +896,25 @@ button.plan-validation-summary {
 
 /* Sprint 4: Wochenarbeitsplatz ------------------------------------------ */
 
+/* Sprint 3 (Ent-Excelung): Abschnittsköpfe als ruhige Trennzeilen -
+   Kategoriefarbe nur noch als Punkt + linke Kante (Inline-Style aus
+   GroupHeaderRenderer), Fläche bleibt neutral. */
+.plan-grid .plan-group-row {
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 62%, transparent);
+  color: var(--muted-strong);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+}
+
+.plan-group-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
 .plan-editor-page {
   min-height: 100%;
 }
@@ -1006,6 +970,12 @@ button.plan-validation-summary {
   color: var(--foreground);
   padding: 3px 24px 3px 8px;
   font: inherit;
+}
+
+/* A11y (Sprint 5): outline:0 oben entfernte den einzigen Fokusindikator. */
+.plan-density-select select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .plan-editor-tools-menu > div button {
@@ -1116,13 +1086,35 @@ button.plan-validation-summary {
   white-space: nowrap;
 }
 
-.plan-grid.plan-grid-week .ag-cell:not(.ag-cell-inline-editing) {
-  cursor: text !important;
+/* Sprint 3 (Ent-Excelung): Tageszellen signalisieren Bearbeitung (Pointer +
+   Hover-Fläche) statt Textmarkierung - cursor:text suggerierte eine reine
+   Lese-/Kopierfläche (siehe EDITOR_VISUAL_BASELINE.md, "unklare interaktive
+   Zellen"). Die beiden angepinnten Spalten (Abschnitt, Zeile) sind nicht
+   editierbar und behalten den Standard-Cursor. */
+.plan-grid.plan-grid-week .ag-center-cols-container .ag-cell:not(.ag-cell-inline-editing) {
+  cursor: pointer;
 }
 
-.plan-grid.plan-grid-week .ag-cell:not(.ag-cell-inline-editing):hover {
+.plan-grid.plan-grid-week .ag-center-cols-container .ag-cell:not(.ag-cell-inline-editing):hover {
+  background-color: color-mix(in srgb, var(--accent) 7%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
-  cursor: text;
+}
+
+/* Leere, bearbeitbare Zelle: Plus-Affordance bei Hover/Tastaturfokus (nicht
+   dauerhaft - das würde die Fläche überladen, Phase 5.1). Zellen mit
+   Konfliktmarkierung behalten ihr Warnsymbol (::after bereits belegt). */
+.plan-grid .ag-center-cols-container .ag-cell.plan-cell-empty:not(.ag-cell-inline-editing, .plan-cell-issue-error, .plan-cell-issue-warning):hover::after,
+.plan-grid .ag-center-cols-container .ag-cell.plan-cell-empty.ag-cell-focus:not(.ag-cell-inline-editing, .plan-cell-issue-error, .plan-cell-issue-warning)::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: color-mix(in srgb, var(--accent) 80%, var(--muted));
+  content: "+";
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .plan-grid .ag-cell.ag-cell-inline-editing {
@@ -1191,13 +1183,79 @@ button.plan-validation-summary {
   content: "";
 }
 
-.plan-grid .ag-cell.plan-day-cell-active:not(.plan-cell-issue-error, .plan-cell-issue-warning) {
-  background-image: linear-gradient(color-mix(in srgb, var(--accent) 5%, transparent), color-mix(in srgb, var(--accent) 5%, transparent));
-  box-shadow: inset 1.5px 0 0 var(--accent), inset -1.5px 0 0 var(--accent);
+/* Sprint 3 (Phase 6): Personen-Chips in Tageszellen ---------------------- */
+
+.plan-cell-people {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
-.plan-grid .ag-row:last-child .ag-cell.plan-day-cell-active {
-  box-shadow: inset 1.5px 0 0 var(--accent), inset -1.5px 0 0 var(--accent), inset 0 -1.5px 0 var(--accent);
+.plan-cell-prefix {
+  overflow: hidden;
+  min-width: 24px;
+  color: var(--muted);
+  font-size: 0.92em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-person-chip {
+  display: inline-block;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
+  color: var(--foreground);
+  padding: 1px 7px;
+  font-size: 0.92em;
+  font-weight: 600;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Abwesenheits-Zeilen (Urlaub/Krank, Frei): Namen erkennbar als Status,
+   nicht als normale Dienst-Zuweisung - Outline statt Fläche (Phase 5.5).
+   Die fachliche Unterscheidung Urlaub/Krank vs. Frei trägt die
+   Zeilenbezeichnung der jeweiligen Abschnittszeile. */
+.plan-cell-people.is-absence .plan-person-chip {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted-strong);
+}
+
+.plan-person-chip-more {
+  flex: 0 0 auto;
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.plan-cell-text {
+  display: block;
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-grid.plan-density-compact .plan-person-chip {
+  padding: 0 6px;
+  border-radius: 7px;
+}
+
+/* Sprint 3: aktive Tagesspalte als ruhige Tönung statt Gradient plus
+   beidseitiger Akzentkanten - Orientierung bleibt (Header-Unterstreichung
+   + Tönung), ohne dass die Spalte wie ein Rahmen-Käfig wirkt. */
+.plan-grid .ag-cell.plan-day-cell-active:not(.plan-cell-issue-error, .plan-cell-issue-warning) {
+  background-color: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 
 .plan-grid .ag-cell.plan-cell-manual::before {
@@ -1440,14 +1498,17 @@ button.plan-validation-summary {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Sprint 3: flexibles Umbruchverhalten statt starrer 4-Spalten-Grid -
+     das alte Raster ließ bei 390px den Speichern-Button mit dem
+     Planqualität-Chip kollidieren (siehe EDITOR_VISUAL_BASELINE.md). */
   .plan-editor-toolbar-actions {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
     width: 100%;
   }
 
-  .plan-editor-toolbar-actions .btn-primary {
-    width: 100%;
+
+
+  .plan-editor-toolbar-actions .plan-save-button {
+    flex: 1 1 140px;
   }
 
   .plan-editor-toolbar-view {
@@ -1506,45 +1567,6 @@ button.plan-validation-summary {
 }
 
 /* ---------- Sprint 6: Tagesplanung / Wochenübersicht ---------- */
-
-.plan-view-switcher {
-  display: flex;
-  gap: 6px;
-  margin: 10px 1px 6px;
-}
-
-.plan-view-switcher button {
-  display: grid;
-  flex: 1;
-  gap: 1px;
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  background: var(--surface);
-  padding: 8px 14px;
-  color: var(--muted);
-  text-align: left;
-}
-
-.plan-view-switcher button strong {
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 730;
-}
-
-.plan-view-switcher button small {
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.plan-view-switcher button.is-active {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: var(--accent-soft);
-}
-
-.plan-view-switcher button.is-active strong,
-.plan-view-switcher button.is-active small {
-  color: var(--accent);
-}
 
 .plan-day-navigator-status {
   display: flex;
@@ -2059,13 +2081,34 @@ button.plan-validation-summary {
   font-weight: 600;
 }
 
-@media (max-width: 760px) {
-  .plan-view-switcher {
-    flex-direction: column;
+/* Sprint 3: auf schmalen Viewports fließt die (mehrzeilig umgebrochene,
+   ~300px hohe) Toolbar mit der Seite statt dauerhaft ein Drittel des
+   Bildschirms zu belegen - sticky bleibt stattdessen die kompakte
+   Tagesnavigation (siehe unten). Speichern bleibt per Scroll erreichbar.
+   Media- statt Container-Query: die Toolbar ist selbst der Query-Container
+   und kann sich über @container nicht selbst stylen. */
+@media (max-width: 900px) {
+  .plan-editor-toolbar {
+    position: static;
   }
+}
 
+@media (max-width: 760px) {
   .plan-day-view-bar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  /* Sprint 3 (Phase 9.3): Tagesnavigation bleibt beim Scrollen durch die
+     Abschnitts-Karten sichtbar - sie ist auf Mobile die primäre
+     Orientierung und mit einer Zeile kompakt genug dafür. */
+  .plan-day-view .plan-workspace-orientation-full {
+    position: sticky;
+    top: 0;
+    z-index: 25;
+    margin-inline: -4px;
+    padding: 6px 4px;
+    background: color-mix(in srgb, var(--background) 92%, transparent);
+    backdrop-filter: blur(8px);
   }
 }

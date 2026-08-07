@@ -1,6 +1,7 @@
 "use client";
 
-import PageHeader from "@/components/PageHeader";
+import PageHeader from "@/components/ui/PageHeader";
+import InlineStatus from "@/components/ui/InlineStatus";
 import PersonCellEditor from "@/components/PersonCellEditor";
 import PlanEditorSummary from "@/components/PlanEditorSummary";
 import PlanEditorToolbar from "@/components/PlanEditorToolbar";
@@ -8,7 +9,6 @@ import SoftsportCellEditor from "@/components/SoftsportCellEditor";
 import DayHeaderCell from "@/components/plan-editor/DayHeaderCell";
 import EditorViewControls from "@/components/plan-editor/EditorViewControls";
 import PlanDayView from "@/components/plan-editor/PlanDayView";
-import PlanViewSwitcher from "@/components/plan-editor/PlanViewSwitcher";
 import {
   generatePlan,
   getArchivedPlan,
@@ -28,11 +28,9 @@ import { computeDayStatuses } from "@/lib/plan-editor/dayStatus";
 import { collectCategorySuggestions } from "@/lib/plan-editor/entryFieldType";
 import { useGridDayIndicators } from "@/lib/plan-editor/useGridDayIndicators";
 import {
-  loadPlanViewPreferences,
-  savePlanViewPreferences,
+  usePlanViewPreferences,
   type PlanDensity,
   type PlanEditorViewMode,
-  type PlanViewPreferences,
 } from "@/lib/plan-editor/viewPreferences";
 import {
   buildCellIssueIndex,
@@ -41,15 +39,13 @@ import {
   type PlanIssue,
 } from "@/lib/planValidation";
 import { recommendForCell, serviceIntervalLabel } from "@/lib/recommendations";
-import {
-  AllCommunityModule,
-  ModuleRegistry,
-  type ColDef,
-  type GridApi,
-} from "ag-grid-community";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
+import "@/lib/ag-grid-setup";
+import type { ColDef, GridApi } from "ag-grid-community";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 
 import EditorDialogs from "./components/EditorDialogs";
+import { PlanWeekCellRenderer } from "./components/PlanWeekCell";
 import PlanGrid from "./components/PlanGrid";
 import { ArtistPlanStep, ExportStep, RehearsalPlanStep, TemplateChoiceStep } from "./components/PlanWizardSteps";
 import WeekNavigation from "./components/WeekNavigation";
@@ -60,6 +56,7 @@ import {
   ABSENCE_SECTIONS,
   PlanEditorInitialLoading,
   addDays,
+  assignRowIds,
   collectAbsences,
   formatDateRange,
   isoWeek,
@@ -74,15 +71,30 @@ import {
   templateCodeForDate,
   weekdayLabelFor,
 } from "./utils/planEditorHelpers";
-
-ModuleRegistry.registerModules([AllCommunityModule]);
+import { todayIso } from "@/lib/plan-editor/today";
 
 export default function PlanEditorPage() {
   const initialStart = useMemo(() => mondayIso(), []);
+  // Sprint 4 (Archiv): per ?start=YYYY-MM-DD angeforderte Zielwoche. Wird beim
+  // Mount einmal ausgewertet - spätere Wochenwechsel laufen über den Picker.
+  const requestedStart = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const param = new URLSearchParams(window.location.search).get("start");
+    return param && /^\d{4}-\d{2}-\d{2}$/.test(param) ? param : null;
+  }, []);
   const [templateCode, setTemplateCode] = useState<"A" | "B">(() => templateCodeForDate(initialStart));
   const [resolvedTemplateWeekId, setResolvedTemplateWeekId] = useState<number | null>(null);
   const [startDate, setStartDate] = useState(initialStart);
-  const [rows, setRows] = useState<PlanRow[]>([]);
+  const [rows, setRowsRaw] = useState<PlanRow[]>([]);
+  // Sprint 0 (S1-Fix, C4): einziger Weg, `rows` zu setzen - normalisiert dabei
+  // immer über assignRowIds(), damit jede Zeile eine stabile, eindeutige
+  // _row_id trägt (Grid-Identität, manuell-bearbeitet-Markierung,
+  // Planprüfung). Bereits vergebene IDs bleiben unverändert erhalten.
+  const setRows = useCallback((update: SetStateAction<PlanRow[]>) => {
+    setRowsRaw((previous) =>
+      assignRowIds(typeof update === "function" ? (update as (prev: PlanRow[]) => PlanRow[])(previous) : update),
+    );
+  }, []);
   const rowsRef = useRef<PlanRow[]>([]);
   const [dayLabels, setDayLabels] = useState<string[]>([]);
   const [weekDates, setWeekDates] = useState<string[]>([]);
@@ -106,13 +118,19 @@ export default function PlanEditorPage() {
   const loadedArchiveKeyRef = useRef<string | null>(null);
 
   // ---------- Sprint 4: Arbeitsansicht ----------
-  const [viewPreferences, setViewPreferences] = useState<PlanViewPreferences>(() =>
-    loadPlanViewPreferences(),
-  );
+  // Sprint 0 (S1-Fix, C5): useSyncExternalStore statt localStorage im
+  // State-Initializer - Letzteres lief während des Renders, auch beim
+  // allerersten Client-Render vor der Hydration. Der Server kennt den
+  // gespeicherten Wert nie und rendert immer die Defaults; ein Client, der
+  // sofort den echten Wert einliest, weicht vom SSR-Markup ab
+  // (Hydration-Mismatch, sichtbar an plan-density-*). usePlanViewPreferences
+  // liefert serverseitig deterministisch die Defaults, zieht die echte
+  // Präferenz clientseitig sicher nach (siehe lib/plan-editor/viewPreferences.ts).
+  const [viewPreferences, setViewPreferences] = usePlanViewPreferences();
   const { density, viewMode } = viewPreferences;
   const setViewMode = useCallback((nextMode: PlanEditorViewMode) => {
     setViewPreferences((current) => ({ ...current, viewMode: nextMode }));
-  }, []);
+  }, [setViewPreferences]);
   const [activeDay, setActiveDay] = useState("");
   const [automationPreview, setAutomationPreview] = useState<AutomationPreview | null>(null);
 
@@ -132,15 +150,15 @@ export default function PlanEditorPage() {
   const cellIssueIndexRef = useRef<Map<string, PlanIssue[]>>(new Map());
 
   const gridApiRef = useRef<GridApi<PlanRow> | null>(null);
-
-  useEffect(() => {
-    savePlanViewPreferences(viewPreferences);
-  }, [viewPreferences]);
+  // "Latest ref" für den Strg/Cmd+S-Shortcut: save() wird pro Render neu
+  // erzeugt (hängt an rows/validation) - der globale Keydown-Listener soll
+  // deshalb nicht bei jedem Render neu abonniert werden, sondern liest die
+  // jeweils aktuelle Funktion über diesen Ref.
+  const saveRef = useRef<() => Promise<boolean>>(async () => false);
 
   const effectiveActiveDay = useMemo(() => {
     if (dayLabels.includes(activeDay)) return activeDay;
-    const todayIso = new Date().toLocaleDateString("sv-SE");
-    const todayIndex = weekDates.indexOf(todayIso);
+    const todayIndex = weekDates.indexOf(todayIso());
     return dayLabels[todayIndex >= 0 ? todayIndex : 0] ?? "";
   }, [activeDay, dayLabels, weekDates]);
 
@@ -156,7 +174,11 @@ export default function PlanEditorPage() {
     onMessage: setMessage,
     onBusyChange: setBusy,
     onReferenceDataLoaded: (storedWeeks) => {
-      if (!storedWeeks.some((week) => week.start_date === mondayIso())) {
+      // Zielwoche ist die per URL angeforderte Woche, sonst die aktuelle -
+      // ohne gespeicherten Plan gibt es keinen Archiv-Autoload, der das
+      // Initialisieren beenden würde.
+      const target = requestedStart ?? mondayIso();
+      if (!storedWeeks.some((week) => week.start_date === target)) {
         setInitializing(false);
       }
     },
@@ -255,17 +277,24 @@ export default function PlanEditorPage() {
   useEffect(() => {
     if (!rows.length || !dayLabels.length) return;
     let cancelled = false;
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setQualityLoading(true);
-      getPlanQuality({
-        start_date: startDate,
-        day_labels: dayLabels,
-        rows: rows.map((row) => ({ ...row })),
-      })
+      getPlanQuality(
+        {
+          start_date: startDate,
+          day_labels: dayLabels,
+          rows: rows.map((row) => ({ ...row })),
+        },
+        controller.signal,
+      )
         .then((result) => {
           if (!cancelled) setPlanQuality(result);
         })
         .catch(() => {
+          // Abgebrochene Requests (Wochenwechsel, neue Zellbearbeitung
+          // während eine ältere Prüfung noch läuft) sind kein sichtbarer
+          // Fehler - `cancelled` ist in diesem Fall bereits true.
           if (!cancelled) setPlanQuality(null);
         })
         .finally(() => {
@@ -275,6 +304,7 @@ export default function PlanEditorPage() {
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      controller.abort();
     };
     // changeCount ist nötig, weil AG Grid Zeilenobjekte direkt mutiert.
   }, [rows, changeCount, startDate, dayLabels]);
@@ -388,6 +418,52 @@ export default function PlanEditorPage() {
     rowsRef.current = rows;
   }, [rows]);
 
+  // Sprint 2 (Phase 4.3): Rückgängig/Wiederholen waren zuvor ausschließlich
+  // über die Toolbar-Buttons erreichbar - Strg/Cmd+Z löste in dieser Session
+  // nachweislich nichts aus (AG Grids eigene, nicht mit dem vereinheitlichten
+  // handleUndo verzahnte Tastaturbehandlung griff hier nicht zuverlässig).
+  // Globaler Listener statt eines AG-Grid-internen Shortcuts, damit derselbe
+  // handleUndo/handleRedo-Pfad (inkl. Chronologie zwischen Grid- und
+  // Tagesansicht-Aktionen) unabhängig vom aktuellen Fokus greift. Textfelder
+  // (Zelleditor-Popups, Suchfelder, Dialoge) behalten ihr natives Undo -
+  // der Listener greift nur, wenn kein editierbares Element fokussiert ist.
+  useEffect(() => {
+    function isEditableTarget(target: EventTarget | null): boolean {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      // Sprint 3 (Phase 13): Strg/Cmd+S speichert den Plan statt den
+      // Browser-Dialog "Seite speichern" zu öffnen - bewusst AUCH bei
+      // fokussiertem Eingabefeld (der Browserstandard soll im aktiven
+      // Editor nie greifen; saveRef zeigt auf das Konflikt-Gate save()).
+      if (key === "s") {
+        event.preventDefault();
+        void saveRef.current();
+        return;
+      }
+      if (isEditableTarget(event.target)) return;
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        handleUndo();
+      } else if ((key === "z" && event.shiftKey) || key === "y") {
+        event.preventDefault();
+        handleRedo();
+      }
+    }
+
+    // Capture-Phase: AG Grid registriert einen eigenen Keydown-Handler direkt
+    // auf dem Grid-Container und behandelt Strg/Cmd+Z dort teils selbst (mit
+    // stopPropagation) - ohne Capture käme unser Listener nie zum Zug, wenn
+    // der Fokus im Grid liegt (siehe auch DayEntryEditor.tsx für dasselbe Muster).
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
+  }, [handleUndo, handleRedo]);
+
   useEffect(() => {
     const archivedWeek = archivedWeeks.find((week) => week.start_date === startDate);
     if (!archivedWeek) return;
@@ -396,7 +472,8 @@ export default function PlanEditorPage() {
     loadedArchiveKeyRef.current = archiveKey;
 
     let active = true;
-    getArchivedPlan(startDate)
+    const controller = new AbortController();
+    getArchivedPlan(startDate, controller.signal)
       .then((result) => {
         if (!active) return;
         setRows(result.rows as PlanRow[]);
@@ -436,20 +513,21 @@ export default function PlanEditorPage() {
       });
     return () => {
       active = false;
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [archivedWeeks, startDate]);
 
-  // ---------- Schutz vor Datenverlust: Browser-Tab schließen/neu laden ----------
-  useEffect(() => {
-    function handleBeforeUnload(event: BeforeUnloadEvent) {
-      if (!isDirty) return;
-      event.preventDefault();
-      event.returnValue = "";
-    }
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [isDirty]);
+  // ---------- Schutz vor Datenverlust (Sprint 0, S1-Fix C1) ----------
+  // Meldet isDirty an die geteilte Registry: sichert beforeunload (Reload/
+  // Tab schließen) UND macht den globalen InternalNavigationGuard
+  // (Sidebar-/interne Links, siehe app/layout.tsx) für diese Seite aktiv.
+  // Der bestehende pendingAction-Mechanismus für Wochenwechsel bleibt
+  // unverändert - er behandelt programmatische Navigation innerhalb der
+  // Seite selbst, die dieser Hook bewusst nicht abstrahiert.
+  useUnsavedChangesGuard(isDirty, {
+    message: "Der Dienstplan hat ungespeicherte Änderungen, die dabei verloren gehen.",
+  });
 
   const hasExistingPlan = Boolean(loadedArchivedWeek);
   const selectedTemplate = templates.find((template) => template.code === templateCode);
@@ -498,7 +576,7 @@ export default function PlanEditorPage() {
       api.refreshCells({ force: true });
       api.resetRowHeights();
     });
-  }, []);
+  }, [setViewPreferences]);
 
   const selectDay = useCallback((dayLabel: string) => {
     setActiveDay(dayLabel);
@@ -514,10 +592,14 @@ export default function PlanEditorPage() {
         width: 132,
         editable: false,
         lockPinned: true,
+        // Sprint 3 (Ent-Excelung, Phase 4.3/4.4): Kategorie nur noch als
+        // farbige linke Kante + minimale Tönung statt der bisherigen
+        // 16%-Vollfläche - die Kategorie-Farbwerte selbst bleiben unverändert
+        // (lib/categoryColors.ts), nur ihre Flächenanwendung wird reduziert.
         cellStyle: (params) => ({
-          backgroundColor: hexToRgba(rowColor(params.data), 0.16),
+          backgroundColor: hexToRgba(rowColor(params.data), 0.05),
           borderLeft: `3px solid ${rowColor(params.data)}`,
-          fontWeight: "700",
+          fontWeight: "650",
         }),
       },
       {
@@ -529,14 +611,12 @@ export default function PlanEditorPage() {
         lockPinned: true,
         wrapText: false,
         autoHeight: false,
-        cellStyle: (params) => ({
-          backgroundColor: hexToRgba(rowColor(params.data), 0.09),
-          color: "var(--muted)",
-          fontWeight: "600",
-        }),
+        // Sprint 3: keine zweite Kategorie-Tönung mehr - ruhige Grundfläche,
+        // Zeitangaben bleiben als gedämpfter Text lesbar.
+        cellStyle: { color: "var(--muted)", fontWeight: "600" },
       },
     ];
-    const todayIso = new Date().toLocaleDateString("sv-SE");
+    const currentDateIso = todayIso();
     const days = dayLabels.map<ColDef<PlanRow>>((label, index) => ({
       field: label,
       headerName: label,
@@ -546,7 +626,7 @@ export default function PlanEditorPage() {
       headerComponent: DayHeaderCell,
       headerComponentParams: {
         dayLabel: label,
-        isToday: weekDates[index] === todayIso,
+        isToday: weekDates[index] === currentDateIso,
         // AP8: abonnierbare Stores statt fertiger Werte - DayHeaderCell
         // rendert sich darüber selbst neu (useSyncExternalStore), columnDefs
         // muss dafür nicht neu gebaut werden (siehe useGridDayIndicators).
@@ -560,6 +640,11 @@ export default function PlanEditorPage() {
       singleClickEdit: true,
       wrapText: false,
       autoHeight: false,
+      // Sprint 3 (Phase 6): Personen als kompakte Chips mit "+n"-Überlauf
+      // statt abgeschnittenem Fließtext - reine Anzeige, Wert/Editor/Undo
+      // unverändert (siehe PlanWeekCell.tsx).
+      cellRenderer: PlanWeekCellRenderer,
+      cellRendererParams: { isPersonSection, isAbsenceSection },
       // AP8: Funktion statt fertigem String - wird bei refreshHeader() neu
       // ausgewertet und liest den aktiven Tag live aus dem Store.
       headerClass: () => (activeDayStore.get() === label ? "plan-day-header-active" : undefined),
@@ -656,7 +741,7 @@ export default function PlanEditorPage() {
               auditEventsRef.current.push({
                 event_type: "recommendation_applied",
                 cause: "recommendation",
-                cell_key: cellIssueKey(rowKey(params.data), dayLabel),
+                cell_key: cellIssueKey(params.data._row_id, dayLabel),
                 new_value: name,
                 metadata: { category, subcategory: params.data.Zeile, day: dayLabel },
               });
@@ -666,10 +751,12 @@ export default function PlanEditorPage() {
           popupPosition: "under",
         };
       },
-      cellStyle: (params) => ({
-        backgroundColor: hexToRgba(rowColor(params.data), 0.06),
-        cursor: "text",
-      }),
+      // Sprint 3 (Ent-Excelung): keine Kategorie-Tönung mehr auf Tageszellen -
+      // die Kategorie bleibt über die linke Kante der ersten Spalte und die
+      // Abschnittsköpfe erkennbar; die Zellfläche selbst bleibt ruhig. Der
+      // frühere cursor:"text" signalisierte Textmarkierung statt Bearbeitung
+      // (siehe EDITOR_VISUAL_BASELINE.md) - Pointer/Hover kommen jetzt aus
+      // plan-editor.css.
       // Konfliktmarkierungen (Sprint 3): liest aus einem Ref statt aus einer
       // columnDefs-Abhängigkeit, damit eine neue Planprüfung nicht die
       // komplette Spaltenkonfiguration neu aufbaut - nur ein gezieltes
@@ -680,24 +767,30 @@ export default function PlanEditorPage() {
         // keinen columnDefs-Rebuild mehr braucht - nur refreshCells() (siehe
         // useGridDayIndicators).
         "plan-day-cell-active": () => activeDayStore.get() === label,
+        // Leere, bearbeitbare Zelle: bekommt per CSS eine Hover-/Fokus-
+        // Affordance (Plus-Symbol) - wird bei jeder Wertänderung durch den
+        // ohnehin laufenden Zell-Refresh neu ausgewertet.
+        "plan-cell-empty": (params) =>
+          Boolean(params.data && params.data._row_type !== "group") &&
+          !(typeof params.value === "string" && params.value.trim()),
         "plan-cell-manual": (params) =>
           Boolean(
             params.data &&
               params.data._row_type !== "group" &&
-              manuallyEditedCellsRef.current.has(cellIssueKey(rowKey(params.data), label)),
+              manuallyEditedCellsRef.current.has(cellIssueKey(params.data._row_id, label)),
           ),
         "plan-cell-issue-error": (params) =>
           Boolean(
             params.data &&
               params.data._row_type !== "group" &&
               cellIssueIndexRef.current
-                .get(cellIssueKey(rowKey(params.data), label))
+                .get(cellIssueKey(params.data._row_id, label))
                 ?.some((issue) => issue.severity === "error"),
           ),
         "plan-cell-issue-warning": (params) => {
           if (!params.data || params.data._row_type === "group") return false;
           const list = cellIssueIndexRef.current.get(
-            cellIssueKey(rowKey(params.data), label),
+            cellIssueKey(params.data._row_id, label),
           );
           return Boolean(
             list &&
@@ -709,7 +802,7 @@ export default function PlanEditorPage() {
       tooltipValueGetter: (params) => {
         if (!params.data || params.data._row_type === "group") return undefined;
         const list = cellIssueIndexRef.current.get(
-          cellIssueKey(rowKey(params.data), label),
+          cellIssueKey(params.data._row_id, label),
         );
         const issueText = list?.length
           ? `${list.length > 1 ? `${list.length} Probleme: ` : ""}${list
@@ -717,10 +810,16 @@ export default function PlanEditorPage() {
               .join(" | ")}`
           : "";
         const cellText = typeof params.value === "string" ? params.value.trim() : "";
-        if (cellText) {
-          return issueText ? `${issueText}\n\nInhalt: ${cellText}` : cellText;
-        }
-        return issueText || undefined;
+        // Sprint 3 (Phase 5.3): "Manuell angepasst" als verständlicher Text
+        // statt nur des kleinen Punkts - der Marker allein trug keine Semantik.
+        const manualText = manuallyEditedCellsRef.current.has(
+          cellIssueKey(params.data._row_id, label),
+        )
+          ? "Manuell angepasst"
+          : "";
+        const parts = [issueText, cellText ? (issueText ? `Inhalt: ${cellText}` : cellText) : "", manualText]
+          .filter(Boolean);
+        return parts.length ? parts.join("\n\n") : undefined;
       },
     }));
     return [...fixed, ...days];
@@ -728,6 +827,7 @@ export default function PlanEditorPage() {
     assignmentRules,
     dayLabels,
     isPersonSection,
+    isAbsenceSection,
     people,
     personCategories,
     rehearsalIntervals,
@@ -779,7 +879,7 @@ export default function PlanEditorPage() {
         // tatsächlich anwendbaren Stand.
         const merged = { ...row };
         for (const label of result.day_labels) {
-          if (manuallyEditedCellsRef.current.has(cellIssueKey(rowKey(old), label))) {
+          if (manuallyEditedCellsRef.current.has(cellIssueKey(old._row_id, label))) {
             merged[label] = old[label];
           } else {
             merged[label] = mergeGeneratedPersonCell(old[label], row[label]);
@@ -980,6 +1080,11 @@ export default function PlanEditorPage() {
     }
     return performSave();
   }
+  // Nach jedem Render die aktuelle save-Funktion für den Strg/Cmd+S-Listener
+  // hinterlegen (bewusst ohne Dependency-Array - "latest ref"-Muster).
+  useEffect(() => {
+    saveRef.current = save;
+  });
 
   async function exportExcel() {
     if (validation.summary.blockingIssues > 0) {
@@ -1018,12 +1123,22 @@ export default function PlanEditorPage() {
     }
   }
 
+  // Sprint 4 (Archiv): die angeforderte Woche über denselben Pfad wie den
+  // Wochenpicker öffnen (inkl. Archiv-Autoload). Als Makrotask geplant, damit
+  // der Wechsel nicht in den Hydration-Render fällt; das bereits gestartete
+  // Erstladen bricht der AbortController-Pfad ab.
+  useEffect(() => {
+    if (!requestedStart || requestedStart === initialStart) return;
+    const timer = window.setTimeout(() => applyWeekChange(requestedStart), 0);
+    return () => window.clearTimeout(timer);
+    // Nur beim ersten Rendern auswerten - spätere Wochenwechsel laufen über den Picker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function closeConfirmDialog() {
     setPendingAction(null);
   }
 
-  const weekLabel = `KW ${isoWeek(startDate)} · ${selectedTemplate?.name ?? `Woche ${templateCode}`}`;
-  const visibleRowCount = rows.filter((row) => row._row_type !== "group").length;
 
   if (initializing) {
     return (
@@ -1035,8 +1150,6 @@ export default function PlanEditorPage() {
 
   const toolbar = rows.length > 0 && (
     <PlanEditorToolbar
-      weekLabel={weekLabel}
-      rowCount={visibleRowCount}
       canUndo={gridHistory.canUndo}
       canRedo={gridHistory.canRedo}
       onUndo={handleUndo}
@@ -1077,6 +1190,8 @@ export default function PlanEditorPage() {
       onOpenIntelligence={() => setIntelligenceOpen(true)}
       viewControls={
         <EditorViewControls
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
           density={density}
           onDensityChange={handleDensityChange}
         />
@@ -1162,7 +1277,14 @@ export default function PlanEditorPage() {
         </>
       )}
 
-      {message && <div className={`status status-${message.kind}`}>{message.text}</div>}
+      {message && (
+        <InlineStatus
+          variant={message.kind === "success" ? "success" : message.kind === "error" ? "danger" : "info"}
+          className="mt-3"
+        >
+          {message.text}
+        </InlineStatus>
+      )}
 
       {!hasExistingPlan && activeStep === 1 && (
         <ArtistPlanStep artistPlanForWeek={artistPlanForWeek} onContinue={() => setActiveStep(2)} />
@@ -1195,7 +1317,6 @@ export default function PlanEditorPage() {
           {rows.length > 0 ? (
             <>
               {toolbar}
-              <PlanViewSwitcher mode={viewMode} onChange={setViewMode} />
               <div style={viewMode === "day" ? undefined : { display: "none" }}>
                 <PlanDayView
                   rows={rows}

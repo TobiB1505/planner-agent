@@ -6,24 +6,15 @@
   margin: 0 auto;
 }
 
-.memory-page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.memory-page-head > .btn {
-  flex: 0 0 auto;
-  margin-top: 4px;
-  white-space: nowrap;
+.memory-status {
+  margin-bottom: 12px;
 }
 
 .memory-overview-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-  margin: 18px 0 14px;
+  margin: 4px 0 14px;
 }
 
 .memory-overview-card {
@@ -756,7 +747,7 @@ button.memory-summary-card:hover {
   }
 
   .memory-list-tools,
-  .memory-list > .dashboard-empty {
+  .memory-list > .ui-empty-state {
     grid-column: 1 / -1;
   }
 
@@ -766,15 +757,6 @@ button.memory-summary-card:hover {
 }
 
 @media (max-width: 760px) {
-  .memory-page-head {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .memory-page-head > .btn {
-    align-self: flex-start;
-  }
-
   .memory-overview-grid,
   .memory-summary-grid,
   .memory-list {

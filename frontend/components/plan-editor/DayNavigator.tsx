@@ -1,6 +1,7 @@
 "use client";
 
 import type { DayStatus } from "@/lib/plan-editor/dayStatus";
+import { todayIso } from "@/lib/plan-editor/today";
 
 export default function DayNavigator({
   dayLabels,
@@ -15,12 +16,12 @@ export default function DayNavigator({
   onSelect: (dayLabel: string) => void;
   statuses?: Record<string, DayStatus>;
 }) {
-  const todayIso = new Date().toLocaleDateString("sv-SE");
+  const currentDateIso = todayIso();
 
   return (
     <nav className="plan-day-navigator" aria-label="Zu einem Wochentag springen">
       {dayLabels.map((label, index) => {
-        const isToday = weekDates[index] === todayIso;
+        const isToday = weekDates[index] === currentDateIso;
         const selected = activeDay === label;
         const status = statuses?.[label];
         return (

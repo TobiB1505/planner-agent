@@ -16,8 +16,23 @@
   --status-critical: #db4b56;
   --status-info: var(--accent);
 
-  --font-app: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-code: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  /* Sprint 0 (S1-Fix, C3): 4 Tokens, die an ~18 Stellen (intelligence.css,
+     system.css, dashboard.css, memory.css) bereits verwendet, aber nirgends
+     definiert waren - Löschen-Buttons ohne Rotfärbung, Karten ohne Schatten,
+     fehlende Rahmen. --danger folgt bewusst --status-critical statt einem
+     eigenen Hex-Wert, damit es automatisch mit dem Command-Theme mitzieht. */
+  --danger: var(--status-critical);
+  --muted-strong: #52525b;
+  --border-strong: rgba(0, 0, 0, 0.18);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+
+  /* --font-inter/--font-mono-loaded werden von next/font (app/layout.tsx)
+     als CSS-Variable auf <html> gesetzt, sobald Inter/JetBrains Mono geladen
+     sind - kein externer Runtime-Font-Request, kein sichtbarer Font-Swap.
+     Der zweite var()-Parameter ist der Fallback für den (praktisch nie
+     auftretenden) Fall, dass die Klasse fehlt, z.B. in isolierten Tests. */
+  --font-app: var(--font-inter, Inter), ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-code: var(--font-mono-loaded, "SFMono-Regular"), Consolas, "Liberation Mono", monospace;
 }
 
 @theme inline {
@@ -41,6 +56,9 @@
     --foreground: #ededf0;
     --muted: #9b9ba6;
     --accent-soft: rgba(108, 123, 255, 0.16);
+    --muted-strong: #c7c7d1;
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.24);
   }
 }
 
@@ -90,6 +108,25 @@ body {
   .route-transition {
     animation: none;
   }
+
+  /* Großflächige Dauer-Animationen (Skeleton-Shimmer, Fortschritts-Slides,
+     Puls) ruhen bei Reduced Motion - der Ladezustand bleibt über Text und
+     role="status" vermittelt. Kleine, isolierte Spinner bleiben erhalten. */
+  .dashboard-skeleton > div,
+  .plan-editor-loading-grid i,
+  .plan-editor-loading-toolbar i,
+  .reading-progress-track span,
+  .reading-progress-pulse {
+    animation: none;
+  }
+}
+
+/* Fehler-/404-Seiten: zentriert im Inhaltsbereich, Sidebar bleibt nutzbar. */
+.route-error-shell {
+  display: grid;
+  min-height: 60vh;
+  place-items: center;
+  padding: var(--space-6);
 }
 
 button,
@@ -101,4 +138,50 @@ textarea {
 
 button {
   cursor: pointer;
+}
+
+/* ---- Grundtypografie (Sprint 1) -----------------------------------------
+   Bewusst zurückhaltend: nur eine sinnvolle Baseline für rohe h1-h3, die noch
+   keine eigene Komponente nutzen. Bestehende Spezialkomponenten (z.B. Karten-
+   Titel mit eigener Größe) überschreiben das lokal und bleiben unverändert. */
+h1,
+h2,
+h3 {
+  margin: 0;
+  color: var(--color-text, var(--foreground));
+  font-weight: var(--font-weight-bold, 760);
+  letter-spacing: -0.01em;
+  line-height: var(--line-height-tight, 1.15);
+}
+
+h1 {
+  font-size: var(--font-size-3xl, 28px);
+}
+
+h2 {
+  font-size: var(--font-size-2xl, 23px);
+}
+
+h3 {
+  font-size: var(--font-size-xl, 19px);
+}
+
+/* Kennzahlen/Zeiten: feste Ziffernbreite statt springender Layouts beim
+   Wertewechsel (Dashboard-Kennzahlen, Zeitangaben, Wochenzähler). */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Fokus-Baseline -------------------------------------------------------
+   Generischer :focus-visible-Ring für interaktive Elemente ohne eigene
+   Fokus-Definition. Komponenten mit spezifischerem Selektor (z.B.
+   .sidebar-link:focus-visible) überschreiben dies weiterhin lokal. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-accent, var(--accent));
+  outline-offset: 2px;
 }

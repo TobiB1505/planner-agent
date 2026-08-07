@@ -107,6 +107,19 @@
   line-height: 1.45;
 }
 
+.system-live-meta {
+  display: grid;
+  flex: 0 0 auto;
+  justify-items: end;
+  gap: 5px;
+}
+
+.system-last-checked {
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
 .system-live-badge {
   display: inline-flex;
   align-items: center;

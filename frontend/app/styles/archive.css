@@ -5,23 +5,14 @@
   margin-inline: auto;
 }
 
-.archive-page-head,
-.team-page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.archive-page-head .page-header,
-.team-page-head .page-header {
-  min-width: 0;
-}
-
 .archive-import-trigger,
 .team-add-trigger {
   flex: 0 0 auto;
   margin-top: 2px;
+}
+
+.archive-status {
+  margin-bottom: 14px;
 }
 
 .archive-import-trigger > span,
@@ -771,42 +762,12 @@
   font-size: 21px;
 }
 
-.archive-empty-state,
-.team-empty-state {
-  display: grid;
+.archive-week-list > .archive-list-status {
+  margin: 14px;
+}
+
+.archive-week-list > .ui-empty-state {
   min-height: 240px;
-  place-items: center;
-  place-content: center;
-  color: var(--muted);
-  padding: 28px;
-  text-align: center;
-}
-
-.archive-empty-state > span:not(.spinner),
-.team-empty-state > span:not(.spinner) {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border-radius: 13px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 20px;
-}
-
-.archive-empty-state strong,
-.team-empty-state strong {
-  margin-top: 10px;
-  color: var(--foreground);
-  font-size: 11px;
-}
-
-.archive-empty-state p,
-.team-empty-state p {
-  max-width: 340px;
-  margin-top: 4px;
-  font-size: 9.5px;
-  line-height: 1.5;
 }
 
 .archive-detail {
@@ -973,6 +934,24 @@
   color: var(--muted);
   padding: 16px 0;
   font-size: 9px;
+}
+
+/* Sprint 4 (C15): Das 120er-Limit ist jetzt sichtbar statt still. */
+.archive-detail-more {
+  width: 100%;
+  border: 1px dashed var(--border);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--accent);
+  margin-top: 6px;
+  padding: 8px;
+  font-size: 9.5px;
+  font-weight: 720;
+}
+
+.archive-detail-more:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .archive-detail-actions {

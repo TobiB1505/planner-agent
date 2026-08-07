@@ -10,6 +10,7 @@ import {
   type EmployeeMemoryEntry,
   type EmployeeSkill,
 } from "@/lib/api";
+import InlineStatus from "@/components/ui/InlineStatus";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -268,7 +269,7 @@ export default function EmployeeIntelligenceDialog({
 
           <div className="employee-intelligence-body" role="tabpanel">
           {loading && <div className="intelligence-empty"><span className="spinner" /> Daten werden ausgewertet …</div>}
-          {error && <div className="status status-error">{error}</div>}
+          {error && <InlineStatus variant="danger">{error}</InlineStatus>}
           {!loading && profile && tab === "overview" && (
             <>
               <div className="employee-intelligence-section-head">

@@ -1,6 +1,9 @@
 "use client";
 
-import PageHeader from "@/components/PageHeader";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import InlineStatus from "@/components/ui/InlineStatus";
+import PageHeader from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import ArtistTextCellEditor from "@/components/ArtistTextCellEditor";
 import FileDropzone from "@/components/FileDropzone";
 import PlanReviewHeader from "@/components/PlanReviewHeader";
@@ -20,16 +23,11 @@ import {
   type ArtistPlanRow,
   type ArtistPlanSummary,
 } from "@/lib/api";
-import {
-  AllCommunityModule,
-  ModuleRegistry,
-  themeQuartz,
-  type ColDef,
-} from "ag-grid-community";
+import { themeQuartz, type ColDef } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useEffect, useMemo, useState } from "react";
-
-ModuleRegistry.registerModules([AllCommunityModule]);
+import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
+import "@/lib/ag-grid-setup";
 
 const groupColors: Record<string, string> = {
   "Tages-Entertainment": "#C67EBD",
@@ -80,6 +78,7 @@ function rgba(hex: string, alpha: number): string {
 }
 
 export default function ArtistPlanPage() {
+  const { toast } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [sheets, setSheets] = useState<string[]>([]);
   const [sheet, setSheet] = useState("");
@@ -94,6 +93,15 @@ export default function ArtistPlanPage() {
     kind: "success" | "error" | "info";
     text: string;
   } | null>(null);
+  // Sprint 0 (S1-Fix, C2): bislang ungeschützte Grid-Änderungen. true, sobald
+  // die aktuell geladene Woche vom zuletzt gespeicherten/importierten Stand
+  // abweicht (Zellbearbeitung, Wochenwechsel-Remap); false nach jedem neuen
+  // Ausgangspunkt (Import, Laden, Speichern, leere Woche, Löschen).
+  const [isDirty, setIsDirty] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  useUnsavedChangesGuard(isDirty, {
+    message: "Der Künstlerplan hat ungespeicherte Änderungen, die dabei verloren gehen.",
+  });
 
   async function refreshSaved() {
     const saved = await getArtistPlans();
@@ -155,6 +163,7 @@ export default function ArtistPlanPage() {
   async function chooseFile(nextFile: File | null) {
     setFile(nextFile);
     setPlan(null);
+    setIsDirty(false);
     setSheets([]);
     setSheet("");
     if (!nextFile) return;
@@ -189,6 +198,7 @@ export default function ArtistPlanPage() {
     try {
       const result = await importArtistPlan(file, sheet);
       setPlan(result);
+      setIsDirty(false);
       setStartDate(result.start_date);
       setSetupOpen(false);
       setMessage({
@@ -211,6 +221,7 @@ export default function ArtistPlanPage() {
     try {
       const result = await createEmptyArtistPlan(startDate);
       setPlan(result);
+      setIsDirty(false);
       setFile(null);
       setSheets([]);
       setSheet("");
@@ -236,6 +247,7 @@ export default function ArtistPlanPage() {
     try {
       const result = await getArtistPlan(Number(id));
       setPlan(result);
+      setIsDirty(false);
       setStartDate(result.start_date);
       setFile(null);
       setSheets([]);
@@ -258,6 +270,7 @@ export default function ArtistPlanPage() {
     try {
       const saved = await saveArtistPlan(plan);
       setPlan({ ...plan, id: saved.artist_plan_id });
+      setIsDirty(false);
       setSelectedSavedId(String(saved.artist_plan_id));
       await refreshSaved();
       setMessage({
@@ -276,15 +289,16 @@ export default function ArtistPlanPage() {
 
   async function removeCurrent() {
     if (!plan?.id) return;
-    if (!window.confirm("Diesen Künstlerplan wirklich löschen?")) return;
     setBusy(true);
     try {
       await deleteArtistPlan(plan.id);
       setPlan(null);
+      setIsDirty(false);
       setSelectedSavedId("");
       setSetupOpen(true);
       await refreshSaved();
-      setMessage({ kind: "success", text: "Künstlerplan wurde gelöscht." });
+      toast({ variant: "success", title: "Künstlerplan wurde gelöscht" });
+      setDeleteConfirmOpen(false);
     } catch (error) {
       setMessage({
         kind: "error",
@@ -353,6 +367,7 @@ export default function ArtistPlanPage() {
       day_labels: nextLabels,
       rows: nextRows,
     });
+    setIsDirty(true);
     setStartDate(nextStart);
     setSelectedSavedId("");
   }
@@ -482,7 +497,12 @@ export default function ArtistPlanPage() {
       )}
 
       {message && (!busy || message.kind !== "info") && (
-        <div className={`status status-${message.kind}`}>{message.text}</div>
+        <InlineStatus
+          variant={message.kind === "error" ? "danger" : message.kind}
+          className="plan-page-status"
+        >
+          {message.text}
+        </InlineStatus>
       )}
 
       {plan && (
@@ -492,6 +512,7 @@ export default function ArtistPlanPage() {
             title={plan.sheet_name || "Künstlerprogramm der Woche"}
             description={`${plan.day_labels[0]} – ${plan.day_labels.at(-1)} · Zelle anklicken, um sie direkt zu bearbeiten.`}
             active={Boolean(plan.id)}
+            dirty={isDirty}
             metrics={[`${filledCount} gefüllte Felder`, `${plan.rows.length} Programmzeilen`]}
             weekPicker={
               <WeekPicker
@@ -506,7 +527,7 @@ export default function ArtistPlanPage() {
             secondaryHref="/plan-editor"
             menuItems={plan.id ? [
               { label: "Excel herunterladen", onClick: () => void downloadExcel() },
-              { label: "Künstlerplan löschen", onClick: () => void removeCurrent(), danger: true },
+              { label: "Künstlerplan löschen", onClick: () => setDeleteConfirmOpen(true), danger: true },
             ] : []}
           />
 
@@ -523,9 +544,10 @@ export default function ArtistPlanPage() {
                   undoRedoCellEditing
                   undoRedoCellEditingLimit={30}
                   getRowId={(params) => params.data.field_key}
-                  onCellValueChanged={() =>
-                    setPlan((current) => current ? { ...current, rows: [...current.rows] } : current)
-                  }
+                  onCellValueChanged={() => {
+                    setPlan((current) => current ? { ...current, rows: [...current.rows] } : current);
+                    setIsDirty(true);
+                  }}
                 />
               </div>
             </div>
@@ -540,6 +562,19 @@ export default function ArtistPlanPage() {
           </div>
         </>
       )}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        variant="danger"
+        title="Künstlerplan endgültig löschen?"
+        description={<p>Der Künstlerplan für diese Woche wird unwiderruflich gelöscht. Bereits gespeicherte Dienstpläne bleiben unverändert erhalten.</p>}
+        onDismiss={() => {
+          if (!busy) setDeleteConfirmOpen(false);
+        }}
+        actions={[
+          { label: "Abbrechen", variant: "default", autoFocus: true, disabled: busy, onClick: () => setDeleteConfirmOpen(false) },
+          { label: busy ? "Löscht …" : "Endgültig löschen", variant: "danger", disabled: busy, onClick: () => void removeCurrent() },
+        ]}
+      />
     </div>
   );
 }

@@ -1,6 +1,10 @@
 "use client";
 
-import PageHeader from "@/components/PageHeader";
+import PageHeader from "@/components/ui/PageHeader";
+import Button from "@/components/ui/Button";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import InlineStatus from "@/components/ui/InlineStatus";
+import { useToast } from "@/components/ui/Toast";
 import {
   ApiError,
   ensureBackendRestarted,
@@ -51,21 +55,31 @@ function formatUptime(seconds: number): string {
 }
 
 export default function SystemPage() {
+  const { toast } = useToast();
   const [health, setHealth] = useState<HealthState>("checking");
   const [diagnostics, setDiagnostics] = useState<SystemDiagnostics | null>(null);
   const [diagnosticsError, setDiagnosticsError] = useState("");
   const [restarting, setRestarting] = useState(false);
   const [message, setMessage] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  // Sprint 4: Polling pausiert, solange der Tab nicht sichtbar ist -
+  // keine 5-Sekunden-Anfragen im Hintergrund.
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
   const pollTimer = useRef<number | null>(null);
 
   const checkHealth = useCallback(async () => {
     try {
       await healthCheck();
       setHealth("up");
+      setLastChecked(new Date());
       return true;
     } catch {
       setHealth("down");
+      setLastChecked(new Date());
       return false;
     }
   }, []);
@@ -94,10 +108,13 @@ export default function SystemPage() {
       .then(() => {
         if (!active) return;
         setHealth("up");
+        setLastChecked(new Date());
         return loadDiagnostics();
       })
       .catch(() => {
-        if (active) setHealth("down");
+        if (!active) return;
+        setHealth("down");
+        setLastChecked(new Date());
       });
 
     return () => {
@@ -122,15 +139,31 @@ export default function SystemPage() {
     };
   }, []);
 
+  // Sichtbarkeit des Tabs verfolgen; bei Rückkehr sofort einmal prüfen,
+  // damit der Status nicht bis zum nächsten Intervall veraltet bleibt.
   useEffect(() => {
-    if (!autoRefresh) return;
+    function onVisibilityChange() {
+      const visible = document.visibilityState === "visible";
+      setPageVisible(visible);
+      if (visible) void refreshAll();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [refreshAll]);
+
+  useEffect(() => {
+    if (!autoRefresh || !pageVisible) return;
+    // Sprint 0 (S1-Fix, C16): pollte bislang nur checkHealth() und ließ die
+    // Diagnose (Datenbankstatus, Speicher, Vorlagen) veralten, obwohl das
+    // Label "Backend- und Datenbankstatus" verspricht. refreshAll() deckt
+    // beides ab, exakt wie der "Jetzt prüfen"-Button.
     pollTimer.current = window.setInterval(() => {
-      checkHealth();
+      refreshAll();
     }, HEALTH_POLL_INTERVAL_MS);
     return () => {
       if (pollTimer.current) window.clearInterval(pollTimer.current);
     };
-  }, [autoRefresh, checkHealth]);
+  }, [autoRefresh, pageVisible, refreshAll]);
 
   async function toggleAutoRefresh() {
     const next = !autoRefresh;
@@ -144,9 +177,7 @@ export default function SystemPage() {
   }
 
   async function handleRestart() {
-    if (!window.confirm("Backend jetzt (neu) starten? Die Verbindung ist dabei kurz unterbrochen.")) {
-      return;
-    }
+    setRestartConfirmOpen(false);
     setRestarting(true);
     setMessage({ kind: "info", text: "Neustart wird ausgelöst …" });
     try {
@@ -174,7 +205,7 @@ export default function SystemPage() {
       const up = await checkHealth();
       if (up) {
         await loadDiagnostics();
-        setMessage({ kind: "success", text: "Backend wurde neu gestartet und ist wieder erreichbar." });
+        toast({ variant: "success", title: "Backend wurde neu gestartet", description: "Wieder erreichbar." });
         setRestarting(false);
         return;
       }
@@ -224,13 +255,28 @@ export default function SystemPage() {
           </h2>
           <p>
             {health === "checking" && "Verbindung und Datenbankstatus werden gerade geladen."}
-            {health === "up" && "Die lokale Planung läuft. Der Status wird automatisch alle fünf Sekunden geprüft."}
+            {health === "up" && (autoRefresh
+              ? "Die lokale Planung läuft. Der Status wird automatisch alle fünf Sekunden geprüft, solange dieser Tab sichtbar ist."
+              : "Die lokale Planung läuft. Die automatische Prüfung ist ausgeschaltet.")}
             {health === "down" && "Starte das Backend neu oder öffne den Planner-Agent über das Startskript."}
           </p>
         </div>
-        <span className="system-live-badge">
-          <i aria-hidden="true" />
-          {health === "checking" ? "Prüfung läuft" : health === "up" ? "Live verbunden" : "Offline"}
+        <span className="system-live-meta">
+          <span className="system-live-badge">
+            <i aria-hidden="true" />
+            {health === "checking" ? "Prüfung läuft" : health === "up" ? "Live verbunden" : "Offline"}
+          </span>
+          {lastChecked && (
+            <small className="system-last-checked">
+              Zuletzt geprüft{" "}
+              {new Intl.DateTimeFormat("de-DE", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              }).format(lastChecked)}{" "}
+              Uhr
+            </small>
+          )}
         </span>
       </section>
 
@@ -280,19 +326,19 @@ export default function SystemPage() {
               <article>
                 <span className="system-action-icon"><SystemGlyph kind="refresh" /></span>
                 <div><strong>Backend neu starten</strong><small>Startet die Planungs- und Datenebene neu. Deine Daten bleiben erhalten.</small></div>
-                <button type="button" className="btn btn-primary" onClick={handleRestart} disabled={restarting}>
-                  {restarting ? "Startet …" : "Neu starten"}
-                </button>
+                <Button variant="primary" size="sm" loading={restarting} onClick={() => setRestartConfirmOpen(true)}>
+                  Neu starten
+                </Button>
               </article>
               <article>
                 <span className="system-action-icon"><SystemGlyph kind="screen" /></span>
                 <div><strong>Oberfläche neu laden</strong><small>Lädt die aktuelle Ansicht frisch, ohne das Backend zu verändern.</small></div>
-                <button type="button" className="btn" onClick={handleFrontendReload}>Neu laden</button>
+                <Button variant="secondary" size="sm" onClick={handleFrontendReload}>Neu laden</Button>
               </article>
               <article>
                 <span className="system-action-icon"><SystemGlyph kind="check" /></span>
                 <div><strong>Diagnose aktualisieren</strong><small>Prüft Vorlagen, Ordner, Speicher und Datenbank erneut.</small></div>
-                <button type="button" className="btn" onClick={() => refreshAll()} disabled={restarting}>Jetzt prüfen</button>
+                <Button variant="secondary" size="sm" disabled={restarting} onClick={() => refreshAll()}>Jetzt prüfen</Button>
               </article>
             </div>
 
@@ -311,7 +357,14 @@ export default function SystemPage() {
               />
             </div>
 
-            {message && <div className={`status status-${message.kind}`}>{message.text}</div>}
+            {message && (
+              <InlineStatus
+                variant={message.kind === "success" ? "success" : message.kind === "error" ? "danger" : "info"}
+                className="mt-3"
+              >
+                {message.text}
+              </InlineStatus>
+            )}
           </div>
         </section>
 
@@ -338,7 +391,11 @@ export default function SystemPage() {
         </section>
       </div>
 
-      {diagnosticsError && <div className="status status-error system-diagnostics-error">{diagnosticsError}</div>}
+      {diagnosticsError && (
+        <InlineStatus variant="danger" className="system-diagnostics-error">
+          {diagnosticsError}
+        </InlineStatus>
+      )}
 
       {diagnostics && (
         <div className="system-diagnostics-grid">
@@ -383,6 +440,16 @@ export default function SystemPage() {
           </section>
         </div>
       )}
+      <ConfirmDialog
+        open={restartConfirmOpen}
+        title="Backend jetzt neu starten?"
+        description={<p>Die Verbindung zur Planungsebene ist dabei kurz unterbrochen. Deine Daten bleiben unverändert erhalten.</p>}
+        onDismiss={() => setRestartConfirmOpen(false)}
+        actions={[
+          { label: "Abbrechen", variant: "default", autoFocus: true, onClick: () => setRestartConfirmOpen(false) },
+          { label: "Neu starten", variant: "primary", onClick: () => void handleRestart() },
+        ]}
+      />
     </div>
   );
 }

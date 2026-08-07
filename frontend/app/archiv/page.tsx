@@ -1,7 +1,12 @@
 "use client";
 
 import ArchiveImportFlow from "@/components/ArchiveImportFlow";
-import PageHeader from "@/components/PageHeader";
+import Button from "@/components/ui/Button";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import EmptyState from "@/components/ui/EmptyState";
+import InlineStatus from "@/components/ui/InlineStatus";
+import PageHeader from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import {
   deleteWeek,
   getWeekDetail,
@@ -9,6 +14,7 @@ import {
   type WeekDetail,
   type WeekSummary,
 } from "@/lib/api";
+import { useScrollDetailIntoView } from "@/lib/useScrollDetailIntoView";
 import { useEffect, useMemo, useState } from "react";
 
 type ArchiveFilter = "all" | "imported" | "generated";
@@ -36,6 +42,7 @@ function valueOf(row: Record<string, unknown>, ...keys: string[]): string {
 }
 
 export default function ArchivPage() {
+  const { toast } = useToast();
   const [weeks, setWeeks] = useState<WeekSummary[]>([]);
   const [details, setDetails] = useState<Record<number, WeekDetail>>({});
   const [selectedWeekId, setSelectedWeekId] = useState<number | null>(null);
@@ -45,6 +52,10 @@ export default function ArchivPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [message, setMessage] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WeekSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [showAllAssignments, setShowAllAssignments] = useState(false);
+  const markUserSelection = useScrollDetailIntoView(selectedWeekId, ".archive-detail");
 
   async function load() {
     setLoading(true);
@@ -90,8 +101,10 @@ export default function ArchivPage() {
   const importedCount = weeks.filter((week) => !isGenerated(week)).length;
 
   async function selectWeek(weekId: number) {
+    markUserSelection();
     setSelectedWeekId(weekId);
     setMessage(null);
+    setShowAllAssignments(false);
     if (details[weekId]) return;
     setDetailLoading(true);
     try {
@@ -107,8 +120,14 @@ export default function ArchivPage() {
     }
   }
 
-  async function remove(week: WeekSummary) {
-    if (!window.confirm(`${week.label} wirklich aus dem Archiv löschen?`)) return;
+  function remove(week: WeekSummary) {
+    setDeleteTarget(week);
+  }
+
+  async function confirmRemove() {
+    const week = deleteTarget;
+    if (!week) return;
+    setDeleting(true);
     try {
       await deleteWeek(week.id);
       setSelectedWeekId(null);
@@ -117,13 +136,16 @@ export default function ArchivPage() {
         delete next[week.id];
         return next;
       });
-      setMessage({ kind: "success", text: "Woche wurde aus dem Archiv gelöscht." });
+      toast({ variant: "success", title: "Woche wurde aus dem Archiv gelöscht" });
+      setDeleteTarget(null);
       await load();
     } catch (error) {
       setMessage({
         kind: "error",
         text: error instanceof Error ? error.message : "Woche konnte nicht gelöscht werden.",
       });
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -150,20 +172,20 @@ export default function ArchivPage() {
 
   return (
     <div className="archive-page">
-      <div className="archive-page-head">
-        <PageHeader
-          title="Archiv"
-          subtitle="Gespeicherte Dienstpläne schnell finden, prüfen und als Grundlage weiterverwenden"
-        />
-        <button
-          type="button"
-          className={`btn btn-primary archive-import-trigger ${importOpen ? "is-open" : ""}`}
-          onClick={() => setImportOpen((current) => !current)}
-        >
-          <span aria-hidden="true">{importOpen ? "×" : "+"}</span>
-          {importOpen ? "Import schließen" : "Alten Dienstplan archivieren"}
-        </button>
-      </div>
+      <PageHeader
+        title="Archiv"
+        subtitle="Gespeicherte Dienstpläne schnell finden, prüfen und als Grundlage weiterverwenden"
+        primaryAction={
+          <button
+            type="button"
+            className={`btn btn-primary archive-import-trigger ${importOpen ? "is-open" : ""}`}
+            onClick={() => setImportOpen((current) => !current)}
+          >
+            <span aria-hidden="true">{importOpen ? "×" : "+"}</span>
+            {importOpen ? "Import schließen" : "Alten Dienstplan archivieren"}
+          </button>
+        }
+      />
 
       <section className="archive-overview" aria-label="Archivübersicht">
         <div className="archive-overview-main">
@@ -189,7 +211,14 @@ export default function ArchivPage() {
         <ArchiveImportFlow onClose={() => setImportOpen(false)} onSaved={handleSaved} />
       )}
 
-      {message && <div className={`status status-${message.kind}`}>{message.text}</div>}
+      {message && (
+        <InlineStatus
+          variant={message.kind === "error" ? "danger" : message.kind}
+          className="archive-status"
+        >
+          {message.text}
+        </InlineStatus>
+      )}
 
       <section className="archive-library">
         <div className="archive-library-head">
@@ -232,10 +261,9 @@ export default function ArchivPage() {
         <div className={`archive-library-layout ${selectedWeek ? "has-detail" : ""}`}>
           <div className="archive-week-list">
             {loading && (
-              <div className="archive-empty-state">
-                <span className="spinner" />
-                <strong>Archiv wird geladen …</strong>
-              </div>
+              <InlineStatus variant="loading" className="archive-list-status">
+                Archiv wird geladen …
+              </InlineStatus>
             )}
             {!loading && filteredWeeks.map((week) => {
               const detail = details[week.id];
@@ -270,11 +298,32 @@ export default function ArchivPage() {
               );
             })}
             {!loading && filteredWeeks.length === 0 && (
-              <div className="archive-empty-state">
-                <span aria-hidden="true">⌕</span>
-                <strong>Keine passende Woche gefunden</strong>
-                <p>Ändere Suche oder Filter – oder archiviere oben einen alten Dienstplan.</p>
-              </div>
+              <EmptyState
+                variant={query || filter !== "all" ? "filtered" : "empty"}
+                title={
+                  query || filter !== "all"
+                    ? "Keine passende Woche gefunden"
+                    : "Noch keine gespeicherten Wochen"
+                }
+                description={
+                  query || filter !== "all"
+                    ? "Ändere Suche oder Filter – oder archiviere oben einen alten Dienstplan."
+                    : "Archiviere oben einen alten Dienstplan oder speichere eine Woche im Editor."
+                }
+                primaryAction={
+                  query || filter !== "all" ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setQuery("");
+                        setFilter("all");
+                      }}
+                    >
+                      Filter zurücksetzen
+                    </Button>
+                  ) : undefined
+                }
+              />
             )}
           </div>
 
@@ -317,7 +366,10 @@ export default function ArchivPage() {
                     <div className="archive-detail-section">
                       <h4>Zuweisungen</h4>
                       <div className="archive-detail-list">
-                        {selectedDetail.assignments.slice(0, 120).map((row, index) => (
+                        {(showAllAssignments
+                          ? selectedDetail.assignments
+                          : selectedDetail.assignments.slice(0, 120)
+                        ).map((row, index) => (
                           <div className="archive-detail-row" key={`assignment-${index}`}>
                             <span>{germanDate(valueOf(row, "date"))}</span>
                             <div>
@@ -330,6 +382,16 @@ export default function ArchivPage() {
                             </div>
                           </div>
                         ))}
+                        {!showAllAssignments && selectedDetail.assignments.length > 120 && (
+                          <button
+                            type="button"
+                            className="archive-detail-more"
+                            onClick={() => setShowAllAssignments(true)}
+                          >
+                            Alle {selectedDetail.assignments.length} Zuweisungen anzeigen
+                            ({selectedDetail.assignments.length - 120} weitere)
+                          </button>
+                        )}
                         {selectedDetail.assignments.length === 0 && (
                           <p className="archive-detail-empty">Keine Zuweisungen gespeichert.</p>
                         )}
@@ -357,6 +419,9 @@ export default function ArchivPage() {
               ) : null}
 
               <div className="archive-detail-actions">
+                <Button href={`/plan-editor?start=${selectedWeek.start_date}`}>
+                  Im Editor öffnen
+                </Button>
                 <button type="button" className="btn btn-danger" onClick={() => void remove(selectedWeek)}>
                   Woche löschen
                 </button>
@@ -365,6 +430,19 @@ export default function ArchivPage() {
           )}
         </div>
       </section>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        variant="danger"
+        title={deleteTarget ? `${deleteTarget.label} aus dem Archiv löschen?` : "Woche löschen?"}
+        description={<p>Die archivierte Woche wird unwiderruflich gelöscht und kann nicht mehr als Grundlage für neue Dienstpläne verwendet werden.</p>}
+        onDismiss={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        actions={[
+          { label: "Abbrechen", variant: "default", autoFocus: true, disabled: deleting, onClick: () => setDeleteTarget(null) },
+          { label: deleting ? "Löscht …" : "Endgültig löschen", variant: "danger", disabled: deleting, onClick: () => void confirmRemove() },
+        ]}
+      />
     </div>
   );
 }

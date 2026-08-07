@@ -1,6 +1,9 @@
 "use client";
 
-import PageHeader from "@/components/PageHeader";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import InlineStatus from "@/components/ui/InlineStatus";
+import PageHeader from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import FileDropzone from "@/components/FileDropzone";
 import PlanReviewHeader from "@/components/PlanReviewHeader";
 import ReadingProgress from "@/components/ReadingProgress";
@@ -18,6 +21,7 @@ import {
   type RehearsalPlanSummary,
 } from "@/lib/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 
 function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("de-DE", {
@@ -34,6 +38,7 @@ function shiftIsoDate(iso: string, days: number): string {
 }
 
 export default function RehearsalPlanPage() {
+  const { toast } = useToast();
   const [plans, setPlans] = useState<RehearsalPlanSummary[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [sheets, setSheets] = useState<string[]>([]);
@@ -46,6 +51,12 @@ export default function RehearsalPlanPage() {
     kind: "success" | "error" | "info";
     text: string;
   } | null>(null);
+  // Sprint 0 (S1-Fix, C2): bislang ungeschützte Tabellen-Änderungen.
+  const [isDirty, setIsDirty] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  useUnsavedChangesGuard(isDirty, {
+    message: "Der Probenplan hat ungespeicherte Änderungen, die dabei verloren gehen.",
+  });
 
   const refreshPlans = useCallback(async () => {
     setPlans(await getRehearsalPlans());
@@ -79,6 +90,7 @@ export default function RehearsalPlanPage() {
   async function chooseFile(nextFile: File | null) {
     setFile(nextFile);
     setPlan(null);
+    setIsDirty(false);
     setSetupOpen(true);
     setSheets([]);
     setSheet("");
@@ -122,6 +134,7 @@ export default function RehearsalPlanPage() {
     try {
       const result = await importRehearsalPlan(file, isExcel ? sheet : undefined);
       setPlan(result);
+      setIsDirty(false);
       setSetupOpen(false);
       const quelle = result.extraction_method === "gemini"
         ? "mit Gemini "
@@ -154,6 +167,7 @@ export default function RehearsalPlanPage() {
           }
         : current,
     );
+    setIsDirty(true);
   }
 
   function changeWeekStart(nextStart: string) {
@@ -172,6 +186,7 @@ export default function RehearsalPlanPage() {
         })),
       };
     });
+    setIsDirty(true);
   }
 
   async function save() {
@@ -182,6 +197,7 @@ export default function RehearsalPlanPage() {
       await refreshPlans();
       const stored = await getRehearsalPlan(result.rehearsal_plan_id);
       setPlan(stored);
+      setIsDirty(false);
       setMessage({
         kind: "success",
         text: "Probenplan aktiviert. Die Dienstplan-Erstellung berücksichtigt ihn für diese Woche automatisch.",
@@ -200,6 +216,7 @@ export default function RehearsalPlanPage() {
     setBusy(true);
     try {
       setPlan(await getRehearsalPlan(id));
+      setIsDirty(false);
       setSetupOpen(false);
       setMessage({ kind: "success", text: "Gespeicherter Probenplan geladen." });
     } catch (error) {
@@ -213,14 +230,17 @@ export default function RehearsalPlanPage() {
   }
 
   async function removePlan(id: number) {
-    if (!window.confirm("Diesen Probenplan wirklich löschen?")) return;
     setBusy(true);
     try {
       await deleteRehearsalPlan(id);
-      if (plan?.id === id) setPlan(null);
+      if (plan?.id === id) {
+        setPlan(null);
+        setIsDirty(false);
+      }
       setSetupOpen(true);
       await refreshPlans();
-      setMessage({ kind: "success", text: "Probenplan wurde gelöscht." });
+      toast({ variant: "success", title: "Probenplan wurde gelöscht" });
+      setDeleteConfirmOpen(false);
     } catch (error) {
       setMessage({
         kind: "error",
@@ -350,7 +370,12 @@ export default function RehearsalPlanPage() {
       )}
 
       {message && (!busy || message.kind !== "info") && (
-        <div className={`status status-${message.kind}`}>{message.text}</div>
+        <InlineStatus
+          variant={message.kind === "error" ? "danger" : message.kind}
+          className="plan-page-status"
+        >
+          {message.text}
+        </InlineStatus>
       )}
 
       {plan && (
@@ -360,6 +385,7 @@ export default function RehearsalPlanPage() {
             title={plan.source_filename || "Probenplan der Woche"}
             description="Erkannte Zeiten und Teilnehmer kurz prüfen. Überschneidungen werden danach automatisch in der Dienstplanung berücksichtigt."
             active={Boolean(plan.id)}
+            dirty={isDirty}
             metrics={[
               `${plan.rehearsals.length} Proben`,
               `${recognition.recognized} aktive MA erkannt`,
@@ -372,14 +398,14 @@ export default function RehearsalPlanPage() {
                 label="Planwoche"
               />
             }
-            primaryLabel={plan.id ? "Änderungen speichern" : "Prüfen & aktivieren"}
+            primaryLabel={plan.id ? "Änderungen speichern" : "Für Dienstplan aktivieren"}
             onPrimary={save}
             busy={busy}
             secondaryHref="/plan-editor"
             menuItems={plan.id ? [
               {
                 label: "Probenplan löschen",
-                onClick: () => void removePlan(plan.id!),
+                onClick: () => setDeleteConfirmOpen(true),
                 danger: true,
               },
             ] : []}
@@ -444,12 +470,13 @@ export default function RehearsalPlanPage() {
                         <button
                           className="btn btn-icon"
                           title="Zeile entfernen"
-                          onClick={() =>
+                          onClick={() => {
                             setPlan((current) => current
                               ? { ...current, rehearsals: current.rehearsals.filter((_, rowIndex) => rowIndex !== index) }
                               : current
-                            )
-                          }
+                            );
+                            setIsDirty(true);
+                          }}
                         >
                           ×
                         </button>
@@ -462,6 +489,19 @@ export default function RehearsalPlanPage() {
           </section>
         </>
       )}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        variant="danger"
+        title="Probenplan endgültig löschen?"
+        description={<p>Der Probenplan für diese Woche wird unwiderruflich gelöscht. Bereits gespeicherte Dienstpläne bleiben unverändert erhalten.</p>}
+        onDismiss={() => {
+          if (!busy) setDeleteConfirmOpen(false);
+        }}
+        actions={[
+          { label: "Abbrechen", variant: "default", autoFocus: true, disabled: busy, onClick: () => setDeleteConfirmOpen(false) },
+          { label: busy ? "Löscht …" : "Endgültig löschen", variant: "danger", disabled: busy, onClick: () => plan?.id && void removePlan(plan.id) },
+        ]}
+      />
     </div>
   );
 }

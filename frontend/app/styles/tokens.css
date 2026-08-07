@@ -1,0 +1,154 @@
+/* =========================================================================
+   Planner-Agent · Design-Tokens ("Quiet Command")
+   -------------------------------------------------------------------------
+   Sprint 1 UI-Foundation. Diese Datei ergänzt foundation.css/command-theme.css
+   um ein vollständiges, semantisches Token-System (Farbe, Oberflächen,
+   Spacing, Radius, Schatten, Z-Index, Motion, Typografie-Skala).
+
+   Bewusst additiv: die bestehenden Roh-Tokens (--background, --surface,
+   --accent, --status-*, ...) bleiben unverändert die einzige Quelle für
+   Farbwerte. Die semantischen --color-*-Tokens hier referenzieren sie per
+   var(...), damit command-theme.css (aktives Theme) automatisch weiter
+   greift, ohne Werte zu duplizieren. Siehe docs/ui/DESIGN_SYSTEM.md.
+   ========================================================================= */
+
+:root {
+  /* ---- Oberflächen & Text (Light-Fallback, überschrieben von command-theme.css) */
+  --color-background: var(--background);
+  --color-background-subtle: var(--surface);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-2);
+  --color-surface-overlay: var(--surface-2);
+  --color-surface-hover: var(--accent-soft);
+  --color-surface-active: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
+
+  --color-text: var(--foreground);
+  --color-text-muted: var(--muted);
+  --color-text-subtle: color-mix(in srgb, var(--muted) 78%, var(--foreground) 0%);
+  --color-text-inverse: #ffffff;
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-subtle: color-mix(in srgb, var(--border) 55%, transparent);
+
+  /* ---- Akzent (helles Violett in Command-Theme, siehe command-theme.css) */
+  --color-accent: var(--accent);
+  --color-accent-hover: #5868ed;
+  --color-accent-active: #4a58d6;
+  --color-accent-subtle: var(--accent-soft);
+  --color-accent-contrast: #ffffff;
+
+  /* ---- Semantischer Status (UI-Ebene - NICHT die fachlichen Kategoriefarben,
+     siehe category-colors.css für --cat-*, die exakt der Excel-Vorlage
+     entsprechen und bewusst getrennt bleiben) */
+  --color-success: var(--status-positive);
+  --color-success-subtle: color-mix(in srgb, var(--status-positive) 14%, transparent);
+  --color-warning: var(--status-warning);
+  --color-warning-subtle: color-mix(in srgb, var(--status-warning) 16%, transparent);
+  --color-danger: var(--status-critical);
+  --color-danger-subtle: color-mix(in srgb, var(--status-critical) 14%, transparent);
+  --color-info: var(--status-info);
+  --color-info-subtle: color-mix(in srgb, var(--status-info) 14%, transparent);
+
+  --color-backdrop: rgba(10, 10, 20, 0.45);
+
+  /* ---- Spacing-Skala (Basis 4px) ---------------------------------------- */
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ---- Radien ------------------------------------------------------------ */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
+
+  /* ---- Schatten (Light-Fallback) ----------------------------------------- */
+  --shadow-md: 0 6px 16px rgba(20, 20, 35, 0.07);
+  --shadow-lg: 0 18px 44px rgba(20, 20, 35, 0.09);
+  --shadow-overlay: 0 24px 60px rgba(10, 10, 24, 0.18);
+  --shadow-focus: 0 0 0 3px var(--color-accent-subtle);
+
+  /* ---- Z-Index-Skala ------------------------------------------------------ */
+  --z-base: 0;
+  --z-sticky: 20;
+  --z-dropdown: 30;
+  --z-popover: 40;
+  --z-overlay: 90;
+  --z-dialog: 200;
+  --z-toast: 220;
+  --z-tooltip: 230;
+
+  /* ---- Motion -------------------------------------------------------------- */
+  --duration-fast: 130ms;
+  --duration-normal: 170ms;
+  --duration-slow: 200ms;
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ---- Typografische Skala -------------------------------------------------- */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 19px;
+  --font-size-2xl: 23px;
+  --font-size-3xl: 28px;
+  --font-size-4xl: 34px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 550;
+  --font-weight-semibold: 650;
+  --font-weight-bold: 760;
+
+  --line-height-tight: 1.15;
+  --line-height-normal: 1.4;
+  --line-height-relaxed: 1.6;
+}
+
+/* Dark-Fallback für den Fall, dass data-theme="command" (aktuell fest in
+   app/layout.tsx gesetzt) einmal entfernt würde - hält die semantische
+   Schicht auch dann konsistent mit dem bestehenden Dark-Media-Query in
+   foundation.css. Kein Zielzustand, nur defensiver Fallback. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text-subtle: color-mix(in srgb, var(--muted) 70%, var(--foreground) 20%);
+    --color-accent-hover: #93a0ff;
+    --color-accent-active: #a9b3ff;
+    --color-accent-contrast: #0a0b12;
+    --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.32);
+    --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.4);
+    --shadow-overlay: 0 24px 60px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Aktives Theme (data-theme="command", siehe app/layout.tsx): helle
+   Violett-Akzente auf Dunkel, konsistent mit command-theme.css. */
+:root[data-theme="command"] {
+  --color-text-subtle: color-mix(in srgb, var(--muted) 72%, var(--foreground) 18%);
+  --color-accent-hover: #93a0ff;
+  --color-accent-active: #a9b3ff;
+  --color-accent-contrast: #0a0b12;
+  --color-backdrop: rgba(6, 7, 14, 0.6);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.4);
+  --shadow-overlay: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+    --duration-slow: 0ms;
+  }
+}

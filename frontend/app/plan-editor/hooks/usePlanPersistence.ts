@@ -71,13 +71,24 @@ export function usePlanPersistence({
     };
   }, []);
 
+  // Sprint 2 (Phase 9.1): ein neuer Ladevorgang (z.B. erneuter Fokus-Reload,
+  // siehe useThrottledFocusReload) bricht einen noch laufenden vorherigen
+  // Ladevorgang wirklich ab (AbortController), statt nur dessen Ergebnis
+  // über mountedRef zu verwerfen - erspart dem Backend unnötige Arbeit bei
+  // schnellen Folgeaktionen und wird beim Unmount ebenfalls abgebrochen.
+  const loadAbortControllerRef = useRef<AbortController | null>(null);
+
   const loadReferenceData = useCallback(() => {
+    loadAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortControllerRef.current = controller;
+    const { signal } = controller;
     return Promise.all([
-      getPlanTemplates(),
-      getActivePeople(),
-      getArtistPlans(),
-      getRehearsalPlans(),
-      getWeeks(),
+      getPlanTemplates(signal),
+      getActivePeople(signal),
+      getArtistPlans(signal),
+      getRehearsalPlans(signal),
+      getWeeks(signal),
     ])
       .then(([templateData, activePeople, storedArtistPlans, storedRehearsalPlans, storedWeeks]) => {
         if (!mountedRef.current) return;
@@ -89,6 +100,7 @@ export function usePlanPersistence({
         onReferenceDataLoaded(storedWeeks);
       })
       .catch((error) => {
+        if (error?.name === "AbortError") return;
         if (!mountedRef.current) return;
         onReferenceDataError(error.message);
       });
@@ -97,7 +109,10 @@ export function usePlanPersistence({
 
   useEffect(() => {
     const timer = window.setTimeout(loadReferenceData, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      loadAbortControllerRef.current?.abort();
+    };
   }, [loadReferenceData]);
 
   // AP8: vorher lud `window.focus` ungedrosselt bei jedem Tab-Wechsel dieselben
@@ -114,6 +129,11 @@ export function usePlanPersistence({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const manuallyEditedCellsRef = useRef<Set<string>>(new Set());
   const auditEventsRef = useRef<PlanAuditEventInput[]>([]);
+  // Sprint 2 (Phase 10): synchroner Schutz gegen Doppel-Speichern zusätzlich
+  // zum disabled-Zustand des Speichern-Buttons (busy || !isDirty) - der
+  // React-State-Update, der den Button deaktiviert, greift erst nach dem
+  // nächsten Render, ein Ref dagegen sofort beim ersten performSave()-Aufruf.
+  const savingRef = useRef(false);
 
   const markDirty = useCallback((count = 1) => {
     setIsDirty(true);
@@ -149,11 +169,13 @@ export function usePlanPersistence({
 
   // ---------- Speichern ----------
   const performSave = useCallback(async (): Promise<boolean> => {
+    if (savingRef.current) return false;
     if (!rows.length) return false;
     if (!resolvedTemplateWeekId) {
       onMessage({ kind: "error", text: "Bitte den Plan zuerst neu erstellen." });
       return false;
     }
+    savingRef.current = true;
     onBusyChange(true);
     setSaveState("saving");
     try {
@@ -236,6 +258,7 @@ export function usePlanPersistence({
       setSaveError(text);
       return false;
     } finally {
+      savingRef.current = false;
       onBusyChange(false);
     }
   }, [

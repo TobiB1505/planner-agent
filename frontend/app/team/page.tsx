@@ -1,7 +1,12 @@
 "use client";
 
-import PageHeader from "@/components/PageHeader";
 import EmployeeIntelligenceDialog from "@/components/EmployeeIntelligenceDialog";
+import Button from "@/components/ui/Button";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import EmptyState from "@/components/ui/EmptyState";
+import InlineStatus from "@/components/ui/InlineStatus";
+import PageHeader from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import {
   createPerson,
   deletePerson,
@@ -27,6 +32,7 @@ function currentMonday(): string {
 
 export default function TeamPage() {
   const departmentListId = useId();
+  const { toast } = useToast();
   const [people, setPeople] = useState<Person[]>([]);
   const [intelligence, setIntelligence] = useState<TeamIntelligenceOverview | null>(null);
   const [name, setName] = useState("");
@@ -39,6 +45,8 @@ export default function TeamPage() {
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [profilePersonId, setProfilePersonId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Person | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -152,12 +160,17 @@ export default function TeamPage() {
     setAdding(true);
     setNotice(null);
     try {
-      await createPerson(name.trim(), department.trim());
+      const cleanName = name.trim();
+      await createPerson(cleanName, department.trim());
       setName("");
       setDepartment("");
       setView("active");
       setAddOpen(false);
-      setNotice({ kind: "success", text: "Mitarbeiter wurde zum aktiven Pool hinzugefügt." });
+      toast({
+        variant: "success",
+        title: `${cleanName} hinzugefügt`,
+        description: "Der Mitarbeiter ist jetzt im aktiven Pool.",
+      });
       await load();
     } catch (error) {
       setNotice({
@@ -200,11 +213,13 @@ export default function TeamPage() {
         department: person.department ?? "",
         active,
       });
-      setNotice({
-        kind: "success",
-        text: active
-          ? `${person.name} ist wieder aktiv und erscheint in den Planvorschlägen.`
-          : `${person.name} ist jetzt inaktiv und wird nicht mehr vorgeschlagen.`,
+      setNotice(null);
+      toast({
+        variant: "success",
+        title: active ? `${person.name} ist wieder aktiv` : `${person.name} ist jetzt inaktiv`,
+        description: active
+          ? "Erscheint wieder in den Planvorschlägen."
+          : "Wird nicht mehr vorgeschlagen.",
       });
       await loadIntelligence();
     } catch (error) {
@@ -217,24 +232,31 @@ export default function TeamPage() {
     }
   }
 
-  async function remove(person: Person) {
-    const confirmed = window.confirm(
-      `${person.name} wirklich aus der Mitarbeiterverwaltung löschen?\n\nHistorische Dienstpläne bleiben unverändert erhalten.`,
-    );
-    if (!confirmed) return;
+  function remove(person: Person) {
+    setDeleteTarget(person);
+  }
+
+  async function confirmDelete() {
+    const person = deleteTarget;
+    if (!person) return;
+    setDeleting(true);
     try {
       await deletePerson(person.id);
       setPeople((current) => current.filter((entry) => entry.id !== person.id));
       await loadIntelligence();
-      setNotice({
-        kind: "success",
-        text: `${person.name} wurde gelöscht. Historische Dienstpläne bleiben erhalten.`,
+      toast({
+        variant: "success",
+        title: `${person.name} wurde gelöscht`,
+        description: "Historische Dienstpläne bleiben erhalten.",
       });
+      setDeleteTarget(null);
     } catch (error) {
       setNotice({
         kind: "error",
         text: error instanceof Error ? error.message : "Mitarbeiter konnte nicht gelöscht werden.",
       });
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -244,20 +266,20 @@ export default function TeamPage() {
         {departments.map((item) => <option value={item} key={item} />)}
       </datalist>
 
-      <div className="team-page-head">
-        <PageHeader
-          title="Team"
-          subtitle="Mitarbeiterpool, Skills, Historie und planungsrelevante Hinweise"
-        />
-        <button
-          type="button"
-          className={`btn btn-primary team-add-trigger ${addOpen ? "is-open" : ""}`}
-          onClick={() => setAddOpen((current) => !current)}
-        >
-          <span aria-hidden="true">{addOpen ? "×" : "+"}</span>
-          {addOpen ? "Schließen" : "MA hinzufügen"}
-        </button>
-      </div>
+      <PageHeader
+        title="Team"
+        subtitle="Mitarbeiterpool, Skills, Historie und planungsrelevante Hinweise"
+        primaryAction={
+          <button
+            type="button"
+            className={`btn btn-primary team-add-trigger ${addOpen ? "is-open" : ""}`}
+            onClick={() => setAddOpen((current) => !current)}
+          >
+            <span aria-hidden="true">{addOpen ? "×" : "+"}</span>
+            {addOpen ? "Schließen" : "MA hinzufügen"}
+          </button>
+        }
+      />
 
       <section className="team-overview" aria-label="Teamübersicht">
         <div className="team-overview-main">
@@ -339,7 +361,14 @@ export default function TeamPage() {
         </section>
       )}
 
-      {notice && <div className={`status status-${notice.kind}`}>{notice.text}</div>}
+      {notice && (
+        <InlineStatus
+          variant={notice.kind === "error" ? "danger" : notice.kind}
+          className="team-status"
+        >
+          {notice.text}
+        </InlineStatus>
+      )}
 
       <section className="team-directory">
         <div className="team-directory-head">
@@ -384,10 +413,9 @@ export default function TeamPage() {
 
         <div className="team-member-list">
           {loading && (
-            <div className="team-empty-state">
-              <span className="spinner" />
-              <strong>Team wird geladen …</strong>
-            </div>
+            <InlineStatus variant="loading" className="team-list-status">
+              Team wird geladen …
+            </InlineStatus>
           )}
           {!loading && filtered.map((person) => (
             <TeamMemberRow
@@ -404,23 +432,37 @@ export default function TeamPage() {
             />
           ))}
           {!loading && filtered.length === 0 && (
-            <div className="team-empty-state">
-              <span aria-hidden="true">{query ? "⌕" : view === "active" ? "○" : "✓"}</span>
-              <strong>
-                {query
+            <EmptyState
+              className="team-list-empty"
+              variant={query || intelligenceView !== "all" ? "filtered" : "empty"}
+              title={
+                query || intelligenceView !== "all"
                   ? "Keine passenden Mitarbeiter gefunden"
                   : view === "active"
                     ? "Noch keine aktiven Mitarbeiter"
-                    : "Keine inaktiven Mitarbeiter"}
-              </strong>
-              <p>
-                {query
-                  ? "Passe den Suchbegriff an."
+                    : "Keine inaktiven Mitarbeiter"
+              }
+              description={
+                query || intelligenceView !== "all"
+                  ? "Passe Suche oder Datenstatus-Filter an."
                   : view === "active"
                     ? "Füge oben den ersten Mitarbeiter zum Pool hinzu."
-                    : "Deaktivierte Mitarbeiter erscheinen automatisch hier."}
-              </p>
-            </div>
+                    : "Deaktivierte Mitarbeiter erscheinen automatisch hier."
+              }
+              primaryAction={
+                query || intelligenceView !== "all" ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setQuery("");
+                      setIntelligenceView("all");
+                    }}
+                  >
+                    Filter zurücksetzen
+                  </Button>
+                ) : undefined
+              }
+            />
           )}
         </div>
 
@@ -438,6 +480,24 @@ export default function TeamPage() {
           }}
         />
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        variant="danger"
+        title={deleteTarget ? `${deleteTarget.name} löschen?` : "Mitarbeiter löschen?"}
+        description={
+          <p>
+            {deleteTarget?.name} wird endgültig aus der Mitarbeiterverwaltung entfernt. Historische Dienstpläne
+            bleiben unverändert erhalten.
+          </p>
+        }
+        onDismiss={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        actions={[
+          { label: "Abbrechen", variant: "default", autoFocus: true, disabled: deleting, onClick: () => setDeleteTarget(null) },
+          { label: deleting ? "Löscht …" : "Endgültig löschen", variant: "danger", disabled: deleting, onClick: () => void confirmDelete() },
+        ]}
+      />
     </div>
   );
 }
@@ -459,7 +519,7 @@ function TeamMemberRow({
   showDelete: boolean;
   onSave: (person: Person, name: string, department: string) => Promise<void>;
   onStatusChange: (person: Person, active: boolean) => Promise<void>;
-  onDelete: (person: Person) => Promise<void>;
+  onDelete: (person: Person) => void;
   onNotice: (notice: Notice) => void;
   onOpenProfile: (personId: number) => void;
 }) {
