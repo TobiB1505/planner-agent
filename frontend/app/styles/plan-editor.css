@@ -121,65 +121,6 @@
   to { background-position: -100% 0; }
 }
 
-.btn-danger-solid {
-  border-color: rgba(219, 75, 86, 0.35);
-  background: #db4b56;
-  color: #fff;
-}
-
-.btn-danger-solid:hover {
-  background: #c73f4a;
-  border-color: rgba(219, 75, 86, 0.5);
-}
-
-/* Bestätigungsdialog */
-
-.confirm-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: grid;
-  place-items: center;
-  background: rgba(10, 10, 20, 0.45);
-  padding: 20px;
-}
-
-.confirm-dialog {
-  width: 100%;
-  max-width: 460px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--background);
-  box-shadow: 0 24px 60px rgba(10, 10, 24, 0.28);
-  padding: 22px;
-}
-
-.confirm-dialog h2 {
-  margin: 0 0 10px;
-  font-size: 17px;
-  font-weight: 780;
-}
-
-.confirm-dialog-description {
-  display: grid;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.confirm-dialog-description p {
-  margin: 0;
-}
-
-.confirm-dialog-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 18px;
-}
-
 /* Responsiver Bearbeitungsmodus-Header ----------------------------------- */
 
 .plan-editor-summary {
