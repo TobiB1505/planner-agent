@@ -11,8 +11,10 @@
 // auch der Editor zum Lesen der Zelle verwendet (Zeilen-, Pipe- und
 // Komma-Trenner, mehrzeilige Präfixe wie beim Aperitif). Keine zweite,
 // abweichende Namens-Parserei.
+import type { CSSProperties } from "react";
 import type { ICellRendererParams } from "ag-grid-community";
 import { parseCell } from "@/components/PersonCellEditor";
+import { categoryColor, hexToRgba } from "@/lib/categoryColors";
 import type { PlanRow } from "../types";
 import { rowCategory } from "../utils/planEditorHelpers";
 
@@ -71,6 +73,23 @@ export function PlanWeekCellRenderer(params: PlanWeekCellParams) {
   const overflow = names.length - visible.length;
   const flatPrefix = prefix.replace(/\n+/g, " · ");
 
+  // Visual Polish (Post-Sprint-5, AP2): Kategoriefarbe als dezente Chip-
+  // Tönung - Farbe kennzeichnet die Kategorie der Zuweisung, nicht die
+  // Person (kein dauerhaftes Personen-Farbschema). Einmal pro Zelle
+  // berechnet und für alle sichtbaren Chips derselben Zelle geteilt (nicht
+  // pro Chip neu), um unnötige Objektallokationen zu vermeiden. Abwesenheits-
+  // Zeilen behalten ihre eigene gestrichelte Statusdarstellung und bekommen
+  // keine zusätzliche Kategorietönung (Status muss dominant bleiben).
+  const chipStyle: CSSProperties | undefined = isAbsence
+    ? undefined
+    : (() => {
+        const color = categoryColor(category);
+        return {
+          backgroundColor: hexToRgba(color, 0.12),
+          borderColor: hexToRgba(color, 0.32),
+        };
+      })();
+
   return (
     <span className={`plan-cell-people${isAbsence ? " is-absence" : ""}`}>
       {flatPrefix && (
@@ -79,7 +98,7 @@ export function PlanWeekCellRenderer(params: PlanWeekCellParams) {
         </span>
       )}
       {visible.map((name) => (
-        <span key={name} className="plan-person-chip" title={name}>
+        <span key={name} className="plan-person-chip" style={chipStyle} title={name}>
           {chipLabel(name, visible, names.length)}
         </span>
       ))}
