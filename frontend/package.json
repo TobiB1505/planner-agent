@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@vercel/speed-insights": "^2.0.0",
     "ag-grid-community": "^36.0.2",
     "ag-grid-react": "^36.0.2",
     "next": "16.2.12",

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import InternalNavigationGuard from "@/components/InternalNavigationGuard";
 import Sidebar from "@/components/Sidebar";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -78,6 +79,7 @@ export default function RootLayout({
           <Sidebar />
           <main className="app-main min-w-0 flex-1 overflow-y-auto px-5 py-5 md:px-8 md:py-6">{children}</main>
         </ToastProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
