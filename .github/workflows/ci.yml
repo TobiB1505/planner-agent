@@ -66,6 +66,18 @@ jobs:
       - name: Apply database migrations
         run: python -c "from backend import db; db.initialize_database(); print('Schemastand:', db.schema_version())"
 
+      # Der Migrationsbeweis oben legt das Schema im "public"-Schema der
+      # Testdatenbank an und lässt es dort stehen. Ohne diesen Reset bliebe
+      # "public.people" (usw.) für den ganzen restlichen Job bestehen - die
+      # isolierten Testschemas (siehe conftest.py::_isolated_schema) haben
+      # "public" als Fallback im search_path, wodurch ein bewusst in seinem
+      # eigenen Testschema gedropptes "people" über den Fallback wieder
+      # sichtbar würde (kein UndefinedTable mehr). "public" muss für die
+      # eigentlichen Tests also wieder leer sein, genau wie zu Beginn des Jobs.
+      - name: Reset public schema after migration proof
+        run: |
+          psql "$DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+
       # Kein GEMINI_API_KEY gesetzt: die Tests, die Gemini-Aufrufe brauchen,
       # mocken sie durchgehend (monkeypatch) - siehe backend/tests/test_async_imports.py.
       # Die autouse-Fixtures in backend/tests/conftest.py geben jedem Test ein
