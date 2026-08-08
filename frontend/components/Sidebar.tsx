@@ -4,25 +4,51 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import PwaInstallButton from "./pwa-install-button";
+import { useAuth } from "./auth/AuthProvider";
+import { roleCovers, type AppRole } from "@/lib/auth/roles";
 
-const PRIMARY_NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: DashboardIcon },
-  { href: "/plan-editor", label: "Dienstplan erstellen", icon: PlanIcon },
-  { href: "/artist-plan", label: "Künstlerplan", icon: ArtistIcon },
-  { href: "/rehearsal-plan", label: "Probenplan", icon: RehearsalIcon },
+// Auth-Sprint: jeder Eintrag trägt die Mindestrolle, ab der er sinnvoll ist.
+// Die Werte entsprechen exakt der Absicherung der zugehörigen Seiten in
+// lib/auth/route-access.ts - ein sichtbarer Link, der beim Klick in einem
+// Redirect endet, wäre schlechter als kein Link.
+//
+// Ausblenden ist ausdrücklich nur Bequemlichkeit: ein versteckter Button ist
+// keine Berechtigung. Wer die URL direkt aufruft, wird serverseitig
+// umgeleitet, und die dahinterliegende API antwortet ohnehin mit 403.
+const PRIMARY_NAV_ITEMS: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: DashboardIcon, minRole: "planner" },
+  { href: "/plan-editor", label: "Dienstplan erstellen", icon: PlanIcon, minRole: "planner" },
+  { href: "/artist-plan", label: "Künstlerplan", icon: ArtistIcon, minRole: "planner" },
+  { href: "/rehearsal-plan", label: "Probenplan", icon: RehearsalIcon, minRole: "planner" },
 ];
 
-const MANAGEMENT_NAV_ITEMS = [
-  { href: "/team", label: "Team", icon: TeamIcon },
-  { href: "/gedaechtnis", label: "MA-Gedächtnis", icon: MemoryIcon },
-  { href: "/planning-logic", label: "Planungslogik", icon: LogicIcon },
-  { href: "/archiv", label: "Archiv", icon: ArchiveIcon },
-  { href: "/system", label: "System", icon: SystemIcon },
+const MANAGEMENT_NAV_ITEMS: NavItem[] = [
+  { href: "/team", label: "Team", icon: TeamIcon, minRole: "planner" },
+  { href: "/gedaechtnis", label: "MA-Gedächtnis", icon: MemoryIcon, minRole: "planner" },
+  { href: "/planning-logic", label: "Planungslogik", icon: LogicIcon, minRole: "planner" },
+  { href: "/archiv", label: "Archiv", icon: ArchiveIcon, minRole: "planner" },
+  // Systemverwaltung (Diagnose, Backend-Neustart) ist Admin-Sache.
+  { href: "/system", label: "System", icon: SystemIcon, minRole: "admin" },
 ];
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  minRole: AppRole;
+}
+
+export function visibleNavItems(items: NavItem[], role: AppRole | null): NavItem[] {
+  if (!role) return [];
+  return items.filter((item) => roleCovers(role, item.minRole));
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { user, signOut, signingOut } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const primaryItems = visibleNavItems(PRIMARY_NAV_ITEMS, user?.role ?? null);
+  const managementItems = visibleNavItems(MANAGEMENT_NAV_ITEMS, user?.role ?? null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -65,7 +91,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav" aria-label="Planung">
-        {PRIMARY_NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {primaryItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
@@ -91,7 +117,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav" aria-label="Verwaltung">
-        {MANAGEMENT_NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {managementItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
@@ -117,9 +143,26 @@ export default function Sidebar() {
         </div>
       )}
 
-      <div className="sidebar-footer" aria-hidden="true">
-        <span className="sidebar-footer-dot" />
-        <span className="sidebar-footer-copy">Lokale Planung</span>
+      <div className="sidebar-account">
+        <button
+          type="button"
+          className="sidebar-link sidebar-link--action"
+          onClick={signOut}
+          disabled={signingOut}
+          data-tooltip={collapsed ? "Abmelden" : undefined}
+        >
+          <span className="sidebar-link-icon" aria-hidden="true">
+            <LogoutIcon />
+          </span>
+          <span className="sidebar-link-label">{signingOut ? "Wird abgemeldet…" : "Abmelden"}</span>
+        </button>
+      </div>
+
+      <div className="sidebar-footer">
+        <span className="sidebar-footer-dot" aria-hidden="true" />
+        <span className="sidebar-footer-copy">
+          {user ? user.personName ?? user.email ?? roleLabel(user.role) : "Nicht angemeldet"}
+        </span>
       </div>
     </aside>
   );
@@ -207,6 +250,21 @@ function SystemIcon(props: React.SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
       <circle cx="12" cy="12" r="3" />
       <path d="M12 3v2.5M12 18.5V21M21 12h-2.5M5.5 12H3M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8M18.4 18.4l-1.8-1.8M7.4 7.4 5.6 5.6" />
+    </svg>
+  );
+}
+
+function roleLabel(role: AppRole): string {
+  if (role === "admin") return "Administration";
+  if (role === "planner") return "Planung";
+  return "Mitarbeitende";
+}
+
+function LogoutIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
+      <path d="M10 16l-4-4 4-4M6 12h9" />
     </svg>
   );
 }

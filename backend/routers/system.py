@@ -1,7 +1,23 @@
 """AP11 - System-Endpunkte (Health/Diagnose/Restart, Move-Only aus backend/api.py,
 unverändert). _PROCESS_STARTED_AT wird beim ersten Import dieses Moduls gesetzt -
 das passiert beim App-Start (api.py importiert alle Router einmalig), also zum
-selben Zeitpunkt wie zuvor in api.py."""
+selben Zeitpunkt wie zuvor in api.py.
+
+Auth-Sprint: der einzige Router mit einem bewusst öffentlichen Endpunkt.
+
+- GET /api/health: PUBLIC. Deployment-Plattformen (Render/Vercel) fragen
+  Liveness/Readiness ohne Anmeldung ab - ein 401 hier würde als "Dienst
+  kaputt" gewertet und einen Neustart-Loop auslösen. Der Endpunkt liefert
+  ausschliesslich Booleans und einen projektrelativen Pfad, keine Secrets,
+  keine Hostnamen, keine Stacktraces (siehe health() unten).
+- GET /api/system/diagnostics: ADMIN. Deutlich gesprächiger als /api/health -
+  Verzeichnisse, Schreibrechte, CORS-Origins, Host/Port, freier Speicher.
+  Das ist Betriebswissen und geht weder Employee noch Planner etwas an.
+- POST /api/system/restart: ADMIN. Zusätzlich bleibt die bestehende
+  Deployment-Sperre SYSTEM_RESTART_ENABLED unverändert bestehen - RBAC
+  ersetzt sie nicht, beide Schutzebenen gelten gleichzeitig (die
+  Rollenprüfung greift zuerst, danach entscheidet _restart_enabled()).
+"""
 from __future__ import annotations
 
 import os
@@ -14,9 +30,10 @@ from typing import Optional
 
 import shutil
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from .. import db
+from ..auth import require_admin
 from ..config import paths as config_paths
 from .shared import _cors_origins
 
@@ -96,7 +113,7 @@ def _dir_diagnostic(path: Path) -> dict:
     }
 
 
-@router.get("/api/system/diagnostics")
+@router.get("/api/system/diagnostics", dependencies=[Depends(require_admin)])
 def system_diagnostics():
     """Reiner Lesezugriff für den Service Manager - prüft denselben Zustand
     wie backend/run_local.py beim Start, aber strukturiert für die UI statt
@@ -169,7 +186,7 @@ def _restart_enabled() -> bool:
     return os.getenv("APP_ENV", "local") == "local"
 
 
-@router.post("/api/system/restart")
+@router.post("/api/system/restart", dependencies=[Depends(require_admin)])
 def system_restart():
     """Startet den Backend-Prozess vollständig neu - unabhängig davon, wie
     er gestartet wurde (Startskript, manuell, mit oder ohne Reload-Modus).

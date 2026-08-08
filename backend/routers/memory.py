@@ -1,4 +1,11 @@
-"""AP11 - MA-Gedächtnis-Endpunkte (Move-Only aus backend/api.py, unverändert)."""
+"""AP11 - MA-Gedächtnis-Endpunkte (Move-Only aus backend/api.py, unverändert).
+
+Auth-Sprint: durchgehend PLANNER (Router-Dependency). Das MA-Gedächtnis
+enthält abgeleitete Einschätzungen über einzelne Mitarbeitende (Shows,
+freie Tage, Aufgabenaffinitäten) - Planungswissen über Dritte. Auch die
+GET-Endpunkte bleiben deshalb Planner-Sache; Employee bekommt sie nicht,
+nur weil sie lesend sind.
+"""
 from __future__ import annotations
 
 import json
@@ -11,9 +18,10 @@ from pydantic import BaseModel
 from .. import db
 from .. import memory
 from .. import stats
+from ..auth import require_planner
 from .shared import clean
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_planner)])
 
 
 @router.get("/api/memory")

@@ -1,4 +1,17 @@
-"""AP11 - Team/Personen-Endpunkte (Move-Only aus backend/api.py, unverändert)."""
+"""AP11 - Team/Personen-Endpunkte (Move-Only aus backend/api.py, unverändert).
+
+Auth-Sprint: durchgehend PLANNER. Das Team ist der Planungsumfang - Anlegen,
+Umbenennen, Aktiv-Schalten und Entfernen von Mitarbeitenden gehört laut
+Rollenmodell ausdrücklich zu den Planner-Aufgaben, nicht zur
+Systemverwaltung. Auch die Leseendpunkte bleiben Planner-Sache: /api/team
+liefert die vollständige Mitarbeiterliste inklusive Einsatzzahlen, was für
+eine Employee-Ansicht deutlich zu viel ist (siehe docs/auth/ROLE_MATRIX.md).
+
+DELETE /api/team/{person_id} ist bewusst KEIN Admin-Endpunkt: er löscht
+nichts, sondern setzt active=0/deleted=1 (Soft-Delete, historische Pläne
+bleiben vollständig). Das Auth-Konto einer Person wird davon nicht berührt -
+Konten verwaltet ausschliesslich /api/admin/app-users (ADMIN).
+"""
 from __future__ import annotations
 
 import sqlite3
@@ -9,8 +22,9 @@ from pydantic import BaseModel
 
 from .. import db
 from .. import stats
+from ..auth import require_planner
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_planner)])
 
 
 class PersonIn(BaseModel):

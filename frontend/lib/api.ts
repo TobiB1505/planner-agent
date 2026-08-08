@@ -2,6 +2,8 @@
 // die im Dev-Modus per next.config.ts-Rewrite auf localhost:8000 zeigen und in
 // Produktion vom selben Next.js/FastAPI-Prozess bedient werden.
 
+import { getAccessToken } from "@/lib/supabase/client";
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -13,6 +15,39 @@ export class ApiError extends Error {
 const BACKEND_UNREACHABLE_MESSAGE =
   "Das lokale Backend ist nicht erreichbar. Bitte starte den Planner-Agent über das Startskript.";
 
+const SESSION_EXPIRED_MESSAGE =
+  "Die Sitzung ist abgelaufen. Bitte erneut anmelden.";
+
+const FORBIDDEN_MESSAGE =
+  "Für diese Aktion fehlt die nötige Berechtigung.";
+
+/**
+ * Auth-Sprint: das Access Token wird genau hier angehängt - einmal, zentral,
+ * für jeden Aufruf. Kein Aufrufer in Komponenten baut selbst einen
+ * Authorization-Header (Aufgabe 25).
+ *
+ * `getAccessToken()` liest die Session aus den Cookies und erneuert ein
+ * abgelaufenes Token bei Bedarf selbst. Gibt es keine Session, wird der
+ * Header weggelassen und das Backend antwortet mit 401 - genau so soll es
+ * sein: die Entscheidung fällt serverseitig.
+ */
+async function authHeaders(): Promise<Record<string, string>> {
+  if (typeof window === "undefined") return {};
+  const token = await getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * Fehlermeldung für die beiden Datei-Downloads (Blob statt JSON). Spiegelt
+ * die Auth-Meldungen aus request(), damit ein abgelaufener Login beim Export
+ * nicht plötzlich als roher Backend-Text erscheint.
+ */
+async function downloadErrorMessage(res: Response): Promise<string> {
+  if (res.status === 401) return SESSION_EXPIRED_MESSAGE;
+  if (res.status === 403) return FORBIDDEN_MESSAGE;
+  return (await res.text().catch(() => "")) || `Anfrage fehlgeschlagen (${res.status})`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -22,6 +57,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         ...(init?.body && !(init.body instanceof FormData)
           ? { "Content-Type": "application/json" }
           : {}),
+        ...(await authHeaders()),
         ...init?.headers,
       },
     });
@@ -37,6 +73,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(0, BACKEND_UNREACHABLE_MESSAGE);
   }
   if (!res.ok) {
+    // Auth-Sprint: 401/403 sind keine fachlichen Fehler und sollen überall
+    // gleich aussehen - unabhängig davon, welcher Endpunkt sie liefert.
+    // Die Backend-Meldung wird bewusst nicht durchgereicht.
+    if (res.status === 401) {
+      // Session abgelaufen oder abgemeldet: zurück zur Anmeldung, mit dem
+      // aktuellen Pfad als Ziel. Ein "replace" statt "assign" verhindert,
+      // dass der Zurück-Button in die tote Seite führt.
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        const target = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.replace(`/login?redirectTo=${target}`);
+      }
+      throw new ApiError(401, SESSION_EXPIRED_MESSAGE);
+    }
+    if (res.status === 403) {
+      throw new ApiError(403, FORBIDDEN_MESSAGE);
+    }
+
     const text = await res.text().catch(() => "");
     let message = text;
     let hasDetail = false;
@@ -699,11 +752,16 @@ export const getFreeSuggestion = (newStart: string, absences: ExtractedAbsence[]
   post<FreeSuggestionResult>("/plan/free-suggestion", { new_start: newStart, absences });
 
 // ---------- Upload ----------
-export async function uploadPdf(file: File, apiKey?: string): Promise<ExtractionResult> {
+/**
+ * Auth-Sprint: der frühere optionale `apiKey`-Parameter ist entfallen. Er
+ * landete als `?api_key=` in der URL - also in Browser-Historie, Referern
+ * und Access-Logs. Der Gemini-Key kommt jetzt ausschliesslich aus der
+ * serverseitigen Umgebung des Backends.
+ */
+export async function uploadPdf(file: File): Promise<ExtractionResult> {
   const form = new FormData();
   form.append("file", file);
-  const query = apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : "";
-  return request<ExtractionResult>(`/upload/pdf${query}`, { method: "POST", body: form });
+  return request<ExtractionResult>("/upload/pdf", { method: "POST", body: form });
 }
 export async function uploadXlsxSheets(file: File): Promise<{ sheets: string[] }> {
   const form = new FormData();
@@ -745,8 +803,11 @@ export const saveArtistPlan = (payload: ArtistPlanData) =>
   post<{ artist_plan_id: number }>("/artist-plans", payload);
 
 export async function exportArtistPlan(id: number): Promise<Blob> {
-  const res = await fetch(`/api/artist-plans/${id}/export`);
-  if (!res.ok) throw new ApiError(res.status, await res.text());
+  // Datei-Download: geht bewusst an fetch statt an request(), weil die
+  // Antwort ein Blob ist und kein JSON. Der Authorization-Header darf
+  // deshalb trotzdem nicht fehlen.
+  const res = await fetch(`/api/artist-plans/${id}/export`, { headers: await authHeaders() });
+  if (!res.ok) throw new ApiError(res.status, await downloadErrorMessage(res));
   return res.blob();
 }
 
@@ -890,10 +951,10 @@ export async function xlsxGenerate(payload: {
 }): Promise<Blob> {
   const res = await fetch(xlsxGenerateUrl(), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new ApiError(res.status, await res.text());
+  if (!res.ok) throw new ApiError(res.status, await downloadErrorMessage(res));
   return res.blob();
 }
 

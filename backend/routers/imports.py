@@ -1,5 +1,20 @@
 """AP11 - Import-Endpunkte: PDF/XLSX-Upload, Künstlerplan, Probenplan, Import-
-Speichern (Move-Only aus backend/api.py, unverändert)."""
+Speichern (Move-Only aus backend/api.py, unverändert).
+
+Auth-Sprint: der einzige Router mit gemischten Rollen, deshalb hängt die
+Berechtigung hier an jedem Endpunkt einzeln statt am Router.
+
+- Jeder Upload/Import/Export und jede Schreiboperation: PLANNER. Employee
+  startet grundsätzlich keine Import-Vorgänge.
+- Reines Auflisten/Lesen von Künstler- und Probenplan (GET /api/artist-plans,
+  GET /api/artist-plans/{id}, GET /api/rehearsal-plans,
+  GET /api/rehearsal-plans/{id}): EMPLOYEE. Das sind genau die Inhalte, die
+  das Employee-Portal später anzeigen soll (Künstlerplan, Probenplan), und
+  sie enthalten keine Bewertung, keine Empfehlung und keine Statistik über
+  Mitarbeitende - anders als Dienstplan, Dashboard oder MA-Gedächtnis.
+- Der Excel-Export des Künstlerplans bleibt PLANNER: er erzeugt eine Datei
+  aus der Programmvorlage und ist eine Planungsausgabe, kein Lesezugriff.
+"""
 from __future__ import annotations
 
 import io
@@ -17,6 +32,7 @@ from starlette.background import BackgroundTask
 
 from .. import artist_plan
 from .. import db
+from ..auth import require_employee, require_planner
 from ..config import paths as config_paths
 from .. import rehearsal_plan
 from .. import template_spec
@@ -32,13 +48,25 @@ logger = logging.getLogger(__name__)
 
 # ---------- Upload (PDF / Excel) ----------
 
-@router.post("/api/upload/pdf")
-def upload_pdf(file: UploadFile = File(...), api_key: Optional[str] = None):
-    # AP7: def statt async def - FastAPI führt synchrone Path-Operationen im
-    # Threadpool aus, damit der blockierende Gemini-Netzwerkcall in
-    # extract_dienstplan() den Event-Loop nicht mehr aufhält.
+@router.post("/api/upload/pdf", dependencies=[Depends(require_planner)])
+def upload_pdf(file: UploadFile = File(...)):
+    """Auth-Sprint (bewusste Vertragsänderung): der frühere Query-Parameter
+    `?api_key=` wurde ersatzlos entfernt. Ein Secret im Query-String landet
+    in Browser-Historie, Proxy-/Access-Logs und Referer-Headern - dagegen
+    hilft keine Rollenprüfung. Der Gemini-Key kommt jetzt ausschliesslich aus
+    der serverseitigen Umgebungsvariable GEMINI_API_KEY.
+
+    Ein trotzdem mitgeschicktes ?api_key=... wird von FastAPI schlicht
+    ignoriert (kein 422) - der Aufruf funktioniert weiter, nur eben mit dem
+    Server-Key. Siehe docs/auth/AUTH_ARCHITECTURE.md, Abschnitt
+    "API-Vertragsänderungen".
+
+    AP7: def statt async def - FastAPI führt synchrone Path-Operationen im
+    Threadpool aus, damit der blockierende Gemini-Netzwerkcall in
+    extract_dienstplan() den Event-Loop nicht mehr aufhält.
+    """
     content = file.file.read()
-    key = api_key or os.environ.get("GEMINI_API_KEY")
+    key = os.environ.get("GEMINI_API_KEY")
     if not key:
         raise HTTPException(400, "Kein Gemini API Key vorhanden.")
     try:
@@ -48,7 +76,7 @@ def upload_pdf(file: UploadFile = File(...), api_key: Optional[str] = None):
     return result
 
 
-@router.post("/api/upload/xlsx/sheets")
+@router.post("/api/upload/xlsx/sheets", dependencies=[Depends(require_planner)])
 def upload_xlsx_sheets(file: UploadFile = File(...)):
     # AP7: def statt async def - openpyxl-Ladevorgang läuft dadurch im Threadpool.
     content = file.file.read()
@@ -59,7 +87,7 @@ def upload_xlsx_sheets(file: UploadFile = File(...)):
     return {"sheets": sheets}
 
 
-@router.post("/api/upload/xlsx")
+@router.post("/api/upload/xlsx", dependencies=[Depends(require_planner)])
 def upload_xlsx(file: UploadFile = File(...), sheet_name: Optional[str] = None):
     # AP7: def statt async def - openpyxl-Ladevorgang läuft dadurch im Threadpool.
     content = file.file.read()
@@ -70,14 +98,14 @@ def upload_xlsx(file: UploadFile = File(...), sheet_name: Optional[str] = None):
     return result
 
 
-@router.get("/api/known-department-tokens")
+@router.get("/api/known-department-tokens", dependencies=[Depends(require_planner)])
 def known_department_tokens():
     return sorted(template_spec.DEPARTMENT_TOKENS)
 
 
 # ---------- Künstlerplan ----------
 
-@router.post("/api/artist-plans/upload/sheets")
+@router.post("/api/artist-plans/upload/sheets", dependencies=[Depends(require_planner)])
 def artist_plan_upload_sheets(file: UploadFile = File(...)):
     # AP7: def statt async def - openpyxl-Ladevorgang läuft dadurch im Threadpool.
     content = file.file.read()
@@ -88,7 +116,7 @@ def artist_plan_upload_sheets(file: UploadFile = File(...)):
     return {"sheets": sheets}
 
 
-@router.post("/api/artist-plans/import")
+@router.post("/api/artist-plans/import", dependencies=[Depends(require_planner)])
 def artist_plan_import(file: UploadFile = File(...), sheet_name: Optional[str] = None):
     # AP7: def statt async def - openpyxl-Ladevorgang läuft dadurch im Threadpool.
     content = file.file.read()
@@ -104,7 +132,7 @@ def artist_plan_import(file: UploadFile = File(...), sheet_name: Optional[str] =
         raise HTTPException(500, f"Künstlerplan-Import fehlgeschlagen: {exc}") from exc
 
 
-@router.get("/api/artist-plans/empty")
+@router.get("/api/artist-plans/empty", dependencies=[Depends(require_planner)])
 def artist_plan_empty(start_date: str):
     try:
         start = datetime.strptime(start_date, "%Y-%m-%d").date()
@@ -123,7 +151,7 @@ class ArtistPlanSaveRequest(BaseModel):
     rows: list[dict[str, Any]]
 
 
-@router.post("/api/artist-plans")
+@router.post("/api/artist-plans", dependencies=[Depends(require_planner)])
 def artist_plan_save(
     payload: ArtistPlanSaveRequest,
     conn: sqlite3.Connection = Depends(db.get_db_connection),
@@ -145,7 +173,7 @@ def artist_plan_save(
     return {"artist_plan_id": artist_plan_id}
 
 
-@router.get("/api/artist-plans")
+@router.get("/api/artist-plans", dependencies=[Depends(require_employee)])
 def artist_plan_list(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     result = []
     for row in db.get_artist_plans(conn):
@@ -165,7 +193,7 @@ def artist_plan_list(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     return result
 
 
-@router.get("/api/artist-plans/{artist_plan_id}")
+@router.get("/api/artist-plans/{artist_plan_id}", dependencies=[Depends(require_employee)])
 def artist_plan_detail(
     artist_plan_id: int,
     conn: sqlite3.Connection = Depends(db.get_db_connection),
@@ -176,7 +204,7 @@ def artist_plan_detail(
     return artist_plan.stored_plan_payload(conn, row)
 
 
-@router.delete("/api/artist-plans/{artist_plan_id}")
+@router.delete("/api/artist-plans/{artist_plan_id}", dependencies=[Depends(require_planner)])
 def artist_plan_delete(
     artist_plan_id: int,
     conn: sqlite3.Connection = Depends(db.get_db_connection),
@@ -188,7 +216,7 @@ def artist_plan_delete(
     return {"ok": True}
 
 
-@router.get("/api/artist-plans/{artist_plan_id}/export")
+@router.get("/api/artist-plans/{artist_plan_id}/export", dependencies=[Depends(require_planner)])
 def artist_plan_export(
     artist_plan_id: int,
     conn: sqlite3.Connection = Depends(db.get_db_connection),
@@ -222,7 +250,7 @@ def artist_plan_export(
 
 # ---------- Probenplan ----------
 
-@router.post("/api/rehearsal-plans/upload/sheets")
+@router.post("/api/rehearsal-plans/upload/sheets", dependencies=[Depends(require_planner)])
 def rehearsal_plan_sheets(file: UploadFile = File(...)):
     """Wochenblätter einer Probenplan-Excel auflisten (Vorlage/Diagramme fliegen raus).
 
@@ -238,7 +266,7 @@ def rehearsal_plan_sheets(file: UploadFile = File(...)):
     return {"sheets": sheets}
 
 
-@router.post("/api/rehearsal-plans/import")
+@router.post("/api/rehearsal-plans/import", dependencies=[Depends(require_planner)])
 def rehearsal_plan_import(
     file: UploadFile = File(...),
     sheet_name: Optional[str] = None,
@@ -301,7 +329,7 @@ class RehearsalPlanSaveRequest(BaseModel):
     rehearsals: list[dict[str, Any]]
 
 
-@router.post("/api/rehearsal-plans")
+@router.post("/api/rehearsal-plans", dependencies=[Depends(require_planner)])
 def rehearsal_plan_save(
     payload: RehearsalPlanSaveRequest,
     conn: sqlite3.Connection = Depends(db.get_db_connection),
@@ -326,7 +354,7 @@ def rehearsal_plan_save(
     return {"rehearsal_plan_id": plan_id}
 
 
-@router.get("/api/rehearsal-plans")
+@router.get("/api/rehearsal-plans", dependencies=[Depends(require_employee)])
 def rehearsal_plan_list(conn: sqlite3.Connection = Depends(db.get_db_connection)):
     result = []
     for row in db.get_rehearsal_plans(conn):
@@ -345,7 +373,7 @@ def rehearsal_plan_list(conn: sqlite3.Connection = Depends(db.get_db_connection)
     return result
 
 
-@router.get("/api/rehearsal-plans/{rehearsal_plan_id}")
+@router.get("/api/rehearsal-plans/{rehearsal_plan_id}", dependencies=[Depends(require_employee)])
 def rehearsal_plan_detail(
     rehearsal_plan_id: int,
     conn: sqlite3.Connection = Depends(db.get_db_connection),
@@ -370,7 +398,7 @@ def rehearsal_plan_detail(
     }
 
 
-@router.delete("/api/rehearsal-plans/{rehearsal_plan_id}")
+@router.delete("/api/rehearsal-plans/{rehearsal_plan_id}", dependencies=[Depends(require_planner)])
 def rehearsal_plan_delete(
     rehearsal_plan_id: int,
     conn: sqlite3.Connection = Depends(db.get_db_connection),
@@ -426,7 +454,7 @@ def _resolve_with_choices(conn, raw_name: str, resolutions: dict[str, str]) -> O
     return person_id
 
 
-@router.post("/api/import/save")
+@router.post("/api/import/save", dependencies=[Depends(require_planner)])
 def import_save(payload: ImportSave, conn: sqlite3.Connection = Depends(db.get_db_connection)):
     week_plan_id = db.insert_week_plan(conn, payload.kw, payload.start_date, payload.end_date, payload.filename)
 

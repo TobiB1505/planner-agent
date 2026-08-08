@@ -1,5 +1,16 @@
 """AP11 - Plan-/Wochen-Endpunkte: Archiv (Weeks), Plan laden/generieren/speichern/
-exportieren (Move-Only aus backend/api.py, unverändert)."""
+exportieren (Move-Only aus backend/api.py, unverändert).
+
+Auth-Sprint: durchgehend PLANNER (Router-Dependency, gilt für jeden Endpunkt
+dieser Datei). Das ist der Kern der Dienstplanung - erstellen, bearbeiten,
+speichern, löschen, exportieren. Auch die Leseendpunkte (/api/weeks,
+/api/plan/existing) bleiben Planner-Sache: sie liefern den vollständigen
+Dienstplan aller Mitarbeitenden inklusive Abwesenheiten und Warnungen.
+
+Die spätere Employee-Sicht "mein Dienstplan" wird bewusst NICHT über diese
+Endpunkte bedient, sondern bekommt im Employee-Portal-Sprint eigene,
+personenbezogen gefilterte Endpunkte (siehe docs/auth/ROLE_MATRIX.md,
+Abschnitt "Vorbereitung Employee-Portal")."""
 from __future__ import annotations
 
 import os
@@ -25,10 +36,11 @@ from .. import stats
 from .. import template_spec
 from .. import util
 from .. import xlsx_template
+from ..auth import require_planner
 from ..intelligence import audit as intelligence_audit
 from .shared import ImportAbsence, _grid_df_from_rows, _week_dates, clean, records
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_planner)])
 
 
 # ---------- Weeks / Archiv ----------

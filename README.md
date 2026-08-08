@@ -943,6 +943,35 @@ backend/planning_rules.py
 backend/intelligence/
 backend/template_spec.py
 
+Authentifizierung und Rollen
+
+Die Anwendung ist seit dem Auth-Sprint nicht mehr offen erreichbar. Anmeldung
+läuft über Supabase Auth (E-Mail/Passwort, keine öffentliche Registrierung),
+die Autorisierung über drei Rollen:
+
+admin > planner > employee
+
+FastAPI ist die Sicherheitsgrenze: jeder geschützte Endpunkt prüft das
+Access Token selbst (Signatur, Issuer, Ablauf) und liest Rolle und
+Personenzuordnung aus der Tabelle app_users. Das Frontend blendet lediglich
+passende Bereiche ein bzw. leitet um - das ersetzt keine Prüfung.
+
+Einziger öffentlicher Endpunkt: GET /api/health.
+
+Dokumentation:
+
+docs/auth/AUTH_ARCHITECTURE.md   Ablauf, Statuscodes, Datenmodell
+docs/auth/ROLE_MATRIX.md         alle Endpunkte mit ihrer Rolle
+docs/auth/SUPABASE_AUTH_SETUP.md Einrichtung (Supabase, Vercel, Render)
+docs/auth/ADMIN_BOOTSTRAP.md     ersten Administrator freischalten
+docs/auth/AUTH_AUDIT.md          Zustand vor dem Sprint
+
+Erster Administrator (manuell, nie automatisch):
+
+python -m backend.scripts.create_admin --user-id <UUID aus Supabase>
+
+⸻
+
 Refactoring-Dokumentation
 
 Technische Analysen und bereits durchgeführte Optimierungsschritte liegen unter:
@@ -969,8 +998,8 @@ Für ein öffentliches oder produktives Cloud-Deployment wären unter anderem no
 
 * persistente externe Datenbank
 * persistenter Dateispeicher
-* Authentifizierung
-* Rollen- und Berechtigungssystem
+* Authentifizierung (umgesetzt: Supabase Auth, siehe docs/auth/)
+* Rollen- und Berechtigungssystem (umgesetzt: admin/planner/employee)
 * sichere Geheimnisverwaltung
 * HTTPS
 * Backup- und Wiederherstellungsstrategie

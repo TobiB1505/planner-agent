@@ -196,6 +196,33 @@ CREATE TABLE IF NOT EXISTS recommendation_history (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Auth-Sprint: Verbindung zwischen einem Supabase-Auth-Benutzer und dem
+-- Planner. Bewusst NUR die Zuordnung - keine E-Mail, kein Name, kein
+-- Passwort, kein Hash, kein Reset-Token. Alles, was zur Identität gehört,
+-- bleibt allein in Supabase Auth (siehe docs/auth/AUTH_ARCHITECTURE.md);
+-- diese Tabelle beantwortet ausschliesslich "welche Rolle und welche Person
+-- gehört zu dieser Auth-UUID".
+--
+-- user_id: die Supabase-auth.users-UUID als kanonischer Kleinbuchstaben-Text
+--   (SQLite kennt keinen UUID-Typ; in PostgreSQL ist es eine echte
+--   uuid-Spalte mit FK auf auth.users, siehe backend/migrations/).
+-- person_id: NULLABLE - und zwar bewusst. Ein Admin oder Planer ist nicht
+--   zwingend selbst Mitarbeiter im Dienstplan (externe Leitung, Vertretung,
+--   Technik-Account). Für die Rolle "employee" wäre NULL dagegen sinnlos:
+--   ohne Person gäbe es keinen "meinen Dienstplan". Genau das erzwingt der
+--   CHECK unten - nullable, aber nicht beliebig.
+-- is_active: harte Sperre. false verweigert jeden Zugriff, ohne den
+--   Supabase-Benutzer löschen zu müssen (und ohne die Zuordnung zu verlieren).
+CREATE TABLE IF NOT EXISTS app_users (
+    user_id TEXT PRIMARY KEY,
+    person_id INTEGER REFERENCES people(id),
+    role TEXT NOT NULL CHECK (role IN ('admin', 'planner', 'employee')),
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (role <> 'employee' OR person_id IS NOT NULL)
+);
+
 CREATE INDEX IF NOT EXISTS idx_assignments_person_date
     ON assignments(person_id, date);
 CREATE INDEX IF NOT EXISTS idx_absences_person_date
@@ -257,6 +284,14 @@ CREATE INDEX IF NOT EXISTS idx_plan_audit_log_start_date
 -- führende Spalte artist_plan_id ist - EXPLAIN QUERY PLAN bestätigt dafür
 -- bereits "SEARCH ... USING INDEX sqlite_autoindex_artist_plan_entries_1
 -- (artist_plan_id=?)". Ein zusätzlicher Index wäre redundant.
+
+-- Auth-Sprint: UNIQUE statt einfachem Index - eine Person soll höchstens
+-- einem Auth-Konto gehören, sonst wäre "wer ist dieser Mitarbeiter" nicht
+-- mehr eindeutig beantwortbar. Mehrere NULL-Werte bleiben erlaubt (SQLite
+-- wie PostgreSQL behandeln NULL in UNIQUE-Indizes als verschieden), damit
+-- beliebig viele Admin-/Planer-Konten ohne eigene Person existieren können.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_app_users_person_id
+    ON app_users(person_id);
 """
 
 
@@ -902,3 +937,119 @@ def delete_rehearsal_plan(conn, rehearsal_plan_id: int):
         "DELETE FROM rehearsal_plans WHERE id = ?",
         (rehearsal_plan_id,),
     )
+
+
+# --- Auth-Sprint: app_users (Supabase-Auth-Benutzer -> Rolle + Person) ---------
+#
+# Reine Datenzugriffsschicht: keine Rollenlogik, keine Berechtigungsprüfung.
+# Wer was darf, entscheidet ausschliesslich backend/auth/dependencies.py.
+# Hier wird auch nichts automatisch angelegt - ein unbekannter Auth-Benutzer
+# bleibt unbekannt, bis ihn ein Admin bewusst einträgt (siehe
+# backend/scripts/create_admin.py und docs/auth/ADMIN_BOOTSTRAP.md).
+
+
+def normalize_user_id(user_id) -> str:
+    """Kanonische Textform einer Supabase-Auth-UUID.
+
+    Kleinbuchstaben mit Bindestrichen - dieselbe Form, die PostgreSQL beim
+    Ausgeben einer uuid-Spalte liefert. Damit findet ein Lookup dieselbe
+    Zeile, egal ob die UUID aus dem JWT, aus dem Supabase-Dashboard
+    (Grossbuchstaben) oder aus einem Skript kommt.
+    """
+    return str(user_id).strip().lower()
+
+
+def get_app_user(conn, user_id):
+    """Genau die Zeile zu einer Auth-UUID - oder None."""
+    return conn.execute(
+        "SELECT user_id, person_id, role, is_active, created_at, updated_at "
+        "FROM app_users WHERE user_id = ?",
+        (normalize_user_id(user_id),),
+    ).fetchone()
+
+
+def list_app_users(conn):
+    """Alle Zuordnungen inkl. Personennamen - für die Admin-Verwaltung."""
+    return conn.execute(
+        "SELECT a.user_id, a.person_id, a.role, a.is_active, a.created_at, a.updated_at, "
+        "       p.name AS person_name "
+        "FROM app_users a LEFT JOIN people p ON p.id = a.person_id "
+        "ORDER BY a.role, a.created_at"
+    ).fetchall()
+
+
+def get_app_user_detail(conn, user_id):
+    """Wie get_app_user(), zusätzlich mit dem Personennamen - für Antworten
+    der Admin-Verwaltung, damit die UI nicht pro Zeile nachladen muss."""
+    return conn.execute(
+        "SELECT a.user_id, a.person_id, a.role, a.is_active, a.created_at, a.updated_at, "
+        "       p.name AS person_name "
+        "FROM app_users a LEFT JOIN people p ON p.id = a.person_id "
+        "WHERE a.user_id = ?",
+        (normalize_user_id(user_id),),
+    ).fetchone()
+
+
+def count_app_users(conn, role: str | None = None) -> int:
+    if role is None:
+        row = conn.execute("SELECT COUNT(*) AS n FROM app_users").fetchone()
+    else:
+        row = conn.execute("SELECT COUNT(*) AS n FROM app_users WHERE role = ?", (role,)).fetchone()
+    return int(row["n"])
+
+
+def create_app_user(conn, user_id, role: str, person_id: int | None = None, is_active: bool = True) -> None:
+    """Legt eine neue Zuordnung an. Schlägt fehl, wenn sie bereits existiert -
+    bewusst kein stilles Überschreiben einer bestehenden Rolle."""
+    conn.execute(
+        "INSERT INTO app_users (user_id, person_id, role, is_active) VALUES (?, ?, ?, ?)",
+        (normalize_user_id(user_id), person_id, role, 1 if is_active else 0),
+    )
+
+
+def update_app_user(
+    conn,
+    user_id,
+    role: str | None = None,
+    person_id: int | None = None,
+    is_active: bool | None = None,
+    clear_person: bool = False,
+) -> bool:
+    """Aktualisiert einzelne Felder einer bestehenden Zuordnung.
+
+    `clear_person=True` setzt person_id ausdrücklich auf NULL - nötig, weil
+    person_id=None sonst nicht von "nicht mitgeschickt" unterscheidbar wäre.
+    Gibt False zurück, wenn es die Zuordnung nicht gibt.
+    """
+    fields = []
+    values: list = []
+    if role is not None:
+        fields.append("role = ?")
+        values.append(role)
+    if clear_person:
+        fields.append("person_id = NULL")
+    elif person_id is not None:
+        fields.append("person_id = ?")
+        values.append(person_id)
+    if is_active is not None:
+        fields.append("is_active = ?")
+        values.append(1 if is_active else 0)
+    if not fields:
+        return get_app_user(conn, user_id) is not None
+
+    fields.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(normalize_user_id(user_id))
+    cursor = conn.execute(
+        f"UPDATE app_users SET {', '.join(fields)} WHERE user_id = ?",
+        values,
+    )
+    return cursor.rowcount > 0
+
+
+def delete_app_user(conn, user_id) -> bool:
+    """Entfernt nur die Planner-Zuordnung. Der Supabase-Auth-Benutzer selbst
+    bleibt unberührt - der wird in Supabase verwaltet, nicht hier."""
+    cursor = conn.execute(
+        "DELETE FROM app_users WHERE user_id = ?", (normalize_user_id(user_id),)
+    )
+    return cursor.rowcount > 0

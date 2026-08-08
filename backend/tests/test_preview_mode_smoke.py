@@ -27,6 +27,8 @@ from pathlib import Path
 
 import pytest
 
+from . import auth_helpers
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 REAL_LOCAL_DATA_DIR = PROJECT_ROOT / "local_data"
 
@@ -72,6 +74,11 @@ def preview_backend(tmp_path):
     env["BACKEND_HOST"] = "127.0.0.1"
     env["BACKEND_PORT"] = str(port)
     env.pop("PORT", None)
+    # Auth-Sprint: POST /api/system/restart ist ADMIN-only. Der Prozess
+    # bekommt eine echte HS256-Konfiguration, der Test einen echten Token -
+    # die Deployment-Sperre SYSTEM_RESTART_ENABLED=0 wird also weiterhin
+    # mit einem *berechtigten* Aufruf geprüft, nicht mit einem 403.
+    auth_helpers.apply_auth_env(env)
 
     log_path = tmp_path / "backend.log"
     log_file = open(log_path, "w")
@@ -91,6 +98,10 @@ def preview_backend(tmp_path):
         proc.wait(timeout=5)
         log_file.close()
         raise RuntimeError(f"Backend-Start in APP_ENV=preview fehlgeschlagen:\n{log_path.read_text()}")
+
+    auth_helpers.seed_app_user(
+        data_dir / "database" / "dienstplaene.db", auth_helpers.ADMIN_UUID, "admin"
+    )
 
     yield base_url, data_dir, health
 
@@ -123,7 +134,13 @@ def test_backend_starts_and_is_healthy_in_preview_mode(preview_backend):
 def test_restart_is_not_executed_in_preview_mode(preview_backend):
     base_url, _data_dir, _health = preview_backend
 
-    req = urllib.request.Request(f"{base_url}/api/system/restart", method="POST", data=b"")
+    token = auth_helpers.make_token(auth_helpers.ADMIN_UUID)
+    req = urllib.request.Request(
+        f"{base_url}/api/system/restart",
+        method="POST",
+        data=b"",
+        headers=auth_helpers.bearer(token),
+    )
     with urllib.request.urlopen(req, timeout=5) as resp:
         body = json.loads(resp.read())
 

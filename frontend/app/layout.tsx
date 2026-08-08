@@ -1,8 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import AppShell from "@/components/AppShell";
 import InternalNavigationGuard from "@/components/InternalNavigationGuard";
-import Sidebar from "@/components/Sidebar";
+import { AuthProvider } from "@/components/auth/AuthProvider";
 import { ToastProvider } from "@/components/ui/Toast";
+import { getAppUser } from "@/lib/auth/app-user";
+import { PATHNAME_HEADER, resolveRouteAccess } from "@/lib/auth/route-access";
 import "./globals.css";
 import "./styles/foundation.css";
 import "./styles/tokens.css";
@@ -21,6 +26,7 @@ import "./styles/intelligence.css";
 import "./styles/badges.css";
 import "./styles/command-theme.css";
 import "./styles/ui-primitives.css";
+import "./styles/auth.css";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -61,11 +67,40 @@ export const viewport: Viewport = {
   colorScheme: "dark light",
 };
 
-export default function RootLayout({
+/**
+ * Auth-Sprint: das Layout ist die serverseitige Rollen-Schranke der
+ * Oberfläche.
+ *
+ * Ablauf pro Seitenaufbau:
+ *   1. Pfad aus dem von proxy.ts gesetzten Header lesen,
+ *   2. Benutzer + Rolle einmalig von FastAPI holen (GET /api/auth/me),
+ *   3. anhand derselben Regeln wie im Proxy entscheiden: anzeigen oder
+ *      umleiten.
+ *
+ * Warum hier und nicht im Proxy: der Proxy läuft bei jeder Navigation und
+ * bei jedem Prefetch: dort einen Backend-Aufruf zu machen, rät die
+ * Next.js-Dokumentation ausdrücklich ab. Der Proxy prüft deshalb nur
+ * "angemeldet ja/nein", die Rolle wird genau einmal pro Seitenaufbau
+ * geprüft - serverseitig, bevor irgendetwas gerendert wird.
+ *
+ * Und noch einmal, weil es der Kern dieses Sprints ist: das ist
+ * Benutzerführung, keine Autorisierung. Die Daten liegen hinter FastAPI, und
+ * dort wird jede einzelne Anfrage unabhängig geprüft.
+ */
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const requestHeaders = await headers();
+  const pathname = requestHeaders.get(PATHNAME_HEADER) ?? "/";
+  const appUser = await getAppUser();
+
+  const decision = resolveRouteAccess({ pathname, role: appUser?.role ?? null });
+  if (decision.type === "redirect") {
+    redirect(decision.to);
+  }
+
   return (
     <html
       lang="de"
@@ -73,11 +108,12 @@ export default function RootLayout({
       data-theme="command"
     >
       <body className="flex h-full min-h-screen overflow-hidden">
-        <ToastProvider>
-          <InternalNavigationGuard />
-          <Sidebar />
-          <main className="app-main min-w-0 flex-1 overflow-y-auto px-5 py-5 md:px-8 md:py-6">{children}</main>
-        </ToastProvider>
+        <AuthProvider initialUser={appUser}>
+          <ToastProvider>
+            <InternalNavigationGuard />
+            <AppShell>{children}</AppShell>
+          </ToastProvider>
+        </AuthProvider>
       </body>
     </html>
   );
