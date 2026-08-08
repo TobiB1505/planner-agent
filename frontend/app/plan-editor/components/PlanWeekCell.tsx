@@ -14,9 +14,9 @@
 import type { CSSProperties } from "react";
 import type { ICellRendererParams } from "ag-grid-community";
 import { parseCell } from "@/components/PersonCellEditor";
-import { categoryColor, hexToRgba } from "@/lib/categoryColors";
+import { hexToRgba } from "@/lib/categoryColors";
 import type { PlanRow } from "../types";
-import { rowCategory } from "../utils/planEditorHelpers";
+import { rowCategory, rowColor } from "../utils/planEditorHelpers";
 
 /** Mehr als zwei Chips passen bei üblichen Spaltenbreiten (~94-180px) nie in
  * eine Zeile. Bei genau zwei Personen werden beide gezeigt; ab drei Personen
@@ -73,17 +73,27 @@ export function PlanWeekCellRenderer(params: PlanWeekCellParams) {
   const overflow = names.length - visible.length;
   const flatPrefix = prefix.replace(/\n+/g, " · ");
 
-  // Visual Polish (Post-Sprint-5, AP2): Kategoriefarbe als dezente Chip-
-  // Tönung - Farbe kennzeichnet die Kategorie der Zuweisung, nicht die
-  // Person (kein dauerhaftes Personen-Farbschema). Einmal pro Zelle
-  // berechnet und für alle sichtbaren Chips derselben Zelle geteilt (nicht
-  // pro Chip neu), um unnötige Objektallokationen zu vermeiden. Abwesenheits-
-  // Zeilen behalten ihre eigene gestrichelte Statusdarstellung und bekommen
-  // keine zusätzliche Kategorietönung (Status muss dominant bleiben).
+  // Visual Polish (Post-Sprint-5, AP2) + Korrektur: Kategoriefarbe als
+  // dezente Chip-Tönung - Farbe kennzeichnet die Kategorie der Zuweisung,
+  // nicht die Person (kein dauerhaftes Personen-Farbschema). Einmal pro
+  // Zelle berechnet und für alle sichtbaren Chips derselben Zelle geteilt
+  // (nicht pro Chip neu), um unnötige Objektallokationen zu vermeiden.
+  // Abwesenheits-Zeilen behalten ihre eigene gestrichelte
+  // Statusdarstellung und bekommen keine zusätzliche Kategorietönung
+  // (Status muss dominant bleiben).
+  //
+  // WICHTIG: rowColor() statt categoryColor(category) direkt - Letzteres
+  // nutzt lib/categoryColors.ts (eine kleinere, andere Palette mit
+  // Zufallsfarben-Fallback für nicht gelistete Kategorien) und würde damit
+  // von der Gruppenfarbe abweichen, die die Abschnitt-Spalte und der
+  // Gruppenkopf für dieselbe Zeile bereits zeigen (row._group_color, aus
+  // den echten Excel-A:H-Bandfarben in backend/template_spec.py
+  // LAYOUT_GROUPS). rowColor() bevorzugt _group_color und fällt nur ohne
+  // Backend-Wert auf categoryColor() zurück - siehe planEditorHelpers.tsx.
   const chipStyle: CSSProperties | undefined = isAbsence
     ? undefined
     : (() => {
-        const color = categoryColor(category);
+        const color = rowColor(data);
         return {
           backgroundColor: hexToRgba(color, 0.12),
           borderColor: hexToRgba(color, 0.32),
