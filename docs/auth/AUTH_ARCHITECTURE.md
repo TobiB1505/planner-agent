@@ -170,6 +170,38 @@ Supabase-Fachdatenabfrage aus React** - Supabase wird im Frontend
 ausschliesslich für die Anmeldung verwendet, alle Fachdaten kommen über
 FastAPI.
 
+## Der zweite Weg in die Daten: PostgREST
+
+Es gibt eine Tür, die nichts mit FastAPI zu tun hat und die man beim Umzug zu
+Supabase leicht übersieht: **jede Tabelle im Schema `public` ist automatisch
+auch über PostgREST erreichbar** (`https://<projekt>.supabase.co/rest/v1/...`).
+Der dafür nötige Publishable Key ist kein Geheimnis - er steht als
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` im ausgelieferten Frontend-Bundle.
+
+Ohne Gegenmassnahme wäre die gesamte Rollenprüfung damit wirkungslos: man
+müsste sie nicht überwinden, sondern nur umgehen. Insbesondere `app_users`
+wäre beschreibbar - jeder könnte sich selbst die Rolle `admin` eintragen.
+
+Deshalb ist auf **allen** Tabellen Row Level Security aktiviert, und zwar
+bewusst **ohne Policies** (`backend/migrations/003_enable_row_level_security.sql`):
+
+| Rolle | `rolbypassrls` | Wirkung |
+| --- | --- | --- |
+| `anon`, `authenticated` (PostgREST) | false | kein Zugriff, keine Zeile |
+| Eigentümerrolle über `DATABASE_URL` (bei Supabase `postgres`) | true | unverändert voller Zugriff |
+
+Kein `FORCE ROW LEVEL SECURITY` - das würde die Eigentümerrolle einbeziehen
+und das Backend aussperren.
+
+Der Supabase-Linter meldet dazu 19× INFO *"RLS enabled, no policy"*. Das ist
+hier die Absicht und kein vergessener Schritt: es gibt keinen legitimen
+Direktzugriff, den eine Policy erlauben müsste. Alle Fachdaten fliessen über
+FastAPI, und dort entscheidet die Rolle aus `app_users`.
+
+Nachgeprüft an der laufenden Datenbank: eine Zeile in `people` ist für die
+Eigentümerrolle sichtbar und für `anon` nicht; ein `INSERT` in `app_users` als
+`anon` scheitert mit *"new row violates row-level security policy"*.
+
 ## Datenmodell
 
 Definiert in der versionierten Migration `backend/migrations/002_app_users.sql`

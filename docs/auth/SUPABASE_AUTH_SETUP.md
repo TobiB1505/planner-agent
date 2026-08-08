@@ -59,6 +59,28 @@ beim Backend-Start anwendet (`db.initialize_database()`, siehe
 `backend/migrations/__init__.py`). Der Stand ist über die Tabelle
 `schema_migrations` nachvollziehbar.
 
+Ebenfalls automatisch: `003_enable_row_level_security.sql`. Diese Migration
+ist sicherheitsrelevant und nicht optional - sie schliesst den Zugang an der
+Anwendung vorbei (siehe `AUTH_ARCHITECTURE.md`, Abschnitt "Der zweite Weg in
+die Daten: PostgREST"). Ohne sie ist die gesamte Rollenprüfung mit dem
+öffentlichen Publishable Key umgehbar.
+
+**Wenn das Schema nicht über den Runner, sondern von Hand eingespielt wird**
+(Supabase SQL Editor, MCP-Connector, `supabase db push`), muss die Tabelle
+`public.schema_migrations` entsprechend nachgezogen werden:
+
+```sql
+INSERT INTO schema_migrations (version, name) VALUES
+    ('001', 'initial_postgres'),
+    ('002', 'app_users'),
+    ('003', 'enable_row_level_security')
+ON CONFLICT (version) DO NOTHING;
+```
+
+Sonst versucht der Runner beim nächsten Backend-Start, dieselben Migrationen
+erneut anzuwenden, und bricht mit einem `MigrationError` ab ("relation already
+exists") - der Start schlägt fehl, statt mit halbem Schema weiterzulaufen.
+
 Die allgemeine Einrichtung der Datenbank selbst - Projekt, `DATABASE_URL`,
 Verbindungslimits - steht in `docs/database/SUPABASE_SETUP.md`; dieses
 Dokument behandelt ausschliesslich Auth.
@@ -130,7 +152,21 @@ Siehe `ADMIN_BOOTSTRAP.md`. Kurz:
 python -m backend.scripts.create_admin --user-id <UID aus Schritt 7>
 ```
 
-## 9. Prüfen
+## 9. Zusätzliche Härtung im Dashboard
+
+Zwei Einstellungen, die sich nur im Dashboard setzen lassen (weder Migration
+noch Code erreichen sie):
+
+- **Authentication → Providers → Email → "Allow new users to sign up" aus.**
+  Siehe Schritt 2 - ohne das kann sich jeder ein Supabase-Konto anlegen.
+  Zugriff auf Planungsdaten bekommt er dadurch nicht (ohne
+  `app_users`-Eintrag gibt es 403), aber offene Registrierung betreibt man
+  nicht unabsichtlich.
+- **Authentication → Policies/Settings → "Leaked password protection" an.**
+  Supabase gleicht Passwörter dann gegen HaveIBeenPwned ab. Der
+  Supabase-Linter meldet diese Einstellung sonst dauerhaft als WARN.
+
+## 10. Prüfen
 
 1. `/login` aufrufen, anmelden.
 2. Als Admin: Dashboard erscheint, in der Navigation ist "System" sichtbar.
@@ -140,6 +176,10 @@ python -m backend.scripts.create_admin --user-id <UID aus Schritt 7>
 5. Direkt gegen die API (ohne Token):
    `curl -i <backend>/api/team` → **401**.
    `curl -i <backend>/api/health` → **200**.
+6. Direkt an FastAPI vorbei, mit dem öffentlichen Key:
+   `curl -s "<supabase-url>/rest/v1/people?select=*" -H "apikey: <publishable key>"`
+   → leeres Ergebnis `[]`, unabhängig vom Datenbestand (RLS, siehe Schritt 5
+   der Datenbankvorbereitung). Kommen hier Daten zurück, fehlt Migration 003.
 
 ## Weitere Benutzer
 
