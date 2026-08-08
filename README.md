@@ -422,8 +422,7 @@ Voraussetzungen
 Erforderlich
 
 * Git
-* Python 3.9 oder neuer
-* Python 3.11 oder neuer empfohlen
+* Python 3.11 oder neuer
 * Node.js 20.9 oder neuer
 * npm
 
