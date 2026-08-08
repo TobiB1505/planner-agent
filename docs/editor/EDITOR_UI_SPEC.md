@@ -52,16 +52,26 @@ Tagesheader mit aktivem Tag → Kategorie-Kanten/-Punkte → Grundfläche.
   Tag mit Akzent-Unterstreichung. Header sind zugleich die Tagesnavigation.
 - **Erste Spalte**: Abschnittsname, 3px Kategorie-Kante, 5% Tönung.
   Zweite Spalte: Zeit/Zeile als gedämpfter Text, neutral.
-- **Kategorieabschnitte**: neutrale Trennzeilen mit Kategorie-Punkt +
-  Label + Kante - keine Farbbänder. Kategorie-Farbwerte unverändert
-  (`lib/categoryColors.ts` = Excel-Vorlage, Wiedererkennung bleibt).
+- **Kategorieabschnitte**: neutrale Trennzeilen, Label horizontal zentriert
+  und von zwei dezenten Linien in gedämpfter Kategoriefarbe flankiert
+  (Visual Polish, Post-Sprint-5), Kategorie-Punkt bleibt am Label - keine
+  Farbbänder. Kategorie-Farbwerte unverändert (`lib/categoryColors.ts` =
+  Excel-Vorlage, Wiedererkennung bleibt). Etwas mehr Zeilenhöhe als zuvor
+  für spürbaren Abstand zwischen Abschnitten.
 
 ## 4. Personen-Darstellung (PlanWeekCellRenderer)
 
 - 1 Person → voller Name als Chip.
 - 2 Personen → zwei Chips mit Vornamen (Nachnamen-Initiale bei
   Vornamens-Kollision).
-- ≥3 Personen → ein Chip + `+n` (Akzent-Chip). `title` nennt alle Namen.
+- ≥3 Personen → ein Chip + `+n` (neutraler Chip, keine Akzentfarbe im
+  Ruhezustand - Visual Polish, Post-Sprint-5). `title` nennt alle Namen.
+- Personen-Chips (nicht Abwesenheits-Zeilen) tragen seit dem Visual-Polish-
+  Durchgang eine dezente Tönung in der Kategoriefarbe der jeweiligen Zeile
+  (`rowCategory`/`categoryColor` + `hexToRgba`, dieselbe Quelle wie die
+  Abschnitt-Spalte) - die Farbe kennzeichnet die Kategorie der Zuweisung,
+  nicht die Person; dieselbe Person kann in unterschiedlichen Kategorien
+  unterschiedlich getönte Chips haben.
 - Präfixe (Ort/Zeit/Künstler, z.B. Aperitif) als gedämpfter Vortext.
 - Abwesenheits-Zeilen: Outline-Chips (gestrichelt, gedämpft) - erkennbar
   als Status, nicht als Dienst-Zuweisung.
@@ -118,7 +128,8 @@ Foundation) - im Editor selbst existieren keine dauerhaften Animationen.
 | Do | Don't |
 |---|---|
 | Kategorie als Kante/Punkt | Kategorie als Zeilen-/Zellfläche |
-| Ein lesbarer Chip + "+n" | zwei per Ellipsis zerquetschte Namen |
+| Ein lesbarer Chip + "+n" (neutral) | zwei per Ellipsis zerquetschte Namen |
+| Kategorie als dezente Chip-Tönung (8-15%) | Kategorie als kräftige Chip-Vollfläche |
 | Speichern als beschriftete Primäraktion | Icon-only-Speichern + gleichlaute Status-Badges |
 | Status-Chips: Farbe nur auf Symbol/Zahl | farbig umrandete Badge-Buttons |
 | Plus-Affordance bei Hover/Fokus | dauerhaftes Plus in jeder leeren Zelle |

@@ -100,7 +100,9 @@ export default function PlanGrid({
   const handleGetRowHeight = useCallback(
     (params: RowHeightParams<PlanRow>) => {
       if (params.data?._row_type === "group") {
-        return density === "compact" ? 30 : density === "large" ? 44 : 36;
+        // Visual Polish (Post-Sprint-5): +8px ggü. Sprint 3 für mehr Abstand
+        // zwischen Kategorieabschnitten (Zeilenhöhe der Trennzeile selbst).
+        return density === "compact" ? 38 : density === "large" ? 52 : 44;
       }
       return density === "compact" ? 32 : density === "large" ? 48 : 40;
     },
