@@ -12,35 +12,73 @@ jobs:
   backend:
     name: Backend (pytest)
     runs-on: ubuntu-latest
+
+    # Eine wegwerfbare PostgreSQL-Instanz für die Dauer des Jobs. Bewusst der
+    # offizielle postgres-Image statt eines Supabase-spezifischen Dienstes:
+    # Supabase STELLT PostgreSQL bereit, die Anwendung NUTZT PostgreSQL - sie
+    # darf technisch nicht an den Anbieter gekoppelt sein. Deshalb braucht die
+    # CI auch keinerlei Supabase-Secrets.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: planner_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Kein echtes Secret: lokaler Wegwerf-Dienst im selben Runner. Der Guard
+      # in backend/tests/conftest.py verweigert erkennbare Produktionshosts und
+      # verlangt "test" im Datenbanknamen.
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/planner_test
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/planner_test
+      ENVIRONMENT: test
+      APP_ENV: test
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Python 3.9 exakt wie in README.md dokumentiert ("entwickelt/getestet
-      # mit Python 3.9.6") - CI soll denselben Stand prüfen, der lokal
-      # tatsächlich verifiziert wurde, keinen abweichenden.
-      - name: Set up Python 3.9
+      # Python 3.11: psycopg 3 und die übrigen Abhängigkeiten setzen inzwischen
+      # eine aktuellere Version voraus als das früher hier verwendete 3.9
+      # (das seit Oktober 2025 auch kein Sicherheitsupdate mehr bekommt).
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.11"
           cache: "pip"
           cache-dependency-path: backend/requirements.txt
 
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
 
+      # Schema entsteht ausschließlich über den Migrationsrunner - nie implizit
+      # aus einem Request-Pfad (siehe backend/migrations/__init__.py). Dieser
+      # Schritt beweist zusätzlich, dass die Migrationen auf einer komplett
+      # leeren Datenbank reproduzierbar durchlaufen.
+      - name: Apply database migrations
+        run: python -c "from backend import db; db.initialize_database(); print('Schemastand:', db.schema_version())"
+
       # Kein GEMINI_API_KEY gesetzt: die Tests, die Gemini-Aufrufe brauchen,
       # mocken sie durchgehend (monkeypatch) - siehe backend/tests/test_async_imports.py.
-      # Die autouse-Guard-Fixture in backend/tests/conftest.py lässt jeden Test
-      # fehlschlagen, der versucht, die echte lokale Datenbank zu öffnen; da
-      # local_data/database/ per .gitignore nie eingecheckt ist, existiert im
-      # CI-Checkout ohnehin keine echte DB-Datei.
+      # Die autouse-Fixtures in backend/tests/conftest.py geben jedem Test ein
+      # eigenes PostgreSQL-Schema und verweigern jede Datenbank, die nach
+      # Produktion aussieht.
       #
       # Deployment-Smoke inklusive: backend/tests/test_preview_mode_smoke.py
       # startet hier bereits einen echten "python -m backend.run_local"-Prozess
-      # mit APP_ENV=preview/PLANNER_DATA_DIR=<tmp>/SYSTEM_RESTART_ENABLED=0 und
-      # prüft Health, Vorlagen und dass kein echter Restart ausgeführt wird -
-      # kein separater CI-Schritt dafür nötig.
+      # mit APP_ENV=preview/SYSTEM_RESTART_ENABLED=0 und prüft Health, Vorlagen
+      # und dass kein echter Restart ausgeführt wird - kein separater CI-Schritt
+      # dafür nötig. backend/tests/test_preview_persistence.py weist zusätzlich
+      # nach, dass Daten einen Prozessneustart mit FRISCHEM Datenordner
+      # überleben (also nicht mehr an einer persistenten Disk hängen).
       - name: Run backend tests
         run: python -m pytest backend/tests -v
 

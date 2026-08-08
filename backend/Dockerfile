@@ -7,10 +7,13 @@
 # Dadurch liegen .env, .git/ und frontend/ ausserhalb des Build-Kontexts und
 # können gar nicht erst versehentlich mitkopiert werden - backend/.dockerignore
 # schliesst zusätzlich Tests und Cache-Artefakte aus.
-FROM python:3.9-slim
+FROM python:3.11-slim
 
-# Python 3.9 exakt wie in README.md/CI dokumentiert - kein abweichender Stand
-# zwischen lokaler Entwicklung, CI und Container.
+# Python 3.11 exakt wie in der CI (.github/workflows/ci.yml) - kein
+# abweichender Stand zwischen lokaler Entwicklung, CI und Container. Angehoben
+# von 3.9 mit der PostgreSQL-Migration: psycopg 3 und der mitgelieferte
+# Connection Pool setzen einen aktuelleren Interpreter voraus, und 3.9 bekommt
+# seit Oktober 2025 keine Sicherheitsupdates mehr.
 
 WORKDIR /app
 
@@ -32,16 +35,23 @@ ENV PYTHONUNBUFFERED=1 \
     BACKEND_HOST=0.0.0.0 \
     PLANNER_DATA_DIR=/data
 
-# Persistentes Volume für SQLite-Datenbank, Archiv und Backups - siehe
-# docs/deployment/BACKEND_CONTAINER.md. Das Image/der Container kann nicht
-# technisch beweisen, dass /data tatsächlich auf einen persistenten
-# Datenträger gemountet ist - das ist Aufgabe der Hosting-Plattform.
+# /data ist seit der PostgreSQL-Migration NICHT mehr die Datenhaltung: die
+# operative Datenbank hängt ausschließlich an DATABASE_URL (siehe
+# backend/db.py, docs/database/SUPABASE_SETUP.md). Der Pfad muss weiterhin
+# beschreibbar sein (Startvorprüfung, Diagnose, temporäre Verzeichnisse), aber
+# nicht mehr persistent - siehe docs/database/POSTGRES_STORAGE_GAPS.md.
+# Die VOLUME-Deklaration bleibt bewusst stehen, damit ein bestehendes Deployment
+# mit gemounteter Disk unverändert weiterläuft; sie kann nach dem Cutover
+# entfernt werden.
 VOLUME ["/data"]
 
 EXPOSE 8000
 
 # Genau ein Uvicorn-Prozess (backend/run_local.py ruft uvicorn.run() ohne
-# workers= auf - SQLite verträgt keine parallelen Schreibprozesse), kein
+# workers= auf). Das war unter SQLite technisch zwingend; mit PostgreSQL wäre
+# Mehr-Prozess-Betrieb grundsätzlich möglich, wird hier aber bewusst NICHT
+# eingeführt - jeder zusätzliche Prozess brächte einen eigenen Connection Pool
+# und damit ein Vielfaches der Verbindungen gegen ein hartes Limit. Kein
 # --reload (Entwickleroption, siehe BACKEND_RELOAD in .env.example). Port
 # wird aus PORT (Plattform-Standard) oder BACKEND_PORT gelesen, Host ist
 # oben fest auf 0.0.0.0 gesetzt (extern erreichbar, anders als der lokale

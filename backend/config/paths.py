@@ -41,6 +41,11 @@ UPLOAD_DIR = LOCAL_DATA_DIR / "uploads"
 EXPORT_DIR = LOCAL_DATA_DIR / "exports"
 BACKUP_DIR = LOCAL_DATA_DIR / "backups"
 
+# NICHT mehr die operative Datenbank. Seit der PostgreSQL-Migration läuft die
+# Anwendung ausschließlich über DATABASE_URL (siehe backend/db.py); dieser Pfad
+# bezeichnet nur noch die ALTE SQLite-Datei und hat genau zwei Verwendungen:
+# als Quelle für backend/scripts/migrate_sqlite_to_postgres.py und als
+# Rollback-Stand (siehe docs/database/SQLITE_POSTGRES_CUTOVER.md).
 DATABASE_PATH = DATABASE_DIR / "dienstplaene.db"
 
 # Feste Excel-Programmvorlagen (siehe backend/resources/templates/).

@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import logging
 import os
-import sqlite3
 import tempfile
 from datetime import datetime
 from typing import Any, Optional
@@ -126,7 +125,7 @@ class ArtistPlanSaveRequest(BaseModel):
 @router.post("/api/artist-plans")
 def artist_plan_save(
     payload: ArtistPlanSaveRequest,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     entries = artist_plan.rows_to_entries(
         payload.rows,
@@ -146,7 +145,7 @@ def artist_plan_save(
 
 
 @router.get("/api/artist-plans")
-def artist_plan_list(conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def artist_plan_list(conn: db.Connection = Depends(db.get_db_connection)):
     result = []
     for row in db.get_artist_plans(conn):
         start = datetime.strptime(row["start_date"], "%Y-%m-%d").date()
@@ -168,7 +167,7 @@ def artist_plan_list(conn: sqlite3.Connection = Depends(db.get_db_connection)):
 @router.get("/api/artist-plans/{artist_plan_id}")
 def artist_plan_detail(
     artist_plan_id: int,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     row = db.get_artist_plan(conn, artist_plan_id)
     if row is None:
@@ -179,7 +178,7 @@ def artist_plan_detail(
 @router.delete("/api/artist-plans/{artist_plan_id}")
 def artist_plan_delete(
     artist_plan_id: int,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     if db.get_artist_plan(conn, artist_plan_id) is None:
         raise HTTPException(404, "Künstlerplan wurde nicht gefunden.")
@@ -191,7 +190,7 @@ def artist_plan_delete(
 @router.get("/api/artist-plans/{artist_plan_id}/export")
 def artist_plan_export(
     artist_plan_id: int,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     row = db.get_artist_plan(conn, artist_plan_id)
     if row is None:
@@ -242,7 +241,7 @@ def rehearsal_plan_sheets(file: UploadFile = File(...)):
 def rehearsal_plan_import(
     file: UploadFile = File(...),
     sheet_name: Optional[str] = None,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     """AP7: def statt async def - fitz-/openpyxl-/Gemini-Verarbeitung läuft dadurch
     im Threadpool; die per Depends() erzeugte Connection wird ausschließlich in
@@ -304,7 +303,7 @@ class RehearsalPlanSaveRequest(BaseModel):
 @router.post("/api/rehearsal-plans")
 def rehearsal_plan_save(
     payload: RehearsalPlanSaveRequest,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     active_people = [
         row["name"] for row in db.get_all_people(conn, active_only=True)
@@ -327,7 +326,7 @@ def rehearsal_plan_save(
 
 
 @router.get("/api/rehearsal-plans")
-def rehearsal_plan_list(conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def rehearsal_plan_list(conn: db.Connection = Depends(db.get_db_connection)):
     result = []
     for row in db.get_rehearsal_plans(conn):
         start = datetime.strptime(row["start_date"], "%Y-%m-%d").date()
@@ -348,7 +347,7 @@ def rehearsal_plan_list(conn: sqlite3.Connection = Depends(db.get_db_connection)
 @router.get("/api/rehearsal-plans/{rehearsal_plan_id}")
 def rehearsal_plan_detail(
     rehearsal_plan_id: int,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     plan = db.get_rehearsal_plan(conn, rehearsal_plan_id)
     if plan is None:
@@ -373,7 +372,7 @@ def rehearsal_plan_detail(
 @router.delete("/api/rehearsal-plans/{rehearsal_plan_id}")
 def rehearsal_plan_delete(
     rehearsal_plan_id: int,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     if db.get_rehearsal_plan(conn, rehearsal_plan_id) is None:
         raise HTTPException(404, "Probenplan wurde nicht gefunden.")
@@ -414,7 +413,7 @@ def _resolve_with_choices(conn, raw_name: str, resolutions: dict[str, str]) -> O
         return None
     if choice.startswith("existing:"):
         name = choice.split(":", 1)[1]
-        row = conn.execute("SELECT id FROM people WHERE name = ?", (name,)).fetchone()
+        row = conn.execute("SELECT id FROM people WHERE name = %s", (name,)).fetchone()
         person_id = row["id"] if row else None
     else:
         canonical = _normalize_name(raw_name)
@@ -427,7 +426,7 @@ def _resolve_with_choices(conn, raw_name: str, resolutions: dict[str, str]) -> O
 
 
 @router.post("/api/import/save")
-def import_save(payload: ImportSave, conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def import_save(payload: ImportSave, conn: db.Connection = Depends(db.get_db_connection)):
     week_plan_id = db.insert_week_plan(conn, payload.kw, payload.start_date, payload.end_date, payload.filename)
 
     for a in payload.assignments:

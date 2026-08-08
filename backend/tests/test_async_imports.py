@@ -29,9 +29,6 @@ from backend.routers import imports as imports_router
 def _init_db(tmp_path, monkeypatch, filename: str):
     """AP4-Konvention: get_conn() legt kein Schema mehr an, deshalb hier einmalig
     explizit initialize_database() aufrufen."""
-    monkeypatch.setattr(db, "DATABASE_PATH", tmp_path / filename)
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
-    db.initialize_database()
 
 
 def _minimal_xlsx_bytes() -> bytes:

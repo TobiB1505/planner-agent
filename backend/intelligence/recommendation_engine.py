@@ -114,7 +114,7 @@ def recommend(
     history_rows = conn.execute(
         """SELECT p.name, COUNT(*) AS count
            FROM assignments a JOIN people p ON p.id = a.person_id
-           WHERE a.category IN (?, ?) GROUP BY p.id""",
+           WHERE a.category IN (%s, %s) GROUP BY p.id""",
         (category, normalized_category),
     ).fetchall()
     history = {row["name"]: int(row["count"]) for row in history_rows}
@@ -125,7 +125,7 @@ def recommend(
     manual_skills = {
         row["name"]: {skill["skill_id"] for skill in conn.execute(
             """SELECT skill_id FROM employee_skills es
-               JOIN people p ON p.id = es.person_id WHERE p.name = ?""",
+               JOIN people p ON p.id = es.person_id WHERE p.name = %s""",
             (row["name"],),
         ).fetchall()}
         for row in people
@@ -135,7 +135,7 @@ def recommend(
         """SELECT COALESCE(rp.person_name, rp.raw_name) AS person,
                   rp.start_time, rp.end_time, r.activity
            FROM rehearsal_people rp JOIN rehearsals r ON r.id = rp.rehearsal_id
-           WHERE r.date = ?""",
+           WHERE r.date = %s""",
         (target_date,),
     ).fetchall()
     rehearsal_by_person: dict[str, list] = {}

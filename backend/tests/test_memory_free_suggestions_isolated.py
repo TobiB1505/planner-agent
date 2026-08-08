@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 
 import pytest
 
@@ -22,10 +21,12 @@ TARGET_WEEK = [
 
 @pytest.fixture
 def memory_db():
-    """Eigenständige In-Memory-DB; db.get_conn und DATABASE_PATH bleiben unberührt."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.executescript(db.SCHEMA)
+    """Eigenständige Verbindung auf ein isoliertes PostgreSQL-Testschema.
+
+    Ersetzt die frühere SQLite-In-Memory-Datenbank (siehe conftest.py) - die
+    produktive Planungsdatenbank bleibt unberührt.
+    """
+    conn = db.create_connection()
     try:
         yield conn
     finally:

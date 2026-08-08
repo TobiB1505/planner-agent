@@ -7,7 +7,7 @@ from . import audit, plan_quality
 
 def dashboard_snapshot(conn, week_plan_id: int) -> dict:
     week = conn.execute(
-        "SELECT id, start_date FROM week_plans WHERE id = ?",
+        "SELECT id, start_date FROM week_plans WHERE id = %s",
         (week_plan_id,),
     ).fetchone()
     if week is None:
@@ -19,7 +19,7 @@ def dashboard_snapshot(conn, week_plan_id: int) -> dict:
             """SELECT a.date, a.category, a.subcategory, p.name AS person
                FROM assignments a
                LEFT JOIN people p ON p.id = a.person_id
-               WHERE a.week_plan_id = ?
+               WHERE a.week_plan_id = %s
                ORDER BY a.date, a.id""",
             (week_plan_id,),
         ).fetchall()
@@ -34,7 +34,7 @@ def dashboard_snapshot(conn, week_plan_id: int) -> dict:
             """SELECT ab.date, ab.typ, p.name AS person
                FROM absences ab
                JOIN people p ON p.id = ab.person_id
-               WHERE ab.week_plan_id = ?
+               WHERE ab.week_plan_id = %s
                ORDER BY ab.date, ab.id""",
             (week_plan_id,),
         ).fetchall()

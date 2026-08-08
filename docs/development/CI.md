@@ -19,7 +19,10 @@ pip install -r backend/requirements.txt
 python -m pytest backend/tests -v
 ```
 
-Erwartung: alle Tests grün, keine Verbindung zu `local_data/database/dienstplaene.db`
+Erwartung: alle Tests grün. Jeder Test läuft in einem eigenen, frisch
+migrierten PostgreSQL-Schema; der Guard in `backend/tests/conftest.py` bricht
+die Suite ab, wenn `TEST_DATABASE_URL` auf eine gehostete oder
+produktionsartige Datenbank zeigt.
 (die autouse-Guard-Fixture in `backend/tests/conftest.py` lässt jeden Test
 fehlschlagen, der versucht, die echte lokale Datenbank zu öffnen).
 
@@ -78,7 +81,8 @@ oder neuer") mit einer auf GitHub Actions gut unterstützten Version.
 | Symptom | Ursache | Fix |
 |---|---|---|
 | `ImportError: cannot import name '...' from 'backend.api'` | Ein Test importiert eine Funktion, die inzwischen in einen Router verschoben wurde (siehe AP11) | Importpfad auf `backend.routers.<name>` anpassen |
-| Backend-Job schlägt mit `AssertionError` in `_guard_against_real_database` fehl | Ein Test/Skript versucht, `db.DATABASE_PATH` nicht umzuleiten, bevor eine Connection geöffnet wird | `monkeypatch.setattr(db, "DATABASE_PATH", tmp_path / "...")` **vor** jedem `sqlite3.connect`/`TestClient(...)`-Aufruf setzen |
+| Backend-Job bricht mit `RuntimeError` aus `_guard_test_database_url` ab | `TEST_DATABASE_URL` zeigt auf einen gehosteten Dienst oder eine produktionsartige Datenbank | Eine eigene Testdatenbank verwenden, deren Name `test` enthält (z.B. `planner_test`) |
+| Backend-Job bricht mit "PostgreSQL-Testdatenbank ist nicht erreichbar" ab | Der `postgres`-Service ist nicht hochgekommen | Health-Check des Service-Containers im Workflow prüfen; lokal eine PostgreSQL-Instanz starten |
 | `npm run lint` meldet neue Fehler | Ungenutzte Importe/Variablen, siehe ESLint-Ausgabe | Direkt beheben — Warnungen (kein Fehler) lassen den Job trotzdem grün durchlaufen, `error`-Level bricht ab |
 | `npm run build` schlägt mit TypeScript-Fehlern fehl | `next build` führt eine vollständige Typprüfung aus | Fehlermeldung zeigt Datei+Zeile; lokal reproduzierbar mit `npm run build` |
 | Frontend-Job: `npm ci` schlägt fehl | `package-lock.json` und `package.json` sind nicht synchron | Lokal `npm install` ausführen, `package-lock.json` committen |

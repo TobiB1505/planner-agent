@@ -1,5 +1,13 @@
 # Preview-Smoke-Test
 
+> **Hinweis (PostgreSQL-Migration, August 2026):** Dieses Dokument beschreibt
+> den Stand VOR der Migration der operativen Datenbank von SQLite auf
+> PostgreSQL. Die Aussagen zu SQLite, zur persistenten Disk und zum
+> Einzel-Instanz-Betrieb sind dadurch überholt. Aktueller Stand:
+> `docs/database/POSTGRES_MIGRATION_AUDIT.md`,
+> `docs/database/POSTGRES_STORAGE_GAPS.md` und
+> `docs/database/SUPABASE_SETUP.md`.
+
 > **Status:** Ein echtes End-to-End-Smoke-Test gegen eine reale
 > Vercel-Preview-Domain und einen echten Render-Backend-Service konnte in
 > der Sitzung, die dieses Dokument erstellt hat, **nicht durchgeführt

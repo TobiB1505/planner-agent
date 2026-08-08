@@ -29,9 +29,6 @@ from backend.intelligence import (
 def _conn(tmp_path, monkeypatch, filename: str):
     """AP4-Konvention: get_conn() legt kein Schema mehr an, deshalb hier einmalig
     explizit initialize_database() aufrufen."""
-    monkeypatch.setattr(db, "DATABASE_PATH", tmp_path / filename)
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
-    db.initialize_database()
     return db.get_conn()
 
 

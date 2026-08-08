@@ -71,9 +71,9 @@ def previous_week_workload(conn, current_start: date | str) -> dict:
     week = conn.execute(
         """SELECT *
            FROM week_plans
-           WHERE start_date <= ? AND end_date >= ?
+           WHERE start_date <= %s AND end_date >= %s
            ORDER BY
-             CASE WHEN start_date = ? THEN 0 ELSE 1 END,
+             CASE WHEN start_date = %s THEN 0 ELSE 1 END,
              id DESC
            LIMIT 1""",
         (
@@ -98,7 +98,7 @@ def previous_week_workload(conn, current_start: date | str) -> dict:
         """SELECT a.category, a.subcategory, a.raw_text, p.name AS person
            FROM assignments a
            LEFT JOIN people p ON p.id = a.person_id
-           WHERE a.week_plan_id = ?""",
+           WHERE a.week_plan_id = %s""",
         (week["id"],),
     ).fetchall()
     for row in rows:
@@ -244,13 +244,13 @@ def fairness_alerts(conn, week_plan_id: int) -> list[dict]:
     assignment_rows = conn.execute(
         """SELECT a.category, p.name AS person FROM assignments a
            JOIN people p ON a.person_id = p.id
-           WHERE a.week_plan_id = ?""",
+           WHERE a.week_plan_id = %s""",
         (week_plan_id,),
     ).fetchall()
     absence_rows = conn.execute(
         """SELECT ab.typ, p.name AS person FROM absences ab
            JOIN people p ON ab.person_id = p.id
-           WHERE ab.week_plan_id = ?""",
+           WHERE ab.week_plan_id = %s""",
         (week_plan_id,),
     ).fetchall()
 
@@ -309,7 +309,7 @@ def fairness_alerts(conn, week_plan_id: int) -> list[dict]:
 def week_insights(conn, week_plan_id: int) -> dict:
     """Handlungsorientierte Kennzahlen für eine konkrete Planungswoche."""
     week = conn.execute(
-        "SELECT * FROM week_plans WHERE id = ?", (week_plan_id,)
+        "SELECT * FROM week_plans WHERE id = %s", (week_plan_id,)
     ).fetchone()
     if week is None:
         raise ValueError("Dienstplan-Woche wurde nicht gefunden.")
@@ -319,7 +319,7 @@ def week_insights(conn, week_plan_id: int) -> dict:
                   p.department
            FROM assignments a
            LEFT JOIN people p ON p.id = a.person_id
-           WHERE a.week_plan_id = ?
+           WHERE a.week_plan_id = %s
            ORDER BY a.date, a.id""",
         (week_plan_id,),
     ).fetchall()
@@ -327,7 +327,7 @@ def week_insights(conn, week_plan_id: int) -> dict:
         """SELECT ab.date, ab.typ, p.name AS person, p.department
            FROM absences ab
            JOIN people p ON p.id = ab.person_id
-           WHERE ab.week_plan_id = ?
+           WHERE ab.week_plan_id = %s
            ORDER BY ab.date, ab.id""",
         (week_plan_id,),
     ).fetchall()
@@ -443,7 +443,7 @@ def week_insights(conn, week_plan_id: int) -> dict:
     rehearsal = db.get_rehearsal_plan_by_start(conn, planning_start)
     planning_duty_week = conn.execute(
         """SELECT id FROM week_plans
-           WHERE start_date = ?
+           WHERE start_date = %s
            ORDER BY imported_at DESC, id DESC
            LIMIT 1""",
         (planning_start,),
@@ -453,7 +453,7 @@ def week_insights(conn, week_plan_id: int) -> dict:
         planning_assignment_count = conn.execute(
             """SELECT COUNT(*) AS count
                FROM assignments
-               WHERE week_plan_id = ? AND person_id IS NOT NULL""",
+               WHERE week_plan_id = %s AND person_id IS NOT NULL""",
             (planning_duty_week["id"],),
         ).fetchone()["count"]
     rehearsal_events = [

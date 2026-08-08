@@ -1,5 +1,14 @@
 google-genai>=1.20
 python-dotenv>=1.0
+
+# PostgreSQL (operative Datenbank, konfiguriert über DATABASE_URL).
+# psycopg 3 statt psycopg2: aktiv gepflegt, natives ON CONFLICT/RETURNING-
+# Handling, saubere Row-Factories und ein mitgelieferter Connection Pool.
+# [binary] liefert die vorkompilierte libpq mit - kein Compiler und keine
+# System-Header nötig, weder lokal noch im Render-Build.
+psycopg[binary]>=3.1
+psycopg-pool>=3.2
+
 pandas>=2.2
 openpyxl>=3.1
 fastapi>=0.115

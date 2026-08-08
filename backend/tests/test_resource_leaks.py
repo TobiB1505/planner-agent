@@ -2,14 +2,19 @@
 
 Realer Vorfall: nach ca. 6,5 Stunden Laufzeit meldete `/api/system/diagnostics`
 "disk I/O error". Ursache: `health()` und `system_diagnostics()` öffneten eine
-eigene `sqlite3.connect()`-Verbindung innerhalb eines `try:`-Blocks und
-schlossen sie erst als letzte Anweisung IM `try` - ein `sqlite3.Error` beim
-`execute()`/`fetchone()` sprang direkt in den `except`-Block, ohne die
-Verbindung vorher zu schliessen. Das System-UI fragt `/api/system/diagnostics`
-alle 5 Sekunden automatisch ab (720x/Stunde) - ein einziger transienter
-SQLite-Fehler genügte, um eine Verbindung dauerhaft offen zu lassen, was die
-Wahrscheinlichkeit für den nächsten Fehler weiter erhöhte (mehr offene Handles
-auf dieselbe WAL-Datei) - ein sich selbst verstärkender Kreislauf.
+eigene Datenbankverbindung innerhalb eines `try:`-Blocks und schlossen sie erst
+als letzte Anweisung IM `try` - ein Datenbankfehler beim `execute()`/`fetchone()`
+sprang direkt in den `except`-Block, ohne die Verbindung vorher zu schliessen.
+Das System-UI fragt `/api/system/diagnostics` alle 5 Sekunden automatisch ab
+(720x/Stunde) - ein einziger transienter Fehler genügte, um eine Verbindung
+dauerhaft offen zu lassen, was die Wahrscheinlichkeit für den nächsten Fehler
+weiter erhöhte - ein sich selbst verstärkender Kreislauf.
+
+Nach der PostgreSQL-Migration ist dasselbe Muster nicht weniger gefährlich,
+sondern gefährlicher: eine nicht zurückgegebene Verbindung belegt dauerhaft
+einen der wenigen Pool-Plätze (und damit eine der begrenzten
+Supabase-Verbindungen). Die Tests prüfen deshalb unverändert dieselbe Zusage,
+nur gegen `db.create_connection()` statt gegen `sqlite3.connect()`.
 
 Analoges Muster (Ressource geöffnet, `close()` nur im Erfolgspfad oder ganz
 vergessen) fand sich außerdem in `xlsx_template.generate_week_xlsx()` und
@@ -21,28 +26,28 @@ den reparierten Code (try/finally um jede Ressourcenöffnung) zuverlässig grün
 from __future__ import annotations
 
 import os
-import sqlite3
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
 from backend import api, db
 
 
-# ---------- Schritt 2/4: sqlite3.connect() in health()/system_diagnostics() ----------
+# ---------- Schritt 2/4: Verbindungsaufbau in health()/system_diagnostics() ----------
 
 
 class _FailingConnection:
-    """Ersetzt sqlite3.connect() komplett - jede execute()/fetchone()-Anfrage
-    löst einen echten sqlite3.Error aus, wie es ein realer disk-I/O-Fehler
-    täte. close() wird gezählt, um zu beweisen, dass er IMMER aufgerufen wird,
-    auch wenn execute() vorher fehlschlägt."""
+    """Ersetzt db.create_connection() komplett - jede execute()-Anfrage löst
+    einen echten psycopg-Fehler aus, wie es ein realer Datenbankfehler täte.
+    close() wird gezählt, um zu beweisen, dass er IMMER aufgerufen wird, auch
+    wenn execute() vorher fehlschlägt."""
 
     def __init__(self, close_counter: dict) -> None:
         self._close_counter = close_counter
 
     def execute(self, *args, **kwargs):
-        raise sqlite3.OperationalError("disk I/O error")
+        raise psycopg.OperationalError("connection failure")
 
     def close(self) -> None:
         self._close_counter["n"] += 1
@@ -50,24 +55,22 @@ class _FailingConnection:
 
 @pytest.fixture
 def client_with_existing_db(tmp_path, monkeypatch):
-    database_path = tmp_path / "planner-test.db"
-    monkeypatch.setattr(db, "DATABASE_PATH", database_path)
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
     with TestClient(api.app) as c:
-        # Datei muss existieren, damit health()/system_diagnostics() den
-        # sqlite3.connect()-Zweig überhaupt betreten (DATABASE_PATH.exists()).
         yield c
+
+
+def _patch_failing_connections(monkeypatch, close_counter, calls):
+    def fake_create_connection():
+        calls["n"] += 1
+        return _FailingConnection(close_counter)
+
+    monkeypatch.setattr(db, "create_connection", fake_create_connection)
 
 
 def test_health_closes_connection_even_when_query_fails(client_with_existing_db, monkeypatch):
     close_counter = {"n": 0}
     calls = {"n": 0}
-
-    def fake_connect(*args, **kwargs):
-        calls["n"] += 1
-        return _FailingConnection(close_counter)
-
-    monkeypatch.setattr(sqlite3, "connect", fake_connect)
+    _patch_failing_connections(monkeypatch, close_counter, calls)
 
     for _ in range(20):
         resp = client_with_existing_db.get("/api/health")
@@ -76,8 +79,8 @@ def test_health_closes_connection_even_when_query_fails(client_with_existing_db,
 
     assert calls["n"] == 20
     assert close_counter["n"] == 20, (
-        "jede fehlgeschlagene Verbindung muss trotzdem geschlossen werden - "
-        "sonst genau der Leak aus dem realen Vorfall"
+        "jede fehlgeschlagene Verbindung muss trotzdem freigegeben werden - "
+        "sonst genau der Leak aus dem realen Vorfall, jetzt auf Pool-Plätzen"
     )
 
 
@@ -86,12 +89,7 @@ def test_system_diagnostics_closes_connection_even_when_query_fails(
 ):
     close_counter = {"n": 0}
     calls = {"n": 0}
-
-    def fake_connect(*args, **kwargs):
-        calls["n"] += 1
-        return _FailingConnection(close_counter)
-
-    monkeypatch.setattr(sqlite3, "connect", fake_connect)
+    _patch_failing_connections(monkeypatch, close_counter, calls)
 
     for _ in range(20):
         resp = client_with_existing_db.get("/api/system/diagnostics")
@@ -100,8 +98,8 @@ def test_system_diagnostics_closes_connection_even_when_query_fails(
 
     assert calls["n"] == 20
     assert close_counter["n"] == 20, (
-        "jede fehlgeschlagene Verbindung muss trotzdem geschlossen werden - "
-        "sonst genau der Leak aus dem realen Vorfall"
+        "jede fehlgeschlagene Verbindung muss trotzdem freigegeben werden - "
+        "sonst genau der Leak aus dem realen Vorfall, jetzt auf Pool-Plätzen"
     )
 
 
@@ -207,11 +205,11 @@ def test_fd_count_stable_after_many_requests(tmp_path, monkeypatch):
     Erwartung: kein kontinuierliches Wachstum. Ein kleiner, konstanter Sockel
     (z.B. durch TestClient-interne Verbindungen) ist zulässig - entscheidend
     ist, dass er nach vielen Requests nicht mit der Request-Zahl mitwächst.
-    """
-    database_path = tmp_path / "planner-test.db"
-    monkeypatch.setattr(db, "DATABASE_PATH", database_path)
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
 
+    Unter PostgreSQL ist jede Datenbankverbindung ein echter Socket und damit
+    ein FD - der Test misst dadurch jetzt direkt, ob der Pool Verbindungen
+    zurücknimmt statt bei jedem Request neue aufzubauen.
+    """
     with TestClient(api.app) as client:
         # Aufwärmen: erste Requests initialisieren ggf. noch Caches/Module-Importe,
         # die selbst (einmalig, nicht pro Request) FDs öffnen - vor der Messung
@@ -245,10 +243,6 @@ def test_repeated_diagnostics_requests_do_not_grow_fds_even_with_transient_error
     """Kombiniert beide Aspekte: echte FD-Zählung UND ein Teil der Requests
     schlägt absichtlich fehl (wie beim realen disk-I/O-Fehler) - genau das
     Szenario, das den Vorfall auslöste."""
-    database_path = tmp_path / "planner-test.db"
-    monkeypatch.setattr(db, "DATABASE_PATH", database_path)
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
-
     with TestClient(api.app) as client:
         for _ in range(5):
             client.get("/api/system/diagnostics")
@@ -257,18 +251,19 @@ def test_repeated_diagnostics_requests_do_not_grow_fds_even_with_transient_error
         if before is None:
             pytest.skip("resource-Modul nicht verfügbar (kein POSIX-System)")
 
-        real_connect = sqlite3.connect
+        real_create_connection = db.create_connection
         call_count = {"n": 0}
 
-        def flaky_connect(*args, **kwargs):
+        def flaky_create_connection(*args, **kwargs):
             call_count["n"] += 1
-            # Jeder 3. Aufruf schlägt fehl - simuliert einen transienten
-            # disk-I/O-Fehler mitten im Dauerbetrieb.
+            # Jeder 3. Aufruf liefert eine Verbindung, deren erste Anfrage
+            # fehlschlägt - simuliert einen transienten Datenbankfehler mitten
+            # im Dauerbetrieb. Die Verbindung MUSS trotzdem freigegeben werden.
             if call_count["n"] % 3 == 0:
-                raise sqlite3.OperationalError("disk I/O error")
-            return real_connect(*args, **kwargs)
+                return _FailingConnection({"n": 0})
+            return real_create_connection(*args, **kwargs)
 
-        monkeypatch.setattr(sqlite3, "connect", flaky_connect)
+        monkeypatch.setattr(db, "create_connection", flaky_create_connection)
         for _ in range(100):
             client.get("/api/system/diagnostics")
 
