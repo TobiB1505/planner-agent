@@ -1,0 +1,2922 @@
+{
+  "components": {
+    "schemas": {
+      "ArtistPlanSaveRequest": {
+        "properties": {
+          "day_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Day Labels",
+            "type": "array"
+          },
+          "end_date": {
+            "title": "End Date",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "sheet_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet Name"
+          },
+          "source_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Filename"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          },
+          "week_dates_iso": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Week Dates Iso",
+            "type": "array"
+          }
+        },
+        "required": [
+          "start_date",
+          "end_date",
+          "day_labels",
+          "week_dates_iso",
+          "rows"
+        ],
+        "title": "ArtistPlanSaveRequest",
+        "type": "object"
+      },
+      "Body_artist_plan_import_api_artist_plans_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_artist_plan_import_api_artist_plans_import_post",
+        "type": "object"
+      },
+      "Body_artist_plan_upload_sheets_api_artist_plans_upload_sheets_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_artist_plan_upload_sheets_api_artist_plans_upload_sheets_post",
+        "type": "object"
+      },
+      "Body_rehearsal_plan_import_api_rehearsal_plans_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_rehearsal_plan_import_api_rehearsal_plans_import_post",
+        "type": "object"
+      },
+      "Body_rehearsal_plan_sheets_api_rehearsal_plans_upload_sheets_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_rehearsal_plan_sheets_api_rehearsal_plans_upload_sheets_post",
+        "type": "object"
+      },
+      "Body_upload_pdf_api_upload_pdf_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_pdf_api_upload_pdf_post",
+        "type": "object"
+      },
+      "Body_upload_xlsx_api_upload_xlsx_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_xlsx_api_upload_xlsx_post",
+        "type": "object"
+      },
+      "Body_upload_xlsx_sheets_api_upload_xlsx_sheets_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_xlsx_sheets_api_upload_xlsx_sheets_post",
+        "type": "object"
+      },
+      "EmployeeMemoryUpdate": {
+        "properties": {
+          "confidence": {
+            "default": 1.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "source_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Date"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "type",
+          "subject",
+          "value"
+        ],
+        "title": "EmployeeMemoryUpdate",
+        "type": "object"
+      },
+      "EmployeeSkillUpdate": {
+        "properties": {
+          "evidence": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "level"
+        ],
+        "title": "EmployeeSkillUpdate",
+        "type": "object"
+      },
+      "FreeSuggestionRequest": {
+        "properties": {
+          "absences": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ImportAbsence"
+            },
+            "title": "Absences",
+            "type": "array"
+          },
+          "new_start": {
+            "title": "New Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_start"
+        ],
+        "title": "FreeSuggestionRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImportAbsence": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "person": {
+            "title": "Person",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "person",
+          "type"
+        ],
+        "title": "ImportAbsence",
+        "type": "object"
+      },
+      "ImportAssignment": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "person": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person"
+          },
+          "raw_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Text"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          }
+        },
+        "required": [
+          "date",
+          "category"
+        ],
+        "title": "ImportAssignment",
+        "type": "object"
+      },
+      "ImportSave": {
+        "properties": {
+          "absences": {
+            "items": {
+              "$ref": "#/components/schemas/ImportAbsence"
+            },
+            "title": "Absences",
+            "type": "array"
+          },
+          "assignments": {
+            "items": {
+              "$ref": "#/components/schemas/ImportAssignment"
+            },
+            "title": "Assignments",
+            "type": "array"
+          },
+          "end_date": {
+            "title": "End Date",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "kw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kw"
+          },
+          "resolutions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Resolutions",
+            "type": "object"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "start_date",
+          "end_date",
+          "assignments",
+          "absences"
+        ],
+        "title": "ImportSave",
+        "type": "object"
+      },
+      "IntelligencePlanRequest": {
+        "properties": {
+          "day_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Day Labels",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_date",
+          "day_labels",
+          "rows"
+        ],
+        "title": "IntelligencePlanRequest",
+        "type": "object"
+      },
+      "IntelligenceRecommendationRequest": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "day_label": {
+            "title": "Day Label",
+            "type": "string"
+          },
+          "day_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Day Labels",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          }
+        },
+        "required": [
+          "start_date",
+          "day_labels",
+          "rows",
+          "day_label",
+          "category"
+        ],
+        "title": "IntelligenceRecommendationRequest",
+        "type": "object"
+      },
+      "MemoryFreeUpdate": {
+        "properties": {
+          "weekdays": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekdays"
+          }
+        },
+        "title": "MemoryFreeUpdate",
+        "type": "object"
+      },
+      "MemoryShowUpdate": {
+        "properties": {
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "title": "MemoryShowUpdate",
+        "type": "object"
+      },
+      "MemoryTaskUpdate": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "required": [
+          "category"
+        ],
+        "title": "MemoryTaskUpdate",
+        "type": "object"
+      },
+      "PersonIn": {
+        "properties": {
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "PersonIn",
+        "type": "object"
+      },
+      "PersonUpdate": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "active"
+        ],
+        "title": "PersonUpdate",
+        "type": "object"
+      },
+      "PlanGenerateRequest": {
+        "properties": {
+          "absences": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ImportAbsence"
+            },
+            "title": "Absences",
+            "type": "array"
+          },
+          "new_start": {
+            "title": "New Start",
+            "type": "string"
+          },
+          "template_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Code"
+          },
+          "template_week_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Week Id"
+          }
+        },
+        "required": [
+          "new_start"
+        ],
+        "title": "PlanGenerateRequest",
+        "type": "object"
+      },
+      "PlanSaveRequest": {
+        "properties": {
+          "audit_events": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Audit Events",
+            "type": "array"
+          },
+          "day_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Day Labels",
+            "type": "array"
+          },
+          "end_date": {
+            "title": "End Date",
+            "type": "string"
+          },
+          "existing_week_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Existing Week Id"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          },
+          "template_week_id": {
+            "title": "Template Week Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start_date",
+          "end_date",
+          "template_week_id",
+          "day_labels",
+          "rows"
+        ],
+        "title": "PlanSaveRequest",
+        "type": "object"
+      },
+      "RehearsalPlanSaveRequest": {
+        "properties": {
+          "end_date": {
+            "title": "End Date",
+            "type": "string"
+          },
+          "rehearsals": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rehearsals",
+            "type": "array"
+          },
+          "source_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Filename"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_date",
+          "end_date",
+          "rehearsals"
+        ],
+        "title": "RehearsalPlanSaveRequest",
+        "type": "object"
+      },
+      "SettingValue": {
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "SettingValue",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "XlsxGenerateRequest": {
+        "properties": {
+          "day_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Day Labels",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          },
+          "template_code": {
+            "title": "Template Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_code",
+          "start_date",
+          "day_labels",
+          "rows"
+        ],
+        "title": "XlsxGenerateRequest",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Planner-Agent API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/artist-plans": {
+      "get": {
+        "operationId": "artist_plan_list_api_artist_plans_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Artist Plan List"
+      },
+      "post": {
+        "operationId": "artist_plan_save_api_artist_plans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtistPlanSaveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Artist Plan Save"
+      }
+    },
+    "/api/artist-plans/empty": {
+      "get": {
+        "operationId": "artist_plan_empty_api_artist_plans_empty_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": true,
+            "schema": {
+              "title": "Start Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Artist Plan Empty"
+      }
+    },
+    "/api/artist-plans/import": {
+      "post": {
+        "operationId": "artist_plan_import_api_artist_plans_import_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sheet_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sheet Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_artist_plan_import_api_artist_plans_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Artist Plan Import"
+      }
+    },
+    "/api/artist-plans/upload/sheets": {
+      "post": {
+        "operationId": "artist_plan_upload_sheets_api_artist_plans_upload_sheets_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_artist_plan_upload_sheets_api_artist_plans_upload_sheets_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Artist Plan Upload Sheets"
+      }
+    },
+    "/api/artist-plans/{artist_plan_id}": {
+      "delete": {
+        "operationId": "artist_plan_delete_api_artist_plans__artist_plan_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artist_plan_id",
+            "required": true,
+            "schema": {
+              "title": "Artist Plan Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Artist Plan Delete"
+      },
+      "get": {
+        "operationId": "artist_plan_detail_api_artist_plans__artist_plan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artist_plan_id",
+            "required": true,
+            "schema": {
+              "title": "Artist Plan Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Artist Plan Detail"
+      }
+    },
+    "/api/artist-plans/{artist_plan_id}/export": {
+      "get": {
+        "operationId": "artist_plan_export_api_artist_plans__artist_plan_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artist_plan_id",
+            "required": true,
+            "schema": {
+              "title": "Artist Plan Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Artist Plan Export"
+      }
+    },
+    "/api/dashboard/category-matrix": {
+      "get": {
+        "operationId": "dashboard_category_matrix_api_dashboard_category_matrix_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dashboard Category Matrix"
+      }
+    },
+    "/api/dashboard/department-activity": {
+      "get": {
+        "operationId": "dashboard_department_activity_api_dashboard_department_activity_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dashboard Department Activity"
+      }
+    },
+    "/api/dashboard/fairness-alerts": {
+      "get": {
+        "operationId": "dashboard_fairness_alerts_api_dashboard_fairness_alerts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "week_id",
+            "required": true,
+            "schema": {
+              "title": "Week Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Fairness Alerts"
+      }
+    },
+    "/api/dashboard/insights": {
+      "get": {
+        "operationId": "dashboard_insights_api_dashboard_insights_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "week_id",
+            "required": true,
+            "schema": {
+              "title": "Week Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Insights"
+      }
+    },
+    "/api/dashboard/overview": {
+      "get": {
+        "operationId": "dashboard_overview_api_dashboard_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dashboard Overview"
+      }
+    },
+    "/api/dashboard/person-totals": {
+      "get": {
+        "operationId": "dashboard_person_totals_api_dashboard_person_totals_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dashboard Person Totals"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "description": "Reiner Lesezugriff - verändert nie Daten, legt auch keine Datenbank an.\n\nFür Deployment-Plattformen nutzbar (Liveness/Readiness): prüft neben der\nDatenbank auch, ob die Excel-Grundvorlagen vorhanden und das\nLaufzeitverzeichnis beschreibbar sind - beides bewusst nur als Booleans,\nnicht als volle Pfad-/Fehlerliste (das bleibt /api/system/diagnostics\nvorbehalten, siehe dort). Enthält nie Secrets, volle interne Serverpfade,\nAPI-Keys oder Stacktraces.\n\nSafety Fix: liest db.DATABASE_PATH statt config_paths.DATABASE_PATH, damit\ndieser Endpunkt in Tests denselben Monkeypatch-Mechanismus respektiert wie\njede andere DB-Nutzung (Depends(db.get_db_connection) etc.) - in Produktion\nidentischer Wert, da db.DATABASE_PATH von dort importiert wird.",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/api/import/save": {
+      "post": {
+        "operationId": "import_save_api_import_save_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Save"
+      }
+    },
+    "/api/intelligence/audit": {
+      "get": {
+        "operationId": "intelligence_audit_log_api_intelligence_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "week_plan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week Plan Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Intelligence Audit Log"
+      }
+    },
+    "/api/intelligence/employees": {
+      "get": {
+        "operationId": "intelligence_employee_overview_api_intelligence_employees_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "weeks",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "title": "Weeks",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "current_week_start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current Week Start"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Intelligence Employee Overview"
+      }
+    },
+    "/api/intelligence/employees/{person_id}": {
+      "get": {
+        "operationId": "intelligence_employee_profile_api_intelligence_employees__person_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "weeks",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "title": "Weeks",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "current_week_start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current Week Start"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Intelligence Employee Profile"
+      }
+    },
+    "/api/intelligence/employees/{person_id}/memory": {
+      "post": {
+        "operationId": "intelligence_employee_memory_set_api_intelligence_employees__person_id__memory_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeMemoryUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Intelligence Employee Memory Set"
+      }
+    },
+    "/api/intelligence/employees/{person_id}/memory/{entry_id}": {
+      "delete": {
+        "operationId": "intelligence_employee_memory_delete_api_intelligence_employees__person_id__memory__entry_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Intelligence Employee Memory Delete"
+      }
+    },
+    "/api/intelligence/employees/{person_id}/skills": {
+      "put": {
+        "operationId": "intelligence_employee_skill_set_api_intelligence_employees__person_id__skills_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeSkillUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Intelligence Employee Skill Set"
+      }
+    },
+    "/api/intelligence/employees/{person_id}/skills/{skill_id}": {
+      "delete": {
+        "operationId": "intelligence_employee_skill_delete_api_intelligence_employees__person_id__skills__skill_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Intelligence Employee Skill Delete"
+      }
+    },
+    "/api/intelligence/plan-quality": {
+      "post": {
+        "operationId": "intelligence_plan_quality_api_intelligence_plan_quality_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntelligencePlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Intelligence Plan Quality"
+      }
+    },
+    "/api/intelligence/recommendations": {
+      "post": {
+        "operationId": "intelligence_recommendations_api_intelligence_recommendations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntelligenceRecommendationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Intelligence Recommendations"
+      }
+    },
+    "/api/known-department-tokens": {
+      "get": {
+        "operationId": "known_department_tokens_api_known_department_tokens_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Known Department Tokens"
+      }
+    },
+    "/api/memory": {
+      "get": {
+        "operationId": "memory_overview_api_memory_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Memory Overview"
+      }
+    },
+    "/api/memory/{person_id}": {
+      "get": {
+        "operationId": "memory_person_api_memory__person_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Memory Person"
+      }
+    },
+    "/api/memory/{person_id}/free": {
+      "put": {
+        "operationId": "memory_set_free_api_memory__person_id__free_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryFreeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Memory Set Free"
+      }
+    },
+    "/api/memory/{person_id}/show/{show_key}": {
+      "put": {
+        "operationId": "memory_set_show_api_memory__person_id__show__show_key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "show_key",
+            "required": true,
+            "schema": {
+              "title": "Show Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryShowUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Memory Set Show"
+      }
+    },
+    "/api/memory/{person_id}/task": {
+      "put": {
+        "operationId": "memory_set_task_api_memory__person_id__task_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryTaskUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Memory Set Task"
+      }
+    },
+    "/api/people/active": {
+      "get": {
+        "operationId": "people_active_api_people_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "People Active"
+      }
+    },
+    "/api/plan/existing": {
+      "get": {
+        "description": "Lädt einen bereits archivierten/fertig hochgeladenen Dienstplan in den Editor.",
+        "operationId": "plan_existing_api_plan_existing_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": true,
+            "schema": {
+              "title": "Start Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Existing"
+      }
+    },
+    "/api/plan/free-suggestion": {
+      "post": {
+        "operationId": "plan_free_suggestion_api_plan_free_suggestion_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FreeSuggestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Free Suggestion"
+      }
+    },
+    "/api/plan/generate": {
+      "post": {
+        "operationId": "plan_generate_api_plan_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanGenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Generate"
+      }
+    },
+    "/api/plan/save": {
+      "post": {
+        "operationId": "plan_save_api_plan_save_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanSaveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Save"
+      }
+    },
+    "/api/plan/templates": {
+      "get": {
+        "operationId": "plan_template_list_api_plan_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Plan Template List"
+      }
+    },
+    "/api/planning-rules": {
+      "get": {
+        "operationId": "planning_rule_list_api_planning_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Planning Rule List"
+      }
+    },
+    "/api/rehearsal-plans": {
+      "get": {
+        "operationId": "rehearsal_plan_list_api_rehearsal_plans_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Rehearsal Plan List"
+      },
+      "post": {
+        "operationId": "rehearsal_plan_save_api_rehearsal_plans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RehearsalPlanSaveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rehearsal Plan Save"
+      }
+    },
+    "/api/rehearsal-plans/import": {
+      "post": {
+        "description": "AP7: def statt async def - fitz-/openpyxl-/Gemini-Verarbeitung läuft dadurch\nim Threadpool; die per Depends() erzeugte Connection wird ausschließlich in\ndiesem einen Worker-Thread verwendet (keine Cross-Thread-Weitergabe).",
+        "operationId": "rehearsal_plan_import_api_rehearsal_plans_import_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sheet_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sheet Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_rehearsal_plan_import_api_rehearsal_plans_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rehearsal Plan Import"
+      }
+    },
+    "/api/rehearsal-plans/upload/sheets": {
+      "post": {
+        "description": "Wochenblätter einer Probenplan-Excel auflisten (Vorlage/Diagramme fliegen raus).\n\nAP7: def statt async def - openpyxl-Ladevorgang läuft dadurch im Threadpool.",
+        "operationId": "rehearsal_plan_sheets_api_rehearsal_plans_upload_sheets_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_rehearsal_plan_sheets_api_rehearsal_plans_upload_sheets_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rehearsal Plan Sheets"
+      }
+    },
+    "/api/rehearsal-plans/{rehearsal_plan_id}": {
+      "delete": {
+        "operationId": "rehearsal_plan_delete_api_rehearsal_plans__rehearsal_plan_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rehearsal_plan_id",
+            "required": true,
+            "schema": {
+              "title": "Rehearsal Plan Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rehearsal Plan Delete"
+      },
+      "get": {
+        "operationId": "rehearsal_plan_detail_api_rehearsal_plans__rehearsal_plan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rehearsal_plan_id",
+            "required": true,
+            "schema": {
+              "title": "Rehearsal Plan Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rehearsal Plan Detail"
+      }
+    },
+    "/api/settings/{key}": {
+      "get": {
+        "operationId": "get_setting_api_settings__key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Setting"
+      },
+      "put": {
+        "operationId": "set_setting_api_settings__key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Setting"
+      }
+    },
+    "/api/system/diagnostics": {
+      "get": {
+        "description": "Reiner Lesezugriff für den Service Manager - prüft denselben Zustand\nwie backend/run_local.py beim Start, aber strukturiert für die UI statt\nals Konsolenausgabe. Verändert nichts, legt nichts an (bis auf eine\nsofort wieder gelöschte Prüfdatei je Ordner, um \"beschreibbar\" zu testen).\n\nSafety Fix: liest db.DATABASE_PATH statt config_paths.DATABASE_PATH (siehe\nhealth() oben) - in Produktion identischer Wert.",
+        "operationId": "system_diagnostics_api_system_diagnostics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "System Diagnostics"
+      }
+    },
+    "/api/system/restart": {
+      "post": {
+        "description": "Startet den Backend-Prozess vollständig neu - unabhängig davon, wie\ner gestartet wurde (Startskript, manuell, mit oder ohne Reload-Modus).\n\nFrühere Version verliess sich auf uvicorns --reload-Dateiwächter (mtime\nvon api.py anfassen) - das funktioniert nur, wenn reload=True gesetzt\nist, was seit dieser Version aber bewusst NICHT mehr der Standard ist\n(siehe backend/run_local.py). Für einen normalen Nutzer, der die\nAnwendung nur über das Startskript startet, passierte beim Klick auf\n\"Backend neu starten\" dadurch schlicht nichts.\n\nStattdessen ersetzt os.execv() den laufenden Prozess durch eine frische\nInstanz von \"python -m backend.run_local\" - denselben Interpreter,\ndasselbe Arbeitsverzeichnis, dieselbe Umgebung. Der Listening-Socket\nschliesst sich dabei automatisch (Python-Dateideskriptoren sind seit\nPEP 446 standardmässig nicht vererbbar über exec hinweg), sodass der\nneue Prozess den Port direkt neu binden kann - kein doppelt gebundener\nPort, kein verwaister Prozess.\n\nIn Preview/Production (siehe _restart_enabled()) ergibt das keinen Sinn:\nContainer-Plattformen erwarten einen langlebigen Prozess und verwalten\nNeustarts selbst (Redeploy, Health-Check-Neustart) - os.execv oder ein\nHintergrund-Thread dafür würde diesen Mechanismus unterlaufen. Der\nAPI-Pfad bleibt unverändert, die Antwort verweist stattdessen auf die\nPlattform-eigene Restart-Funktion.",
+        "operationId": "system_restart_api_system_restart_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "System Restart"
+      }
+    },
+    "/api/team": {
+      "get": {
+        "operationId": "get_team_api_team_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Team"
+      },
+      "post": {
+        "operationId": "create_person_api_team_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Person"
+      }
+    },
+    "/api/team/{person_id}": {
+      "delete": {
+        "operationId": "delete_person_api_team__person_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Person"
+      },
+      "put": {
+        "operationId": "update_person_api_team__person_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Person"
+      }
+    },
+    "/api/upload/pdf": {
+      "post": {
+        "operationId": "upload_pdf_api_upload_pdf_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "api_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_pdf_api_upload_pdf_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Pdf"
+      }
+    },
+    "/api/upload/xlsx": {
+      "post": {
+        "operationId": "upload_xlsx_api_upload_xlsx_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sheet_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sheet Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_xlsx_api_upload_xlsx_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Xlsx"
+      }
+    },
+    "/api/upload/xlsx/sheets": {
+      "post": {
+        "operationId": "upload_xlsx_sheets_api_upload_xlsx_sheets_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_xlsx_sheets_api_upload_xlsx_sheets_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Xlsx Sheets"
+      }
+    },
+    "/api/weeks": {
+      "get": {
+        "operationId": "get_weeks_api_weeks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Weeks"
+      }
+    },
+    "/api/weeks/{week_id}": {
+      "delete": {
+        "operationId": "delete_week_api_weeks__week_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "week_id",
+            "required": true,
+            "schema": {
+              "title": "Week Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Week"
+      },
+      "get": {
+        "operationId": "get_week_detail_api_weeks__week_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "week_id",
+            "required": true,
+            "schema": {
+              "title": "Week Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Week Detail"
+      }
+    },
+    "/api/xlsx/generate": {
+      "post": {
+        "operationId": "xlsx_generate_api_xlsx_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/XlsxGenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Xlsx Generate"
+      }
+    }
+  }
+}

@@ -26,9 +26,6 @@ from backend import api, assignment, db, memory
 def _init_db(tmp_path, monkeypatch, filename: str):
     """AP4-Konvention: get_conn() legt kein Schema mehr an, deshalb hier einmalig
     explizit initialize_database() aufrufen."""
-    monkeypatch.setattr(db, "DATABASE_PATH", tmp_path / filename)
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
-    db.initialize_database()
 
 
 def _seed_week(conn, start="2026-07-27", end="2026-08-02", kw=31) -> int:

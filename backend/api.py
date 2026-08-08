@@ -26,14 +26,24 @@ if not logging.getLogger().handlers:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Führt die einmalige DB-Initialisierung (Schema, Migration, Laufzeitordner)
-    genau einmal beim Start dieses App-Prozesses aus (AP4 - Verbindungs-/Schema-
-    Lifecycle). Schlägt initialize_database() fehl, wird die Exception nicht
-    abgefangen - ein fehlgeschlagener DB-Start soll den App-Start sichtbar
-    verhindern, statt eine scheinbar laufende App ohne nutzbare Datenbank zu
-    hinterlassen."""
+    """Wendet die offenen Schemamigrationen genau einmal beim Start dieses
+    App-Prozesses an (AP4 - Verbindungs-/Schema-Lifecycle) und schließt beim
+    Herunterfahren den Connection Pool.
+
+    Schlägt initialize_database() fehl, wird die Exception nicht abgefangen -
+    ein fehlgeschlagener DB-Start soll den App-Start sichtbar verhindern, statt
+    eine scheinbar laufende App ohne nutzbare Datenbank zu hinterlassen. Das
+    gilt jetzt zusätzlich für eine fehlgeschlagene Migration: lieber gar nicht
+    starten als mit halbem Schema.
+
+    Der Pool wird beim Shutdown geschlossen, damit ein beendeter Render-Prozess
+    seine Verbindungen zu Supabase auch wirklich freigibt (Supabase hat harte
+    Verbindungslimits)."""
     db.initialize_database()
-    yield
+    try:
+        yield
+    finally:
+        db.close_pool()
 
 
 app = FastAPI(title="Planner-Agent API", lifespan=lifespan)

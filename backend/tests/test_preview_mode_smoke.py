@@ -117,7 +117,16 @@ def test_backend_starts_and_is_healthy_in_preview_mode(preview_backend):
     assert health["database"] == "connected"
     assert health["templates_ok"] is True
     assert health["data_dir_writable"] is True
-    assert (data_dir / "database" / "dienstplaene.db").exists()
+
+    # Früher wurde hier die angelegte SQLite-Datei geprüft. Seit der
+    # PostgreSQL-Migration ist die Aussage umgekehrt: im Datenverzeichnis darf
+    # gar keine Datenbankdatei mehr entstehen. Stattdessen meldet health() eine
+    # Host/Datenbank-Kennung - und die darf niemals Zugangsdaten enthalten.
+    assert list(data_dir.rglob("*.db")) == []
+    assert health["database_path"].startswith("postgresql://")
+    assert "@" not in health["database_path"], (
+        "database_path darf keine Zugangsdaten enthalten"
+    )
 
 
 def test_restart_is_not_executed_in_preview_mode(preview_backend):

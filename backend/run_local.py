@@ -14,7 +14,6 @@ Traceback zu sehen.
 from __future__ import annotations
 
 import os
-import sqlite3
 import sys
 
 from .config import paths
@@ -61,34 +60,56 @@ def check_runtime_directories() -> list[str]:
 
 
 def check_database() -> list[str]:
-    """Prüft, dass die SQLite-Datenbank erreichbar ist und intakt ist.
+    """Prüft, dass die PostgreSQL-Datenbank konfiguriert und erreichbar ist.
 
-    Öffnet dieselbe Datei, die die Anwendung später auch verwendet - legt sie
-    aber nicht selbst an. Existiert sie noch nicht, wird das nur als Hinweis
-    ausgegeben (der FastAPI-Lifespan-Start ruft beim eigentlichen Programmstart
-    db.initialize_database() auf und legt das Schema dabei automatisch an -
-    siehe backend/api.py), nicht als Fehler, der den Start verhindert.
+    Ersetzt die frühere Prüfung der lokalen SQLite-Datei (`PRAGMA
+    integrity_check`) - eine Datei gibt es nicht mehr. Geprüft wird stattdessen
+    das, was hier tatsächlich schiefgehen kann und was ein Nutzer selbst beheben
+    kann: fehlende DATABASE_URL, nicht erreichbarer Server, falsche Zugangsdaten.
+
+    Ein noch nicht migriertes Schema ist KEIN Fehler - der FastAPI-Lifespan-Start
+    wendet die Migrationen beim eigentlichen Programmstart an (siehe
+    backend/api.py). Fehlermeldungen enthalten nie die volle DATABASE_URL, weil
+    darin Zugangsdaten stehen.
     """
     problems: list[str] = []
-    if not paths.DATABASE_PATH.exists():
-        print(
-            f"Hinweis: Noch keine Datenbank unter {_relative(paths.DATABASE_PATH)} "
-            "gefunden - sie wird beim ersten Zugriff automatisch neu angelegt."
+
+    # Import bewusst lokal: run_local.py ist die Vorprüfung und soll auch dann
+    # noch eine verständliche Meldung ausgeben können, wenn der Treiber fehlt.
+    try:
+        import psycopg
+
+        from . import db
+    except ImportError as exc:
+        problems.append(
+            f"PostgreSQL-Treiber nicht installiert ({exc}). "
+            "Bitte 'pip install -r backend/requirements.txt' ausführen."
         )
         return problems
+
     try:
-        conn = sqlite3.connect(str(paths.DATABASE_PATH))
+        db.database_url()
+    except db.DatabaseNotConfigured as exc:
+        problems.append(str(exc))
+        return problems
+
+    try:
+        conn = db.connect_direct()
         try:
-            result = conn.execute("PRAGMA integrity_check;").fetchone()
+            conn.execute("SELECT 1")
         finally:
             conn.close()
-    except sqlite3.Error as exc:
+    except psycopg.OperationalError as exc:
+        problems.append(
+            "Die Datenbank ist nicht erreichbar. Bitte DATABASE_URL, Netzwerk "
+            f"und Zugangsdaten prüfen. Meldung des Servers: {exc}"
+        )
+        return problems
+    except psycopg.Error as exc:
         problems.append(f"Datenbank konnte nicht geprüft werden: {exc}")
         return problems
-    if not result or result[0] != "ok":
-        problems.append(
-            f"PRAGMA integrity_check meldet ein Problem: {result[0] if result else 'kein Ergebnis'}"
-        )
+
+    print("Datenbank erreichbar (PostgreSQL).")
     return problems
 
 

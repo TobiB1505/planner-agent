@@ -31,13 +31,12 @@ def _payload(day_label: str, person: str) -> dict:
 
 
 def test_repeated_plan_save_updates_same_week(tmp_path, monkeypatch):
-    database_path = tmp_path / "planner-test.db"
-    monkeypatch.setattr(db, "DATABASE_PATH", database_path)
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
-
+    # Die Testisolation (eigenes, frisch migriertes PostgreSQL-Schema) kommt
+    # aus der autouse-Fixture in conftest.py - hier ist dafür nichts mehr zu tun.
+    #
     # "with" aktiviert den FastAPI-Lifespan (siehe api.py) - er ruft
-    # db.initialize_database() genau einmal auf und legt damit das Schema auf
-    # der oben umgeleiteten temporären Testdatenbank an.
+    # db.initialize_database() auf, das die bereits angewendeten Migrationen
+    # erkennt und nichts erneut anlegt.
     with TestClient(api.app) as client:
         first = client.post("/api/plan/save", json=_payload("Mo, 10.08.", "Tobi")).json()
         second = client.post("/api/plan/save", json=_payload("Mo, 10.08.", "Fanny")).json()
@@ -51,7 +50,7 @@ def test_repeated_plan_save_updates_same_week(tmp_path, monkeypatch):
             """SELECT p.name
                FROM assignments a
                JOIN people p ON p.id = a.person_id
-               WHERE a.week_plan_id = ?""",
+               WHERE a.week_plan_id = %s""",
             (first["week_plan_id"],),
         ).fetchall()
     finally:
