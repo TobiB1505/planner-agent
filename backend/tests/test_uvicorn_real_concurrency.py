@@ -105,9 +105,7 @@ def running_backend(tmp_path):
         raise RuntimeError(f"Backend-Start fehlgeschlagen:\n{log_path.read_text()}")
 
     # Erst jetzt existiert das Schema (der Prozess legt es beim Start an).
-    auth_helpers.seed_app_user(
-        tmp_path / "database" / "dienstplaene.db", auth_helpers.PLANNER_UUID, "planner"
-    )
+    auth_helpers.seed_app_user(auth_helpers.PLANNER_UUID, "planner")
 
     yield base_url
 

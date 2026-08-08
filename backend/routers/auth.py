@@ -11,8 +11,6 @@ jeweiligen Endpunkt - nicht hier.
 """
 from __future__ import annotations
 
-import sqlite3
-
 from fastapi import APIRouter, Depends
 
 from .. import db
@@ -24,7 +22,7 @@ router = APIRouter()
 @router.get("/api/auth/me")
 def auth_me(
     user: CurrentUser = Depends(require_authenticated),
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     """AUTHENTICATED - jede gültige, aktive Anmeldung darf das eigene Profil
     lesen, unabhängig von der Rolle.
@@ -39,7 +37,7 @@ def auth_me(
     person_name = None
     if user.person_id is not None:
         row = conn.execute(
-            "SELECT name FROM people WHERE id = ?", (user.person_id,)
+            "SELECT name FROM people WHERE id = %s", (user.person_id,)
         ).fetchone()
         if row is not None:
             person_name = row["name"]

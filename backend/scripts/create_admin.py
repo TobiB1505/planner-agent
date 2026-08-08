@@ -84,7 +84,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         if args.person_id is not None:
             person = conn.execute(
-                "SELECT id, name FROM people WHERE id = ?", (args.person_id,)
+                "SELECT id, name FROM people WHERE id = %s", (args.person_id,)
             ).fetchone()
             if person is None:
                 print(

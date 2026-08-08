@@ -896,16 +896,32 @@ button.plan-validation-summary {
 
 /* Sprint 4: Wochenarbeitsplatz ------------------------------------------ */
 
-/* Sprint 3 (Ent-Excelung): Abschnittsköpfe als ruhige Trennzeilen -
-   Kategoriefarbe nur noch als Punkt + linke Kante (Inline-Style aus
-   GroupHeaderRenderer), Fläche bleibt neutral. */
+/* Sprint 3 (Ent-Excelung) + Visual Polish (Post-Sprint-5): Abschnittsköpfe
+   als ruhige, zentrierte Trennzeilen - Kategoriefarbe nur noch als Punkt +
+   gedämpfte Flankenlinien (Inline-Style aus GroupHeaderRenderer), Fläche
+   bleibt neutral. */
 .plan-grid .plan-group-row {
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface-2) 62%, transparent);
   color: var(--muted-strong);
   font-size: 11.5px;
-  font-weight: 700;
+  font-weight: 650;
   letter-spacing: 0.035em;
+}
+
+.plan-group-label {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.plan-group-line {
+  flex: 1 1 auto;
+  min-width: 12px;
+  max-width: 96px;
+  height: 1px;
 }
 
 .plan-group-dot {
@@ -1212,7 +1228,7 @@ button.plan-validation-summary {
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface-2) 80%, transparent);
   color: var(--foreground);
-  padding: 1px 7px;
+  padding: 1px 6px;
   font-size: 0.92em;
   font-weight: 600;
   line-height: 1.5;
@@ -1220,22 +1236,45 @@ button.plan-validation-summary {
   white-space: nowrap;
 }
 
+/* Visual Polish (Post-Sprint-5, AP2): Hover/Fokus der Zelle lässt die
+   Kategorie-Tönung des Chips etwas kräftiger wirken (reines CSS, keine
+   zusätzliche Inline-Berechnung pro Interaktion) - Abwesenheits- und
+   Überlauf-Chips bleiben davon ausgenommen, sie tragen eigene Zustände. */
+.plan-grid .ag-cell:hover .plan-cell-people:not(.is-absence) .plan-person-chip:not(.plan-person-chip-more) {
+  filter: brightness(1.18) saturate(1.05);
+}
+
+.plan-grid .ag-cell.ag-cell-focus .plan-cell-people:not(.is-absence) .plan-person-chip:not(.plan-person-chip-more) {
+  filter: brightness(1.1) saturate(1.3);
+}
+
 /* Abwesenheits-Zeilen (Urlaub/Krank, Frei): Namen erkennbar als Status,
    nicht als normale Dienst-Zuweisung - Outline statt Fläche (Phase 5.5).
    Die fachliche Unterscheidung Urlaub/Krank vs. Frei trägt die
-   Zeilenbezeichnung der jeweiligen Abschnittszeile. */
+   Zeilenbezeichnung der jeweiligen Abschnittszeile. Status bleibt dominant
+   gegenüber der Kategorietönung aus AP2 (keine zusätzliche Farbe hier). */
 .plan-cell-people.is-absence .plan-person-chip {
   border-style: dashed;
   background: transparent;
   color: var(--muted-strong);
 }
 
+/* Visual Polish (Post-Sprint-5, AP3): der "+n"-Chip war zuvor akzentfarbig
+   und wirkte dadurch dominanter als die eigentlichen Personen-Chips - jetzt
+   neutral/gedämpft im Ruhezustand, Hover/Fokus der Zelle zeigt weiterhin
+   Interaktivität (Klick/Enter öffnen unverändert den Überlauf-Editor). */
 .plan-person-chip-more {
   flex: 0 0 auto;
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
-  background: var(--accent-soft);
-  color: var(--accent);
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 65%, transparent);
+  color: var(--muted-strong);
   font-weight: 700;
+}
+
+.plan-grid .ag-cell:hover .plan-person-chip-more,
+.plan-grid .ag-cell.ag-cell-focus .plan-person-chip-more {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent);
 }
 
 .plan-cell-text {
@@ -1247,7 +1286,7 @@ button.plan-validation-summary {
 }
 
 .plan-grid.plan-density-compact .plan-person-chip {
-  padding: 0 6px;
+  padding: 0 5px;
   border-radius: 7px;
 }
 

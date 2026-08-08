@@ -53,13 +53,15 @@ Logs und nie ins Repository.
 
 ## 5. Datenbank vorbereiten
 
-`backend/migrations/0001_app_users.sql` ausführen (SQL Editor oder
-`supabase db push`). Legt die Tabelle `app_users` an, inklusive
-Fremdschlüssel auf `auth.users`, Rollen-CHECK und Row Level Security.
+Nichts manuell ausführen: `app_users` entsteht über die versionierte
+Migration `backend/migrations/002_app_users.sql`, die der Migrationsrunner
+beim Backend-Start anwendet (`db.initialize_database()`, siehe
+`backend/migrations/__init__.py`). Der Stand ist über die Tabelle
+`schema_migrations` nachvollziehbar.
 
-> Hinweis zum aktuellen Stand: der Repository-Stand nutzt operativ noch
-> SQLite; dort entsteht dieselbe Tabelle über `backend/db.py`. Details in
-> `backend/migrations/README.md`.
+Die allgemeine Einrichtung der Datenbank selbst - Projekt, `DATABASE_URL`,
+Verbindungslimits - steht in `docs/database/SUPABASE_SETUP.md`; dieses
+Dokument behandelt ausschliesslich Auth.
 
 ## 6. Environment-Variablen
 

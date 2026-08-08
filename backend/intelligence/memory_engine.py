@@ -76,7 +76,7 @@ def _manual_entries(conn, person_id: int) -> list[dict]:
     rows = conn.execute(
         """SELECT id, type, subject, value, confidence, source, source_date,
                   editable, note, updated_at
-           FROM employee_memory WHERE person_id = ? ORDER BY updated_at DESC""",
+           FROM employee_memory WHERE person_id = %s ORDER BY updated_at DESC""",
         (person_id,),
     ).fetchall()
     result = []
@@ -135,13 +135,13 @@ def upsert_manual_entry(
     conn.execute(
         """INSERT INTO employee_memory
                (person_id, type, subject, value, confidence, source, source_date, editable, note)
-           VALUES (?, ?, ?, ?, ?, 'manual', ?, 1, ?)
+           VALUES (%s, %s, %s, %s, %s, 'manual', %s, 1, %s)
            ON CONFLICT(person_id, type, subject, source) DO UPDATE SET
                value = excluded.value,
                confidence = excluded.confidence,
                source_date = excluded.source_date,
                note = excluded.note,
-               updated_at = CURRENT_TIMESTAMP""",
+               updated_at = planner_now_text()""",
         (
             person_id,
             entry_type.strip(),
@@ -158,7 +158,7 @@ def upsert_manual_entry(
 
 def delete_manual_entry(conn, person_id: int, entry_id: int) -> list[dict]:
     conn.execute(
-        "DELETE FROM employee_memory WHERE id = ? AND person_id = ? AND source = 'manual'",
+        "DELETE FROM employee_memory WHERE id = %s AND person_id = %s AND source = 'manual'",
         (entry_id, person_id),
     )
     conn.commit()

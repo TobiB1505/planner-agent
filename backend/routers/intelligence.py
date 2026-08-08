@@ -9,7 +9,6 @@ ADMIN richtig, siehe docs/auth/ROLE_MATRIX.md).
 """
 from __future__ import annotations
 
-import sqlite3
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -69,7 +68,7 @@ def _intelligence_plan_data(payload: IntelligencePlanRequest) -> tuple[list[dict
 def intelligence_employee_overview(
     weeks: int = 12,
     current_week_start: Optional[str] = None,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     return clean(team_overview.build_team_overview(
         conn,
@@ -83,7 +82,7 @@ def intelligence_employee_profile(
     person_id: int,
     weeks: int = 12,
     current_week_start: Optional[str] = None,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     try:
         # AP5b: einmal berechnen und an beide Funktionen weiterreichen - entries_for_person
@@ -129,7 +128,7 @@ def intelligence_employee_profile(
 def intelligence_employee_skill_set(
     person_id: int,
     payload: EmployeeSkillUpdate,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     try:
         return clean(employee_stats.upsert_skill(
@@ -143,7 +142,7 @@ def intelligence_employee_skill_set(
 def intelligence_employee_skill_delete(
     person_id: int,
     skill_id: str,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     employee_stats.delete_skill(conn, person_id, skill_id)
     return {"ok": True}
@@ -153,7 +152,7 @@ def intelligence_employee_skill_delete(
 def intelligence_employee_memory_set(
     person_id: int,
     payload: EmployeeMemoryUpdate,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     try:
         return clean(memory_engine.upsert_manual_entry(
@@ -174,7 +173,7 @@ def intelligence_employee_memory_set(
 def intelligence_employee_memory_delete(
     person_id: int,
     entry_id: int,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     return clean(memory_engine.delete_manual_entry(conn, person_id, entry_id))
 
@@ -182,7 +181,7 @@ def intelligence_employee_memory_delete(
 @router.post("/api/intelligence/recommendations")
 def intelligence_recommendations(
     payload: IntelligenceRecommendationRequest,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     assignments_list, absences_list, day_map = _intelligence_plan_data(payload)
     target_date = day_map.get(payload.day_label)
@@ -218,7 +217,7 @@ def intelligence_recommendations(
 @router.post("/api/intelligence/plan-quality")
 def intelligence_plan_quality(
     payload: IntelligencePlanRequest,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     assignments_list, absences_list, _ = _intelligence_plan_data(payload)
     return clean(plan_quality.calculate_plan_quality(
@@ -234,7 +233,7 @@ def intelligence_audit_log(
     week_plan_id: Optional[int] = None,
     start_date: Optional[str] = None,
     limit: int = 100,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     if week_plan_id is None and start_date is None:
         raise HTTPException(400, "week_plan_id oder start_date wird benötigt.")

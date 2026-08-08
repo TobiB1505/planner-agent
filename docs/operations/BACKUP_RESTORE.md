@@ -1,5 +1,14 @@
 # Backup & Restore — lokale SQLite-Datenbank
 
+> **DEPRECATED (PostgreSQL-Migration, August 2026):** Dieses Dokument
+> beschreibt Backup/Restore der ALTEN SQLite-Datei. `backend/backup.py` sichert
+> seit der Migration ausdrücklich NICHT mehr die operative Datenbank und ist im
+> Code als deprecated markiert. Das Dokument bleibt erhalten, weil es für den
+> Cutover (finale SQLite-Sicherung) und einen möglichen Rollback weiterhin
+> gebraucht wird.
+>
+> **Die gültige Backup-Strategie steht in `docs/database/POSTGRES_BACKUP.md`.**
+
 Sprint 1 (Production Hardening), Teil 3. Betrifft ausschließlich
 `local_data/database/dienstplaene.db` (Mitarbeiter-, Planungs- und
 Gedächtnisdaten). Implementiert in [backend/backup.py](../../backend/backup.py),

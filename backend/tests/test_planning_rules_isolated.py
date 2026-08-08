@@ -1,11 +1,10 @@
 """Isolierte Tests der fachlichen Planungsregeln.
 
-Die Tests verwenden nur reine Funktionen oder eine SQLite-In-Memory-Datenbank.
+Die Tests verwenden nur reine Funktionen oder ein isoliertes PostgreSQL-Testschema.
 Die produktive Planner-Agent-Datenbank wird weder geöffnet noch verändert.
 """
 from __future__ import annotations
 
-import sqlite3
 
 import pytest
 
@@ -24,10 +23,16 @@ TEAM = [
 
 @pytest.fixture
 def memory_db():
-    """Vollständiges Schema im RAM für kleine Integrationsprüfungen."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.executescript(db.SCHEMA)
+    """Vollständiges Schema in einem isolierten PostgreSQL-Testschema.
+
+    Früher eine SQLite-In-Memory-Datenbank mit `executescript(db.SCHEMA)`. Seit
+    der PostgreSQL-Migration gibt es kein In-Memory-Pendant mehr - und es wäre
+    auch das falsche Werkzeug: diese Tests prüfen fachliche Regeln über echte
+    Queries, die dieselbe SQL-Semantik sehen sollen wie in Produktion. Die
+    Isolation liefert die autouse-Fixture in conftest.py (eigenes Schema pro
+    Test), die produktive Planungsdatenbank wird weder geöffnet noch verändert.
+    """
+    conn = db.create_connection()
     try:
         yield conn
     finally:

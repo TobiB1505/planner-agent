@@ -1,7 +1,7 @@
 // AP12: reine Hilfsfunktionen und kleine Präsentations-Komponenten aus
 // page.tsx - unverändertes Verhalten, nur ausgelagert.
 import type { ExtractedAbsence } from "@/lib/api";
-import { categoryColor } from "@/lib/categoryColors";
+import { categoryColor, hexToRgba } from "@/lib/categoryColors";
 import { themeQuartz, type ICellRendererParams } from "ag-grid-community";
 import type { PlanRow } from "../types";
 
@@ -163,21 +163,25 @@ export function assignRowIds(rows: PlanRow[]): PlanRow[] {
 
 export function GroupHeaderRenderer({ data }: ICellRendererParams<PlanRow>) {
   const color = data?._group_color || "#6c7bff";
-  // Sprint 3 (Ent-Excelung, Phase 4.4): Abschnittsköpfe sind keine
-  // durchgehenden Farbbänder mehr, sondern ruhige Trennzeilen mit
-  // Kategorie-Punkt + Label - die Kategoriefarbe bleibt als Punkt und
-  // linker Kante erkennbar, dominiert aber nicht mehr die Fläche.
+  // Visual Polish (Post-Sprint-5): Abschnittsköpfe wirken jetzt stärker als
+  // zentrierte Trennüberschrift statt linksbündigem Label - flankierende
+  // Linien in gedämpfter Kategorie-Farbe (color-mix, kein neuer Hex-Wert)
+  // ersetzen die vorherige 3px-Vollkante. Der Kategorie-Punkt bleibt als
+  // Wiedererkennungsanker direkt am Label; die Fläche selbst bleibt neutral
+  // (siehe .plan-group-row in plan-editor.css).
+  const lineStyle = { backgroundColor: hexToRgba(color, 0.32) };
   return (
-    <div
-      className="plan-group-row flex h-full w-full items-center gap-2 px-3 text-left"
-      style={{ borderLeft: `3px solid ${color}` }}
-    >
-      <span
-        aria-hidden="true"
-        className="plan-group-dot"
-        style={{ backgroundColor: color }}
-      />
-      {data?._group_label}
+    <div className="plan-group-row flex h-full w-full items-center justify-center gap-3 px-3">
+      <span aria-hidden="true" className="plan-group-line" style={lineStyle} />
+      <span className="plan-group-label">
+        <span
+          aria-hidden="true"
+          className="plan-group-dot"
+          style={{ backgroundColor: color }}
+        />
+        {data?._group_label}
+      </span>
+      <span aria-hidden="true" className="plan-group-line" style={lineStyle} />
     </div>
   );
 }

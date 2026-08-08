@@ -26,7 +26,6 @@ kann nicht versehentlich in einem Codepfad übersprungen werden.
 from __future__ import annotations
 
 import logging
-import sqlite3
 from typing import Optional
 
 from fastapi import Depends, Request
@@ -62,7 +61,7 @@ def _log_auth_failure(request: Request, error: AuthError) -> None:
 def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ) -> CurrentUser:
     """Authentifiziert den Request und lädt den zugehörigen App-Benutzer.
 

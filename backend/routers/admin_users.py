@@ -21,10 +21,10 @@ lesen und nichts ändern, insbesondere nicht die eigene Rolle.
 """
 from __future__ import annotations
 
-import sqlite3
 from typing import Optional
 from uuid import UUID
 
+import psycopg
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -55,7 +55,7 @@ def _parse_role_or_400(raw: str) -> AppRole:
 
 
 def _require_person(conn, person_id: int) -> None:
-    row = conn.execute("SELECT id FROM people WHERE id = ?", (person_id,)).fetchone()
+    row = conn.execute("SELECT id FROM people WHERE id = %s", (person_id,)).fetchone()
     if row is None:
         raise HTTPException(404, "Die angegebene Person wurde nicht gefunden.")
 
@@ -89,14 +89,14 @@ class AppUserUpdate(BaseModel):
 
 
 @router.get("/api/admin/app-users")
-def list_app_users(conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def list_app_users(conn: db.Connection = Depends(db.get_db_connection)):
     return [_serialize(row) for row in db.list_app_users(conn)]
 
 
 @router.post("/api/admin/app-users", status_code=201)
 def create_app_user(
     payload: AppUserCreate,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     user_id = _parse_user_id(payload.user_id)
     role = _parse_role_or_400(payload.role)
@@ -111,7 +111,7 @@ def create_app_user(
 
     try:
         db.create_app_user(conn, user_id, role.value, payload.person_id, payload.is_active)
-    except sqlite3.IntegrityError as exc:
+    except psycopg.errors.IntegrityError as exc:
         # Trifft vor allem den UNIQUE-Index auf person_id (eine Person darf
         # höchstens ein Konto haben).
         raise HTTPException(409, "Diese Zuordnung verletzt eine Eindeutigkeitsregel.") from exc
@@ -124,7 +124,7 @@ def update_app_user(
     user_id: str,
     payload: AppUserUpdate,
     current: CurrentUser = Depends(require_admin),
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     normalized = _parse_user_id(user_id)
     existing = db.get_app_user(conn, normalized)
@@ -163,7 +163,7 @@ def update_app_user(
             is_active=payload.is_active,
             clear_person=payload.clear_person,
         )
-    except sqlite3.IntegrityError as exc:
+    except psycopg.errors.IntegrityError as exc:
         raise HTTPException(409, "Diese Zuordnung verletzt eine Eindeutigkeitsregel.") from exc
     conn.commit()
     return _serialize(db.get_app_user_detail(conn, normalized))
@@ -173,7 +173,7 @@ def update_app_user(
 def delete_app_user(
     user_id: str,
     current: CurrentUser = Depends(require_admin),
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     """Entfernt die Planner-Zuordnung. Der Supabase-Auth-Benutzer bleibt
     bestehen und kann sich weiterhin anmelden - bekommt dann aber von jedem

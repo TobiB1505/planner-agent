@@ -19,13 +19,12 @@ etwas zu tun.
 """
 from __future__ import annotations
 
-import sqlite3
 import time
-from pathlib import Path
 from typing import Optional
-from uuid import UUID
 
 import jwt
+
+from backend import db
 
 TEST_JWT_SECRET = "test-only-secret-not-used-anywhere-else"
 TEST_ISSUER = "https://planner-test.supabase.invalid/auth/v1"
@@ -83,25 +82,22 @@ def bearer(token: str) -> dict:
 
 
 def seed_app_user(
-    database_path: Path,
     user_id: str,
     role: str,
     person_id: Optional[int] = None,
     is_active: bool = True,
 ) -> None:
-    """Trägt eine app_users-Zeile direkt in eine (Test-)Datenbankdatei ein.
+    """Trägt eine app_users-Zeile in das isolierte Testschema ein.
 
-    Wird von Subprozess-Tests genutzt, die keinen Zugriff auf die Connection
-    des laufenden Backends haben. Setzt voraus, dass das Schema bereits
-    existiert - beim Backend-Start ist das der Fall.
+    Wird von den Subprozess-Tests genutzt: der gestartete Backend-Prozess erbt
+    DATABASE_URL aus der Umgebung (die `_isolated_schema`-Fixture setzt sie auf
+    das Schema dieses einen Tests), sieht also genau diese Zeile. Ein
+    eigenständiger Verbindungsaufbau ist nicht nötig - db.get_conn() nutzt
+    dieselbe DSN.
     """
-    conn = sqlite3.connect(str(database_path))
+    conn = db.get_conn()
     try:
-        conn.execute(
-            "INSERT OR REPLACE INTO app_users (user_id, person_id, role, is_active) "
-            "VALUES (?, ?, ?, ?)",
-            (str(UUID(user_id)), person_id, role, 1 if is_active else 0),
-        )
+        db.create_app_user(conn, user_id, role, person_id, is_active)
         conn.commit()
     finally:
         conn.close()

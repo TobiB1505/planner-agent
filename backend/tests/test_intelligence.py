@@ -7,9 +7,6 @@ from backend.intelligence import audit, employee_stats, memory_engine, plan_qual
 def _conn(tmp_path, monkeypatch):
     # AP4: get_conn() legt das Schema nicht mehr implizit an - deshalb hier
     # einmalig explizit initialize_database() aufrufen (siehe backend/db.py).
-    monkeypatch.setattr(db, "DATABASE_PATH", tmp_path / "intelligence.db")
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
-    db.initialize_database()
     return db.get_conn()
 
 

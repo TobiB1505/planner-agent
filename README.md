@@ -11,7 +11,11 @@ Der Planner-Agent befindet sich in aktiver Entwicklung.
 Der aktuelle Betriebsmodus ist eine lokale Installation auf einem einzelnen Rechner:
 
 * Frontend und Backend laufen lokal.
-* Die Daten werden in einer lokalen SQLite-Datenbank gespeichert.
+* Die Daten werden in einer PostgreSQL-Datenbank gespeichert, die über die
+  Umgebungsvariable DATABASE_URL konfiguriert wird. Lokal kann das eine
+  PostgreSQL-Instanz auf dem eigenen Rechner sein, im Cloud-Betrieb eine
+  Supabase-PostgreSQL-Instanz. Bis August 2026 wurde stattdessen eine lokale
+  SQLite-Datei verwendet - siehe docs/database/POSTGRES_MIGRATION_AUDIT.md.
 * Dienstplanarchive und Exporte liegen im lokalen Dateisystem.
 * Für die KI-gestützte PDF-Auswertung kann optional Google Gemini verwendet werden.
 * Ein öffentliches Mehrbenutzer- oder Cloud-Deployment ist derzeit nicht der primäre Einsatzzweck.
@@ -214,7 +218,7 @@ Angezeigt werden:
 * Backend-Host und Port
 * Laufzeit seit dem letzten Start
 * Datenbankverbindung
-* SQLite-Integritätsprüfung
+* Datenbankzustand (Erreichbarkeit und angewendete Schemaversion)
 * vorhandene Excel-Vorlagen
 * Laufzeitverzeichnisse
 * Schreibrechte
@@ -265,7 +269,7 @@ Next.js Rewrite
 FastAPI Backend
 http://127.0.0.1:8000
             │
-            ├── SQLite-Datenbank
+            ├── PostgreSQL-Datenbank (DATABASE_URL)
             ├── Excel-Vorlagen
             ├── lokales Dienstplanarchiv
             ├── Uploads und Exporte
@@ -293,7 +297,7 @@ Backend
 * Python
 * FastAPI
 * Uvicorn
-* SQLite
+* PostgreSQL (psycopg 3 mit Connection Pool)
 * pandas
 * openpyxl
 * PyMuPDF
@@ -408,7 +412,7 @@ Diese Daten bleiben ausschließlich lokal:
 * frontend/node_modules/
 * temporäre Uploads
 * erzeugte Exporte
-* lokale Datenbank
+* Datenbank-Zugangsdaten (DATABASE_URL)
 * lokale Archivdateien
 
 ⸻
@@ -564,16 +568,20 @@ Die Benutzeroberfläche sollte normalerweise über das Frontend unter Port 3000 
 
 Lokale Daten
 
-Standardmäßig werden Laufzeitdaten hier gespeichert:
+Standardmäßig werden lokale Laufzeitdateien hier gespeichert:
 
-local_data/database/dienstplaene.db
 local_data/archives/dienstplanarchiv/
 local_data/uploads/
 local_data/exports/
 
+Die Datenbank liegt NICHT mehr in diesem Ordner. local_data/database/ enthält
+nur noch die alte SQLite-Datei aus der Zeit vor der PostgreSQL-Migration
+(Migrationsquelle und Rollback-Stand, siehe
+docs/database/SQLITE_POSTGRES_CUTOVER.md).
+
 Datenbank
 
-Die SQLite-Datenbank enthält unter anderem:
+Die PostgreSQL-Datenbank enthält unter anderem:
 
 * Mitarbeiter
 * Abteilungen
@@ -589,11 +597,13 @@ Die SQLite-Datenbank enthält unter anderem:
 * Einstellungen
 * Planungs- und Auditdaten
 
-Die Datenbank wird beim ersten Start automatisch angelegt.
+Das Schema wird beim Start automatisch über versionierte Migrationen angelegt
+(backend/migrations/). Die Datenbank selbst muss vorher existieren und über
+DATABASE_URL erreichbar sein.
 
 Datenschutz
 
-Der normale Betrieb mit SQLite, Excel-Dateien und lokalen Importen findet auf dem eigenen Rechner statt.
+Der normale Betrieb mit der Datenbank, Excel-Dateien und lokalen Importen findet auf dem eigenen Rechner statt.
 
 Bei Verwendung der Gemini-basierten PDF-Auswertung werden PDF-Inhalte an die konfigurierte Google-Gemini-API übertragen und dort verarbeitet.
 
@@ -663,8 +673,12 @@ Copy-Item .env.example .env
 Verfügbare Variablen:
 
 Variable	Standard	Bedeutung
+DATABASE_URL	leer (PFLICHT)	Verbindung zur PostgreSQL-Datenbank, Form postgresql://USER:PASSWORD@HOST:PORT/DATABASE. Ohne diesen Wert startet das Backend bewusst nicht.
+DATABASE_POOL_MIN_SIZE	1	Untergrenze des Connection Pools
+DATABASE_POOL_MAX_SIZE	5	Obergrenze des Connection Pools - bewusst klein, da gehostete Datenbanken harte Verbindungslimits haben
+TEST_DATABASE_URL	postgresql://postgres@127.0.0.1:5432/planner_test	Nur für die Testsuite. Darf nie auf eine Produktionsdatenbank zeigen - die Tests brechen sonst ab.
 GEMINI_API_KEY	leer	Optionaler API-Key für die KI-gestützte PDF-Auswertung
-PLANNER_DATA_DIR	local_data/	Alternativer Speicherort für Datenbank, Archiv, Uploads und Exporte
+PLANNER_DATA_DIR	local_data/	Speicherort für Archiv, Uploads und Exporte (nicht mehr für die Datenbank)
 CORS_ORIGINS	lokale Frontend-Adressen	Erlaubte Origins für direkte Backend-Anfragen
 BACKEND_HOST	127.0.0.1	Host des FastAPI-Backends
 BACKEND_PORT	8000	Port des FastAPI-Backends
@@ -717,7 +731,15 @@ cd frontend
 npm run lint
 npm run build
 
-Die Datenbanktests verwenden eine temporäre Testdatenbank und sollen nicht auf die produktive lokale Datenbank zugreifen.
+Die Testsuite braucht eine erreichbare PostgreSQL-Instanz. Jeder einzelne Test
+bekommt darin ein eigenes, frisch migriertes Schema; kein Test sieht die Daten
+eines anderen. Vor dem ersten Lauf einmalig eine Testdatenbank anlegen:
+
+createdb planner_test
+
+Ein Guard in backend/tests/conftest.py bricht die gesamte Suite ab, wenn
+TEST_DATABASE_URL erkennbar auf eine gehostete oder produktionsartige Datenbank
+zeigt.
 
 ⸻
 
@@ -772,21 +794,20 @@ Datensicherung
 
 Regelmäßig sichern:
 
-local_data/database/
 local_data/archives/
 
-Besonders wichtig ist:
+Die Planungsdaten liegen in der PostgreSQL-Datenbank, nicht mehr im
+Projektordner.
 
-local_data/database/dienstplaene.db
+Ein normales git clone oder git pull enthält keine Planungsdaten.
 
-Ein normales git clone oder git pull enthält keine lokalen Planungsdaten.
-
-Beim Umzug auf einen neuen Rechner müssen Datenbank und Archiv separat übertragen werden.
+Beim Umzug auf einen neuen Rechner muss die Datenbank separat gesichert und
+wiederhergestellt werden - siehe docs/database/POSTGRES_BACKUP.md.
 
 Empfohlene Sicherungsstrategie
 
 1. Planner-Agent beenden.
-2. Ordner local_data/database/ kopieren.
+2. Datenbank sichern (pg_dump, siehe docs/database/POSTGRES_BACKUP.md).
 3. Ordner local_data/archives/ kopieren.
 4. Sicherung auf einem externen Laufwerk oder einem geschützten Speicherort ablegen.
 5. Keine unverschlüsselte Sicherung mit personenbezogenen Daten öffentlich teilen.
@@ -868,26 +889,29 @@ backend/resources/templates/Künstlerplan_Vorlage_2026.xlsx
 
 Fehlende Vorlagen verhindern nicht zwingend den vollständigen Start der Anwendung, können aber den jeweiligen Excel-Export blockieren.
 
-Datenbank fehlt
+DATABASE_URL ist nicht gesetzt
 
-Das ist bei der ersten Nutzung normal.
+Das Backend startet bewusst nicht ohne konfigurierte Datenbank.
 
-Die Datenbank wird beim Start automatisch angelegt.
+Lösung: DATABASE_URL in der .env eintragen (Vorlage: .env.example). Eine
+Schritt-für-Schritt-Anleitung für Supabase steht in
+docs/database/SUPABASE_SETUP.md.
 
-Datenbank ist gesperrt
+Datenbank nicht erreichbar
 
 Mögliche Ursachen:
 
-* ein zweiter Backend-Prozess läuft
-* SQLite wird von einem Synchronisationsdienst blockiert
-* das Projekt liegt in OneDrive, Dropbox oder iCloud Drive
-* ein Sicherungsprogramm greift gerade auf die Datei zu
+* die PostgreSQL-Instanz läuft nicht
+* Host, Port, Benutzername oder Passwort in DATABASE_URL sind falsch
+* Sonderzeichen im Passwort sind nicht prozentkodiert
+* ein gehostetes Projekt wurde wegen Inaktivität pausiert
 
 Lösung:
 
-1. Alle Backend-Prozesse schließen.
-2. Kurz warten.
-3. Planner-Agent neu starten.
+1. Die Vorprüfung beim Start liest die Fehlermeldung des Servers vor - sie
+   nennt in der Regel die konkrete Ursache.
+2. DATABASE_URL prüfen.
+3. Erreichbarkeit testen: curl http://127.0.0.1:8000/api/health
 4. Projekt nach Möglichkeit außerhalb eines synchronisierten Ordners speichern.
 
 Alternativ kann PLANNER_DATA_DIR auf einen nicht synchronisierten Ordner gesetzt werden.
@@ -980,7 +1004,7 @@ docs/refactoring/
 
 Dort werden unter anderem behandelt:
 
-* SQLite-Baseline
+* SQLite-Baseline (historisch, vor der PostgreSQL-Migration)
 * Connection Lifecycle
 * Alias-Lookups
 * Memory-Datenfluss
@@ -996,10 +1020,10 @@ Die Architektur trennt Frontend, Backend und Laufzeitdaten bereits voneinander. 
 
 Für ein öffentliches oder produktives Cloud-Deployment wären unter anderem notwendig:
 
-* persistente externe Datenbank
+* persistente externe Datenbank (erledigt: PostgreSQL über DATABASE_URL)
 * persistenter Dateispeicher
-* Authentifizierung (umgesetzt: Supabase Auth, siehe docs/auth/)
-* Rollen- und Berechtigungssystem (umgesetzt: admin/planner/employee)
+* Authentifizierung (erledigt: Supabase Auth, siehe docs/auth/)
+* Rollen- und Berechtigungssystem (erledigt: admin/planner/employee)
 * sichere Geheimnisverwaltung
 * HTTPS
 * Backup- und Wiederherstellungsstrategie
@@ -1008,7 +1032,9 @@ Für ein öffentliches oder produktives Cloud-Deployment wären unter anderem no
 * Anpassung des Backend-Supervisors
 * Deployment-spezifische Prozessverwaltung
 
-Die lokale SQLite-Datenbank und das lokale Dienstplanarchiv dürfen bei einem Cloud-Deployment nicht als flüchtige Deployment-Dateien behandelt werden.
+Die Planungsdaten liegen inzwischen in PostgreSQL und überleben ein Redeploy
+unabhängig vom Container-Dateisystem. Das lokale Dienstplanarchiv wird derzeit
+von keinem Codepfad beschrieben - siehe docs/database/POSTGRES_STORAGE_GAPS.md.
 
 ⸻
 

@@ -35,9 +35,8 @@ class _Boom(Exception):
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    database_path = tmp_path / "planner-test.db"
-    monkeypatch.setattr(db, "DATABASE_PATH", database_path)
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
+    # Testisolation (eigenes, frisch migriertes PostgreSQL-Schema) kommt aus der
+    # autouse-Fixture in conftest.py.
     # raise_server_exceptions=False: die absichtlich injizierten Fehler sollen
     # als reguläre 500-Antworten ankommen, wie es ein echter Client auch
     # erleben würde - nicht als Python-Exception im Test selbst.
@@ -48,22 +47,21 @@ def client(tmp_path, monkeypatch):
 class _FailingConnProxy:
     """Reicht alle Aufrufe an eine echte Connection durch, löst aber beim
     ersten `execute()`/`executemany()` mit passendem SQL-Fragment eine
-    Exception aus. Nötig, weil sqlite3.Connection/Cursor eingebaute Typen
-    sind und ihre Methoden nicht direkt monkeygepatcht werden können - über
-    FastAPIs eigenen dependency_overrides-Mechanismus lässt sich derselbe
-    Effekt erzielen, ohne db.py oder api.py anzufassen."""
+    Exception aus. Über FastAPIs eigenen dependency_overrides-Mechanismus
+    lässt sich damit ein Fehler mitten in einer mehrstufigen Schreiboperation
+    erzwingen, ohne db.py oder api.py anzufassen."""
 
     def __init__(self, conn: object, trigger: str) -> None:
         self._conn = conn
         self._trigger = trigger
 
     def execute(self, sql, params=()):
-        if self._trigger in sql:
+        if self._trigger in str(sql):
             raise _Boom(f"Absichtlicher Fehler bei: {self._trigger}")
         return self._conn.execute(sql, params)
 
     def executemany(self, sql, seq):
-        if self._trigger in sql:
+        if self._trigger in str(sql):
             raise _Boom(f"Absichtlicher Fehler bei: {self._trigger}")
         return self._conn.executemany(sql, seq)
 
@@ -137,7 +135,7 @@ def test_plan_save_rolls_back_when_first_assignment_fails(client, monkeypatch):
     conn = db.get_conn()
     try:
         weeks = conn.execute(
-            "SELECT id FROM week_plans WHERE start_date = ?", (payload["start_date"],)
+            "SELECT id FROM week_plans WHERE start_date = %s", (payload["start_date"],)
         ).fetchall()
         assignments = conn.execute("SELECT * FROM assignments").fetchall()
     finally:
@@ -177,7 +175,7 @@ def test_plan_save_rolls_back_when_second_assignment_fails(client, monkeypatch):
     conn = db.get_conn()
     try:
         weeks = conn.execute(
-            "SELECT id FROM week_plans WHERE start_date = ?", (payload["start_date"],)
+            "SELECT id FROM week_plans WHERE start_date = %s", (payload["start_date"],)
         ).fetchall()
         assignments = conn.execute("SELECT * FROM assignments").fetchall()
     finally:
@@ -204,7 +202,7 @@ def test_plan_save_rolls_back_when_audit_metadata_fails(client, monkeypatch):
     conn = db.get_conn()
     try:
         weeks = conn.execute(
-            "SELECT id FROM week_plans WHERE start_date = ?", (payload["start_date"],)
+            "SELECT id FROM week_plans WHERE start_date = %s", (payload["start_date"],)
         ).fetchall()
         assignments = conn.execute("SELECT * FROM assignments").fetchall()
     finally:
@@ -226,7 +224,7 @@ def test_plan_save_succeeds_without_injected_fault(client):
     conn = db.get_conn()
     try:
         weeks = conn.execute(
-            "SELECT id FROM week_plans WHERE start_date = ?", (payload["start_date"],)
+            "SELECT id FROM week_plans WHERE start_date = %s", (payload["start_date"],)
         ).fetchall()
         assignments = conn.execute("SELECT * FROM assignments").fetchall()
     finally:

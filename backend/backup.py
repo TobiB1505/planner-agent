@@ -1,4 +1,23 @@
-"""Sprint 1, Teil 3 - Backup/Restore für die lokale SQLite-Datenbank.
+"""DEPRECATED - Backup/Restore der ALTEN lokalen SQLite-Datei.
+
+WICHTIG: Dieses Modul sichert NICHT die operative Datenbank.
+
+Seit der Migration auf PostgreSQL (siehe
+docs/database/POSTGRES_MIGRATION_AUDIT.md) läuft der Planner-Agent gegen eine
+PostgreSQL-Datenbank, die über DATABASE_URL konfiguriert wird. `VACUUM INTO`
+ist eine reine SQLite-Anweisung und hat dort kein Äquivalent - ein
+Anwendungsprozess kann eine verwaltete PostgreSQL-Instanz nicht sinnvoll selbst
+sichern. Die gültige Backup-Strategie steht in
+docs/database/POSTGRES_BACKUP.md (Supabase PITR/Daily Backups + `pg_dump`).
+
+Das Modul bleibt bewusst erhalten und funktionsfähig, wird aber nicht mehr
+kommentarlos als "das Backup" verstanden. Es hat genau noch einen legitimen
+Zweck: die finale Sicherung der bestehenden `dienstplaene.db` VOR bzw. WÄHREND
+des Cutovers (siehe docs/database/SQLITE_POSTGRES_CUTOVER.md, Schritt 2) und
+die Wiederherstellung dieser Datei, falls auf den Stand vor der Migration
+zurückgegangen werden muss.
+
+Jeder Einstiegspunkt loggt deshalb eine deutliche Deprecation-Warnung.
 
 Nutzt SQLite `VACUUM INTO` statt eines rohen Datei-Kopiervorgangs: ein `cp`
 während eines offenen Schreibvorgangs (WAL-Datei + Hauptdatei sind zwei
@@ -8,7 +27,7 @@ erzeugen. `VACUUM INTO` liest dagegen eine transaktional konsistente
 Momentaufnahme direkt aus der SQLite-Engine - verifiziert (siehe
 backend/tests/test_backup_restore.py), dass das auch funktioniert, während
 eine zweite Verbindung parallel eine offene, unkommittete Schreibtransaktion
-hält (genau der Fall einer laufenden Anwendung).
+hält.
 
 Aufruf als Skript:
     python -m backend.backup
@@ -25,6 +44,16 @@ from .config import paths
 
 logger = logging.getLogger(__name__)
 
+DEPRECATION_NOTICE = (
+    "backend.backup sichert die ALTE SQLite-Datei, NICHT die operative "
+    "PostgreSQL-Datenbank. Für die produktive Sicherung siehe "
+    "docs/database/POSTGRES_BACKUP.md."
+)
+
+
+def _warn_deprecated() -> None:
+    logger.warning(DEPRECATION_NOTICE)
+
 
 class BackupError(Exception):
     """Ausgelöst, wenn ein Backup nicht erstellt werden konnte."""
@@ -36,12 +65,16 @@ def create_backup(
     *,
     now: datetime | None = None,
 ) -> Path:
-    """Erstellt eine konsistente Backup-Kopie der SQLite-Datenbank.
+    """Erstellt eine konsistente Backup-Kopie der ALTEN SQLite-Datenbank.
+
+    DEPRECATED - siehe Moduldocstring. Sichert nicht die operative
+    PostgreSQL-Datenbank.
 
     Gibt den Pfad der neu erstellten Backup-Datei zurück. Wirft `BackupError`
     mit einer verständlichen Meldung, wenn etwas schiefgeht (Quelle fehlt,
     Zielordner nicht beschreibbar, SQLite-Fehler) - verschluckt nichts.
     """
+    _warn_deprecated()
     source = source_path or paths.DATABASE_PATH
     target_dir = backup_dir or paths.BACKUP_DIR
 
@@ -116,13 +149,18 @@ def list_backups(backup_dir: Path | None = None) -> list[Path]:
 
 
 def restore_backup(backup_path: Path, target_path: Path | None = None) -> Path:
-    """Stellt ein Backup wieder her, indem es an die Zielposition kopiert wird.
+    """Stellt ein SQLite-Backup wieder her, indem es an die Zielposition kopiert wird.
+
+    DEPRECATED - siehe Moduldocstring. Stellt die alte SQLite-Datei wieder her,
+    nicht die operative PostgreSQL-Datenbank. Relevant nur für ein Rollback auf
+    den Stand vor der Migration (siehe docs/database/SQLITE_POSTGRES_CUTOVER.md).
 
     Prüft die Integrität des Backups VOR dem Kopieren (kein Restore einer
     beschädigten Datei) und sichert eine evtl. vorhandene Zieldatei vorher
     unter einem `.pre-restore`-Namen weg, statt sie einfach zu überschreiben -
     ein fehlgeschlagener Restore darf keine bereits funktionierende
     Datenbank unwiederbringlich zerstören."""
+    _warn_deprecated()
     if not backup_path.exists():
         raise BackupError(f"Backup-Datei nicht gefunden: {backup_path}")
     if not verify_backup(backup_path):
@@ -156,6 +194,7 @@ def restore_backup(backup_path: Path, target_path: Path | None = None) -> Path:
 
 def _main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    print(f"HINWEIS: {DEPRECATION_NOTICE}")
     try:
         backup_path = create_backup()
     except BackupError as exc:

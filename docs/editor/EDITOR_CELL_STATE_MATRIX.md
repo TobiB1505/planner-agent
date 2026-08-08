@@ -9,6 +9,23 @@ Grundprinzip: Die Zellfläche ist neutral (keine Kategorie-Tönung mehr);
 Zustände werden über Kanten, Symbole, Chips und Text vermittelt - nie nur
 über Farbe (Symbol/Text ist immer Teil des Signals).
 
+**Zustands-Priorität (Visual Polish, Post-Sprint-5):** Bei überlappenden
+visuellen Signalen gilt diese Rangfolge, von dominant zu unterstützend:
+
+```
+Fehler/Konflikt > Ausgewählt/In Bearbeitung > Tastaturfokus > Hover
+> Kategorie-Tönung (Chips/Header) > Grundzustand
+```
+
+Fehler-/Konflikt-Kante und -Symbol sitzen auf dem `.ag-cell` (Zellebene) und
+liegen damit immer über der Kategorie-Tönung der Person-Chips (Chip-Ebene,
+`.plan-person-chip`) - beide Ebenen können nicht kollidieren, da sie
+unterschiedliche DOM-Knoten/CSS-Eigenschaften betreffen. Seit dem
+Visual-Polish-Durchgang tragen Personen-Chips zusätzlich eine dezente
+Kategorie-Tönung (8-15% Hintergrund, siehe unten); Status- und
+Fokus-/Hover-Zustände bleiben davon optisch unberührt und bleiben oben in
+der Rangfolge.
+
 | Zustand | Hintergrund | Border/Kante | Text/Inhalt | Icon/Symbol | Interaktion | Tooltip | Screenreader |
 |---|---|---|---|---|---|---|---|
 | **Leer** | neutral (Grid-Fläche) | Zeilentrennung | – | – | Pointer-Cursor, Einzelklick öffnet Editor | – | AG-Grid-Zelle ohne Wert |
@@ -16,8 +33,8 @@ Zustände werden über Kanten, Symbole, Chips und Text vermittelt - nie nur
 | **Leer + Tastaturfokus** | neutral | 1px Akzent-Inset (`ag-cell-focus`) | – | zentriertes "+" | Enter/Klick öffnet Editor | – | AG-Grid-Fokusansage |
 | **Fokussiert (belegt)** | neutral | 1px Akzent-Inset | Inhalt | – | Enter öffnet Editor | Inhalt | Zellwert wird angesagt |
 | **In Bearbeitung** | Editor-Popup | 2px Akzent-Inset (`ag-cell-inline-editing`) | Editor | – | PersonCellEditor/Textarea | – | Dialog "Mitarbeiter zuweisen" |
-| **Belegt (Personen)** | neutral | Zeilentrennung | Chips: 1 Name voll; 2 Namen als Vornamen; ≥3: `[Vorname] [+n]` | – | Einzelklick öffnet Editor | voller Inhalt + ggf. Konflikte | Zellwert (Rohtext) via AG Grid |
-| **Mehrfach belegt (Überlauf)** | neutral | Zeilentrennung | `+n`-Chip (Akzent) | – | Zellklick öffnet Editor mit allen | `title`: "n Personen: …alle Namen" | Rohtext enthält alle Namen |
+| **Belegt (Personen)** | neutral | Zeilentrennung | Chips: 1 Name voll; 2 Namen als Vornamen; ≥3: `[Vorname] [+n]`; Chip-Hintergrund/-Kante dezent in Kategoriefarbe getönt (8-15%/32%, aus `lib/categoryColors.ts`, nicht personenbezogen) | – | Einzelklick öffnet Editor; Hover/Fokus der Zelle hebt die Tönung leicht an | voller Inhalt + ggf. Konflikte | Zellwert (Rohtext) via AG Grid |
+| **Mehrfach belegt (Überlauf)** | neutral | Zeilentrennung | `+n`-Chip (neutral/gedämpft, keine Akzentfarbe im Ruhezustand) | – | Zellklick öffnet Editor mit allen; Hover/Fokus zeigt Akzent-Kante als Interaktionshinweis | `title`: "n Personen: …alle Namen" | Rohtext enthält alle Namen |
 | **Belegt (redaktionell, z.B. Motto/Meeting)** | neutral | Zeilentrennung | Text mit Ellipsis | – | Klick öffnet Text-Editor | voller Text | Zellwert |
 | **Manuell verändert** | wie belegt | wie belegt | wie belegt | 4px-Akzentpunkt oben links | wie belegt | zusätzlich "Manuell angepasst" | im Tooltip-Text enthalten |
 | **Warnung** | wie belegt | 3px Warn-Kante links (inset) | wie belegt | "⚠" oben rechts (amber) | Bearbeitung möglich | konkrete Erklärung(en) aus der Planprüfung | Tooltip-Text |

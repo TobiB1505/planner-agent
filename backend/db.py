@@ -1,409 +1,346 @@
-"""SQLite storage for extracted Dienstpläne."""
+"""PostgreSQL-Persistenz für Dienstpläne (vormals SQLite).
+
+Die öffentliche Funktions-API dieses Moduls ist gegenüber der SQLite-Version
+unverändert: `get_person`-artige Helfer nehmen weiterhin eine Connection als
+erstes Argument, geben dictionary-artige Zeilen zurück und committen NICHT
+selbst (AP10 - die fachliche Operation/Route besitzt die Transaktion). Geändert
+hat sich ausschließlich, was unter dieser API liegt.
+
+Verbindungsaufbau
+-----------------
+Ausschließlich über die Umgebungsvariable DATABASE_URL. Es gibt keinen Pfad,
+keine Datei und keine Zugangsdaten im Sourcecode. Beispielform (nur Doku):
+
+    postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+
+Connection Pool
+---------------
+Render betreibt einen langlebigen FastAPI-Prozess, Supabase hat harte
+Verbindungslimits. Deshalb: genau EIN prozessweiter Pool mit kleiner, fester
+Obergrenze - keine Verbindung pro Query, keine global offene Einzelverbindung.
+Jeder Request leiht sich eine Verbindung und gibt sie zurück (siehe
+get_db_connection()).
+
+Transaktionen
+-------------
+psycopg arbeitet - wie sqlite3 zuvor - ohne Autocommit: die erste Anweisung
+öffnet implizit eine Transaktion. Ein Request, der ohne commit() endet (z.B.
+weil der Endpunkt eine Exception geworfen hat), wird beim Zurückgeben der
+Verbindung in den Pool vollständig zurückgerollt. Das ist exakt die
+AP10-Garantie "alles oder nichts", die vorher SQLite geliefert hat.
+
+Zeilen
+------
+Zeilen sind `Row`-Objekte: ein dict mit zusätzlichem Positionszugriff. Damit
+funktionieren `row["name"]`, `row[0]`, `dict(row)` und `row.keys()` weiterhin
+wie bei sqlite3.Row - die ~27 `dict(row)`-Stellen im Fachcode bleiben unberührt.
+"""
 from __future__ import annotations
 
 import logging
-import sqlite3
+import os
+import threading
 from dataclasses import dataclass, field
+from typing import Any, Iterator, Sequence
 
-from .config.paths import DATABASE_PATH, ensure_runtime_directories
+import psycopg
+from psycopg import sql as pgsql
+from psycopg_pool import ConnectionPool
+
+from .migrations import apply_migrations, current_version
 
 logger = logging.getLogger(__name__)
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS people (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    department TEXT,
-    active INTEGER NOT NULL DEFAULT 1,
-    deleted INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS people_aliases (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    person_id INTEGER NOT NULL REFERENCES people(id),
-    alias TEXT NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS week_plans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kw INTEGER,
-    start_date TEXT NOT NULL,
-    end_date TEXT NOT NULL,
-    source_pdf TEXT,
-    imported_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS assignments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    week_plan_id INTEGER NOT NULL REFERENCES week_plans(id),
-    date TEXT NOT NULL,
-    category TEXT NOT NULL,
-    subcategory TEXT,
-    person_id INTEGER REFERENCES people(id),
-    raw_text TEXT
-);
-
-CREATE TABLE IF NOT EXISTS absences (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    week_plan_id INTEGER NOT NULL REFERENCES week_plans(id),
-    date TEXT NOT NULL,
-    person_id INTEGER REFERENCES people(id),
-    typ TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-);
-
-CREATE TABLE IF NOT EXISTS artist_plans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    start_date TEXT NOT NULL UNIQUE,
-    end_date TEXT NOT NULL,
-    source_filename TEXT,
-    sheet_name TEXT,
-    imported_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS artist_plan_entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    artist_plan_id INTEGER NOT NULL REFERENCES artist_plans(id),
-    date TEXT NOT NULL,
-    field_key TEXT NOT NULL,
-    content TEXT,
-    UNIQUE(artist_plan_id, date, field_key)
-);
-
-CREATE TABLE IF NOT EXISTS rehearsal_plans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    start_date TEXT NOT NULL UNIQUE,
-    end_date TEXT NOT NULL,
-    source_filename TEXT,
-    imported_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS rehearsals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    rehearsal_plan_id INTEGER NOT NULL REFERENCES rehearsal_plans(id),
-    date TEXT NOT NULL,
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL,
-    location TEXT,
-    activity TEXT NOT NULL,
-    show_code TEXT,
-    participants_raw TEXT,
-    choreographer_raw TEXT,
-    end_inferred INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS rehearsal_people (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    rehearsal_id INTEGER NOT NULL REFERENCES rehearsals(id),
-    raw_name TEXT NOT NULL,
-    person_name TEXT,
-    role TEXT NOT NULL,
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL
-);
-
--- Tobis Korrekturen am MA-Gedächtnis. Bewusst getrennt von allen abgeleiteten Daten:
--- das Gedächtnis wird bei jedem Lesen neu gerechnet, nur diese Tabelle wird gespeichert.
--- Dadurch überlebt eine Korrektur auch das Neu-Aufbauen der Probenplan-Tabellen beim
--- Re-Import. Schlüssel ist person_id (nie ein Name), damit Umbenennen/Soft-Delete nichts
--- verliert.
-CREATE TABLE IF NOT EXISTS person_memory_overrides (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    person_id INTEGER NOT NULL REFERENCES people(id),
-    facet TEXT NOT NULL,        -- 'show' | 'free' | 'task'
-    item_key TEXT NOT NULL,     -- show: Show-Code | free: 'weekdays' | task: normalisierte Kategorie
-    state TEXT NOT NULL,        -- 'confirmed' | 'removed' | 'added' | 'pinned'
-    value TEXT,                 -- JSON, nur für 'pinned' bzw. Zusatzinfos
-    note TEXT,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(person_id, facet, item_key)
-);
-
--- Sprint 5: Manuell gepflegte, strukturierte Fähigkeiten. Automatisch erkannte
--- Vorschläge werden weiterhin reproduzierbar aus der Historie berechnet.
-CREATE TABLE IF NOT EXISTS employee_skills (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    person_id INTEGER NOT NULL REFERENCES people(id),
-    skill_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    level INTEGER NOT NULL CHECK(level BETWEEN 1 AND 5),
-    source TEXT NOT NULL DEFAULT 'manual',
-    evidence_json TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(person_id, skill_id)
-);
-
--- Freie, aber strukturierte Hinweise: kein Chat-Text, sondern Typ + Betreff +
--- Wert mit Quelle, Datum und Konfidenz. Historisch abgeleitete Einträge werden
--- nicht festgeschrieben, sondern bei jedem Lesen nachvollziehbar neu erzeugt.
-CREATE TABLE IF NOT EXISTS employee_memory (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    person_id INTEGER NOT NULL REFERENCES people(id),
-    type TEXT NOT NULL,
-    subject TEXT NOT NULL,
-    value TEXT NOT NULL,
-    confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence BETWEEN 0 AND 1),
-    source TEXT NOT NULL DEFAULT 'manual',
-    source_date TEXT NOT NULL,
-    editable INTEGER NOT NULL DEFAULT 1,
-    note TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(person_id, type, subject, source)
-);
-
--- Materialisierter Cache. data_version ist ein Fingerabdruck der unveränderten
--- historischen Quelltabellen; bei jeder relevanten Änderung wird neu gerechnet.
-CREATE TABLE IF NOT EXISTS employee_statistics (
-    person_id INTEGER PRIMARY KEY REFERENCES people(id),
-    data_version TEXT NOT NULL,
-    payload_json TEXT NOT NULL,
-    calculated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS plan_audit_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    week_plan_id INTEGER REFERENCES week_plans(id),
-    start_date TEXT NOT NULL,
-    user_name TEXT NOT NULL DEFAULT 'Planer',
-    event_type TEXT NOT NULL,
-    cause TEXT NOT NULL,
-    cell_key TEXT,
-    previous_value TEXT,
-    new_value TEXT,
-    metadata_json TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS recommendation_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    week_plan_id INTEGER REFERENCES week_plans(id),
-    start_date TEXT NOT NULL,
-    date TEXT,
-    category TEXT,
-    subcategory TEXT,
-    person_id INTEGER REFERENCES people(id),
-    score REAL,
-    reasons_json TEXT,
-    accepted INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
--- Auth-Sprint: Verbindung zwischen einem Supabase-Auth-Benutzer und dem
--- Planner. Bewusst NUR die Zuordnung - keine E-Mail, kein Name, kein
--- Passwort, kein Hash, kein Reset-Token. Alles, was zur Identität gehört,
--- bleibt allein in Supabase Auth (siehe docs/auth/AUTH_ARCHITECTURE.md);
--- diese Tabelle beantwortet ausschliesslich "welche Rolle und welche Person
--- gehört zu dieser Auth-UUID".
---
--- user_id: die Supabase-auth.users-UUID als kanonischer Kleinbuchstaben-Text
---   (SQLite kennt keinen UUID-Typ; in PostgreSQL ist es eine echte
---   uuid-Spalte mit FK auf auth.users, siehe backend/migrations/).
--- person_id: NULLABLE - und zwar bewusst. Ein Admin oder Planer ist nicht
---   zwingend selbst Mitarbeiter im Dienstplan (externe Leitung, Vertretung,
---   Technik-Account). Für die Rolle "employee" wäre NULL dagegen sinnlos:
---   ohne Person gäbe es keinen "meinen Dienstplan". Genau das erzwingt der
---   CHECK unten - nullable, aber nicht beliebig.
--- is_active: harte Sperre. false verweigert jeden Zugriff, ohne den
---   Supabase-Benutzer löschen zu müssen (und ohne die Zuordnung zu verlieren).
-CREATE TABLE IF NOT EXISTS app_users (
-    user_id TEXT PRIMARY KEY,
-    person_id INTEGER REFERENCES people(id),
-    role TEXT NOT NULL CHECK (role IN ('admin', 'planner', 'employee')),
-    is_active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CHECK (role <> 'employee' OR person_id IS NOT NULL)
-);
-
-CREATE INDEX IF NOT EXISTS idx_assignments_person_date
-    ON assignments(person_id, date);
-CREATE INDEX IF NOT EXISTS idx_absences_person_date
-    ON absences(person_id, date);
-CREATE INDEX IF NOT EXISTS idx_audit_week_created
-    ON plan_audit_log(week_plan_id, created_at DESC);
-
--- AP3 (SQLite-Fundament): rein additive Indizes für Lookups, die laut
--- EXPLAIN QUERY PLAN bislang einen vollen SCAN statt einer gezielten SEARCH
--- ausgelöst haben. Kein Tabellen-/Spaltenschema geändert, keine bestehenden
--- Indizes entfernt oder umbenannt.
---
--- people_aliases.alias und people.name tragen zwar bereits UNIQUE-Indizes,
--- die sind aber case-sensitiv angelegt. find_person_by_alias() (siehe unten)
--- vergleicht mit COLLATE NOCASE, wofür SQLite den case-sensitiven Index nicht
--- als SEARCH nutzen kann (bestätigt per EXPLAIN QUERY PLAN: SCAN statt
--- SEARCH). Ein zusätzlicher, auf COLLATE NOCASE angelegter Index behebt das,
--- ohne die case-sensitive UNIQUE-Prüfung anzutasten.
-CREATE INDEX IF NOT EXISTS idx_people_aliases_alias_nocase
-    ON people_aliases(alias COLLATE NOCASE);
-CREATE INDEX IF NOT EXISTS idx_people_name_nocase
-    ON people(name COLLATE NOCASE);
-
--- assignments/absences werden an mehreren Stellen ausschließlich nach
--- week_plan_id gefiltert (get_assignments_for_week, get_absences_for_week,
--- delete_week_plan, die Zähl-Subqueries in get_week_plans) - dafür existierte
--- bislang kein Index (nur der zusammengesetzte idx_*_person_date, dessen
--- führende Spalte person_id ist und für eine reine week_plan_id-Suche nicht
--- nutzbar ist).
-CREATE INDEX IF NOT EXISTS idx_assignments_week_plan_id
-    ON assignments(week_plan_id);
-CREATE INDEX IF NOT EXISTS idx_absences_week_plan_id
-    ON absences(week_plan_id);
-
--- rehearsals wird sowohl nach date (get_rehearsal_events, get_rehearsal_intervals
--- über einen JOIN) als auch nach rehearsal_plan_id (get_rehearsals, upsert/delete_
--- rehearsal_plan) gefiltert - beides bislang ohne Index.
-CREATE INDEX IF NOT EXISTS idx_rehearsals_date
-    ON rehearsals(date);
-CREATE INDEX IF NOT EXISTS idx_rehearsals_rehearsal_plan_id
-    ON rehearsals(rehearsal_plan_id);
-
--- rehearsal_people wird über rehearsal_id nachgeladen (get_rehearsals) bzw.
--- beim Neuaufbau eines Probenplans per IN (...) gelöscht (upsert_rehearsal_plan) -
--- bislang ohne Index auf rehearsal_id.
-CREATE INDEX IF NOT EXISTS idx_rehearsal_people_rehearsal_id
-    ON rehearsal_people(rehearsal_id);
-
--- plan_audit_log wird von intelligence/audit.list_events() auch rein nach
--- start_date gefiltert (wenn kein week_plan_id übergeben wird) - der
--- vorhandene Index idx_audit_week_created deckt das nicht ab, weil seine
--- führende Spalte week_plan_id ist.
-CREATE INDEX IF NOT EXISTS idx_plan_audit_log_start_date
-    ON plan_audit_log(start_date);
-
--- Bewusst NICHT angelegt: ein separater Index auf
--- artist_plan_entries(artist_plan_id). Der bestehende
--- UNIQUE(artist_plan_id, date, field_key) legt bereits einen Index an, dessen
--- führende Spalte artist_plan_id ist - EXPLAIN QUERY PLAN bestätigt dafür
--- bereits "SEARCH ... USING INDEX sqlite_autoindex_artist_plan_entries_1
--- (artist_plan_id=?)". Ein zusätzlicher Index wäre redundant.
-
--- Auth-Sprint: UNIQUE statt einfachem Index - eine Person soll höchstens
--- einem Auth-Konto gehören, sonst wäre "wer ist dieser Mitarbeiter" nicht
--- mehr eindeutig beantwortbar. Mehrere NULL-Werte bleiben erlaubt (SQLite
--- wie PostgreSQL behandeln NULL in UNIQUE-Indizes als verschieden), damit
--- beliebig viele Admin-/Planer-Konten ohne eigene Person existieren können.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_app_users_person_id
-    ON app_users(person_id);
-"""
+DEFAULT_POOL_MIN_SIZE = 1
+DEFAULT_POOL_MAX_SIZE = 5
+DEFAULT_POOL_TIMEOUT = 10.0
 
 
-def _migrate(conn):
-    cols = {row["name"] for row in conn.execute("PRAGMA table_info(people)").fetchall()}
-    if "department" not in cols:
-        conn.execute("ALTER TABLE people ADD COLUMN department TEXT")
-    if "active" not in cols:
-        conn.execute("ALTER TABLE people ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
-    if "deleted" not in cols:
-        conn.execute("ALTER TABLE people ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
-    conn.commit()
+class DatabaseNotConfigured(RuntimeError):
+    """DATABASE_URL fehlt - das Backend hat keine Datenbank, gegen die es läuft."""
 
 
-def _configure_connection(conn: sqlite3.Connection) -> None:
-    """Setzt verbindungsseitige PRAGMAs für WAL-Parallelzugriff und kurzfristige Sperren
-    (AP3 - SQLite-Fundament).
+# ---------------------------------------------------------------------------
+# Zeilen
+# ---------------------------------------------------------------------------
 
-    journal_mode ist eine dateipersistente Eigenschaft der Datenbankdatei selbst (bleibt
-    auch über Neustarts erhalten), busy_timeout dagegen gilt nur für diese eine Verbindung
-    und muss deshalb bei jeder neu erzeugten Verbindung neu gesetzt werden (siehe
-    create_connection() unten). Ist die Datei bereits im WAL-Modus, ist der PRAGMA-Aufruf
-    ein günstiger No-Op.
+
+class Row(dict):
+    """Ergebniszeile mit dict- UND Positionszugriff (Ersatz für sqlite3.Row).
+
+    `row["name"]` ist der im Fachcode überall verwendete Zugriff. `row[0]` und
+    `dict(row)` funktionieren zusätzlich, damit kein Aufrufer nur wegen eines
+    anderen Zeilentyps angefasst werden muss (Sprint-Punkt 16).
     """
-    row = conn.execute("PRAGMA journal_mode=WAL;").fetchone()
-    resulting_mode = str(row[0]).lower() if row else ""
-    if resulting_mode != "wal":
-        # Kann z.B. bei :memory:-Datenbanken oder eingeschränkten Dateisystemen passieren
-        # (WAL braucht eine echte Datei) - kein Abbruch, aber niemals stillschweigend als
-        # Erfolg behandeln.
-        logger.warning(
-            "SQLite läuft nicht im WAL-Modus (aktueller journal_mode: %s) - "
-            "paralleler Lese-/Schreibzugriff ist dadurch weniger robust.",
-            resulting_mode or "unbekannt",
+
+    __slots__ = ()
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            try:
+                return list(self.values())[key]
+            except IndexError as exc:  # pragma: no cover - Programmierfehler
+                raise IndexError(f"Spaltenindex {key} liegt außerhalb der Zeile") from exc
+        return super().__getitem__(key)
+
+
+def _row_factory(cursor):
+    """psycopg-Row-Factory, die `Row`-Objekte erzeugt."""
+    description = cursor.description
+    if description is None:
+        return lambda values: values
+    columns = [column.name for column in description]
+
+    def make_row(values: Sequence[Any]) -> Row:
+        return Row(zip(columns, values))
+
+    return make_row
+
+
+# ---------------------------------------------------------------------------
+# Connection
+# ---------------------------------------------------------------------------
+
+
+class Connection:
+    """Verbindungshandle mit der von den Aufrufern erwarteten Oberfläche.
+
+    Stellt genau die Methoden bereit, die der bestehende Code auf der früheren
+    sqlite3.Connection benutzt hat: execute(), executemany(), commit(),
+    rollback(), close() - plus Delegation für alles Übrige. `close()` schließt
+    die Verbindung nicht wirklich, sondern gibt sie an den Pool zurück; eine
+    offene, nicht committete Transaktion wird dabei zurückgerollt.
+
+    Bewusst ohne __slots__: Tests hängen `execute` zeitweise um, um SQL-
+    Statements zu zählen (siehe backend/tests/test_person_lookup.py) - das
+    ersetzt SQLites `set_trace_callback()`, für das psycopg kein Gegenstück hat.
+    """
+
+    def __init__(self, conn: psycopg.Connection, pool: ConnectionPool | None) -> None:
+        self._conn = conn
+        self._pool = pool
+        self._released = False
+
+    # -- Abfragen ----------------------------------------------------------
+
+    def execute(self, query, params: Sequence[Any] | None = None):
+        cursor = self._conn.cursor()
+        cursor.execute(query, tuple(params) if params else None)
+        return cursor
+
+    def executemany(self, query, params_seq):
+        rows = list(params_seq)
+        cursor = self._conn.cursor()
+        if rows:
+            cursor.executemany(query, [tuple(row) for row in rows])
+        return cursor
+
+    def cursor(self, *args, **kwargs):
+        return self._conn.cursor(*args, **kwargs)
+
+    # -- Transaktionen -----------------------------------------------------
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
+
+    # -- Lebenszyklus ------------------------------------------------------
+
+    def close(self) -> None:
+        """Gibt die Verbindung zurück (idempotent).
+
+        Nicht committete Änderungen gehen dabei verloren - genau das erwarten
+        die AP10-Transaktionstests: ein Request, der mit einer Exception endet,
+        darf nichts Halbfertiges hinterlassen.
+        """
+        if self._released:
+            return
+        self._released = True
+        if self._pool is None:
+            self._conn.close()
+            return
+        try:
+            if not self._conn.closed:
+                self._conn.rollback()
+        except psycopg.Error:  # pragma: no cover - Verbindung bereits kaputt
+            pass
+        self._pool.putconn(self._conn)
+
+    @property
+    def closed(self) -> bool:
+        return self._released or self._conn.closed
+
+    # -- Rest --------------------------------------------------------------
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def __enter__(self) -> "Connection":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+# ---------------------------------------------------------------------------
+# Pool
+# ---------------------------------------------------------------------------
+
+_pool: ConnectionPool | None = None
+_pool_dsn: str | None = None
+_pool_lock = threading.Lock()
+
+
+def database_url() -> str:
+    """Die konfigurierte DATABASE_URL - oder ein klarer Abbruch.
+
+    Bewusst kein Default und kein stiller Fallback: eine Anwendung, die nicht
+    weiß, gegen welche Datenbank sie läuft, soll sichtbar nicht starten.
+    """
+    url = os.getenv("DATABASE_URL", "").strip()
+    if not url:
+        raise DatabaseNotConfigured(
+            "DATABASE_URL ist nicht gesetzt. Das Backend braucht eine "
+            "PostgreSQL-Verbindung (Format: postgresql://USER:PASSWORD@HOST:PORT/DATABASE). "
+            "Lokal in .env eintragen, in Preview/Production als Environment Variable "
+            "der Hosting-Plattform - siehe docs/database/SUPABASE_SETUP.md."
         )
-    conn.execute("PRAGMA busy_timeout = 5000;")
+    return url
 
 
-def create_connection() -> sqlite3.Connection:
-    """Öffnet ausschließlich eine neue, verbindungsseitig konfigurierte SQLite-Verbindung
-    (AP4 - Verbindungs-/Schema-Lifecycle).
+def _pool_size() -> tuple[int, int]:
+    def _int(name: str, default: int) -> int:
+        raw = os.getenv(name)
+        if not raw:
+            return default
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            logger.warning("%s ist keine Zahl ('%s') - nutze Default %d", name, raw, default)
+            return default
 
-    Führt bewusst KEIN Schema, KEINE Migration und KEINE Runtime-Verzeichnis-Erstellung
-    aus - dafür ist einmalig initialize_database() zuständig. Jeder Aufruf öffnet eine
-    eigene, unabhängige Verbindung; kein Connection-Objekt wird zwischen Aufrufern geteilt.
+    max_size = max(1, _int("DATABASE_POOL_MAX_SIZE", DEFAULT_POOL_MAX_SIZE))
+    min_size = min(max_size, _int("DATABASE_POOL_MIN_SIZE", DEFAULT_POOL_MIN_SIZE))
+    return min_size, max_size
 
-    check_same_thread=False ist hier bewusst nötig, nicht optional: FastAPI wickelt die
-    __enter__/__exit__-Seiten eines sync-Generator-Dependencies (Depends(get_db_connection)
-    unten) über contextmanager_in_threadpool() ab, das __enter__ über den normalen
-    Threadpool-Limiter und __exit__ über einen eigenen, unabhängigen CapacityLimiter(1)
-    laufen lässt (siehe fastapi/dependencies/utils.py) - dieselbe Connection kann dadurch
-    unter echter uvicorn-Nebenläufigkeit auf einem Thread erzeugt und auf einem anderen
-    wieder geschlossen werden. Das passiert rein sequenziell innerhalb EINES Requests (nie
-    gleichzeitig von zwei Threads), sqlite3 verbietet mit seinem Default
-    check_same_thread=True aber bereits den bloßen Thread-Wechsel. Ohne dieses Flag schlägt
-    jeder Request unter Last mit "SQLite objects created in a thread can only be used in
-    that same thread" fehl (siehe backend/tests/test_uvicorn_real_concurrency.py und
-    backend/tests/test_sqlite_thread_safety.py - zwei unabhängig entstandene, sich
-    ergänzende Regressionstests: einer gegen einen echten uvicorn-Prozess, einer über
-    TestClient mit echter Thread-Parallelität).
+
+def get_pool() -> ConnectionPool:
+    """Der prozessweite Connection Pool (wird beim ersten Zugriff erzeugt)."""
+    global _pool, _pool_dsn
+    dsn = database_url()
+    with _pool_lock:
+        if _pool is not None and _pool_dsn == dsn and not _pool.closed:
+            return _pool
+        if _pool is not None:
+            _close_pool_locked()
+        min_size, max_size = _pool_size()
+        _pool = ConnectionPool(
+            conninfo=dsn,
+            min_size=min_size,
+            max_size=max_size,
+            timeout=DEFAULT_POOL_TIMEOUT,
+            kwargs={"row_factory": _row_factory, "autocommit": False},
+            open=True,
+            name="planner",
+        )
+        _pool_dsn = dsn
+        return _pool
+
+
+def _close_pool_locked() -> None:
+    global _pool, _pool_dsn
+    if _pool is not None:
+        try:
+            _pool.close()
+        except Exception:  # noqa: BLE001 - beim Herunterfahren nie eskalieren
+            logger.exception("Connection Pool konnte nicht sauber geschlossen werden")
+    _pool = None
+    _pool_dsn = None
+
+
+def close_pool() -> None:
+    """Schließt den Pool (App-Shutdown, Testwechsel auf ein anderes Schema)."""
+    with _pool_lock:
+        _close_pool_locked()
+
+
+def create_connection() -> Connection:
+    """Leiht genau eine konfigurierte Verbindung aus dem Pool.
+
+    Führt bewusst KEIN Schema und KEINE Migration aus - dafür ist einmalig
+    initialize_database() zuständig (AP4-Lifecycle, unverändert übernommen).
+    Kein Connection-Objekt wird zwischen Aufrufern geteilt.
     """
-    conn = sqlite3.connect(str(DATABASE_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    _configure_connection(conn)
-    return conn
+    pool = get_pool()
+    return Connection(pool.getconn(), pool)
+
+
+def connect_direct(dsn: str | None = None) -> Connection:
+    """Eine einzelne Verbindung außerhalb des Pools (Migrationen, CLI-Skripte).
+
+    Bewusst getrennt vom Pool: Migrations- und Wartungsläufe sollen keinen
+    Request-Pool-Slot belegen und laufen auch, wenn der Pool (noch) nicht steht.
+    """
+    conn = psycopg.connect(dsn or database_url(), row_factory=_row_factory)
+    return Connection(conn, None)
 
 
 def initialize_database() -> None:
-    """Einmalige Initialisierung: Laufzeitverzeichnisse, Schema, Migration (AP4).
+    """Einmalige Initialisierung: wendet offene Schemamigrationen an (AP4).
 
-    Idempotent - kann beliebig oft aufgerufen werden (CREATE TABLE/INDEX IF NOT EXISTS,
-    additive Spaltenprüfungen in _migrate()), ändert an einer bereits initialisierten
-    Datenbank nichts mehr. Wird genau einmal beim FastAPI-Lifespan-Start ausgeführt
-    (siehe api.py) sowie explizit von Tests/CLI-Aufrufern vor der ersten Nutzung. Ein
-    Fehler beim Anlegen von Schema/Migration wird nicht verschluckt - die Initialisierungs-
-    Connection wird in jedem Fall (auch bei einer Exception) wieder geschlossen.
+    Idempotent - bereits angewendete Migrationen werden übersprungen. Wird genau
+    einmal beim FastAPI-Lifespan-Start ausgeführt (siehe api.py) sowie explizit
+    von Tests/CLI-Aufrufern vor der ersten Nutzung. Ein Fehler wird nicht
+    verschluckt: eine nur halb migrierte Datenbank soll den App-Start sichtbar
+    verhindern, statt still weiterzulaufen.
     """
-    ensure_runtime_directories()
-    conn = create_connection()
+    conn = connect_direct()
     try:
-        conn.executescript(SCHEMA)
-        _migrate(conn)
-        conn.commit()
+        applied = apply_migrations(conn)
+        if applied:
+            logger.info("Schemamigrationen angewendet: %s", ", ".join(applied))
     finally:
         conn.close()
 
 
-def get_conn() -> sqlite3.Connection:
-    """Kompatibler Zugriffspunkt für nicht request-gebundene Aufrufer (Tests, CLI-/
-    Offline-Skripte): öffnet nur eine konfigurierte Verbindung, OHNE Schema oder Migration
-    erneut auszuführen (AP4 - vorher lief das bei jedem Aufruf mit). Setzt voraus, dass
-    zuvor einmal initialize_database() gelaufen ist (z.B. über den FastAPI-Lifespan-Start
-    oder - für Tests/Skripte, die keinen App-Start durchlaufen - durch einen expliziten
-    eigenen Aufruf von initialize_database()).
+def schema_version() -> str | None:
+    """Aktuell angewendete Schemaversion (für Health/Diagnostics)."""
+    conn = create_connection()
+    try:
+        return current_version(conn)
+    finally:
+        conn.close()
+
+
+def get_conn() -> Connection:
+    """Kompatibler Zugriffspunkt für nicht request-gebundene Aufrufer (Tests,
+    CLI-/Offline-Skripte): leiht nur eine Verbindung, OHNE Schema oder Migration
+    erneut auszuführen. Setzt voraus, dass zuvor einmal initialize_database()
+    gelaufen ist.
     """
     return create_connection()
 
 
-def get_db_connection():
+def get_db_connection() -> Iterator[Connection]:
     """FastAPI-Dependency (AP4): genau eine Verbindung pro Request.
 
-    Wird über Depends(get_db_connection) in die Endpunkte injiziert und nach Abschluss des
-    Requests zuverlässig geschlossen - auch wenn der Endpunkt eine Exception wirft, da das
-    schließende finally in jedem Fall durchlaufen wird, bevor FastAPI die Exception weiter
-    nach oben reicht. Keine Verbindung wird zwischen Requests geteilt, kein globales
-    Connection-Objekt.
+    Wird über Depends(get_db_connection) in die Endpunkte injiziert und am Ende
+    des Requests zuverlässig an den Pool zurückgegeben - auch wenn der Endpunkt
+    eine Exception wirft, da das finally in jedem Fall durchläuft. Eine offene,
+    nicht committete Transaktion wird dabei zurückgerollt (AP10).
     """
     conn = create_connection()
     try:
         yield conn
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Personen
+# ---------------------------------------------------------------------------
 
 
 def get_all_people(conn, active_only: bool = False):
@@ -416,29 +353,39 @@ def get_all_people(conn, active_only: bool = False):
 
 def update_person(conn, person_id: int, name: str, department: str | None, active: bool):
     conn.execute(
-        "UPDATE people SET name = ?, department = ?, active = ? WHERE id = ?",
+        "UPDATE people SET name = %s, department = %s, active = %s WHERE id = %s",
         (name, department, 1 if active else 0, person_id),
     )
-    conn.execute("DELETE FROM employee_statistics WHERE person_id = ?", (person_id,))
+    conn.execute("DELETE FROM employee_statistics WHERE person_id = %s", (person_id,))
 
 
 def delete_person(conn, person_id: int):
     """Entfernt eine Person aus dem Mitarbeiterpool, behält sie aber für historische Pläne."""
     conn.execute(
-        "UPDATE people SET active = 0, deleted = 1 WHERE id = ?",
+        "UPDATE people SET active = 0, deleted = 1 WHERE id = %s",
         (person_id,),
     )
-    conn.execute("DELETE FROM employee_statistics WHERE person_id = ?", (person_id,))
+    conn.execute("DELETE FROM employee_statistics WHERE person_id = %s", (person_id,))
 
 
 def find_person_by_alias(conn, alias: str):
+    """Alias- bzw. Namensauflösung, case-insensitiv wie bisher.
+
+    `planner_nocase()` (siehe backend/migrations/001_initial_postgres.sql) bildet
+    SQLites COLLATE NOCASE exakt nach - nur ASCII A-Z wird gefaltet. Ein naives
+    lower() würde auch 'É' -> 'é' falten und damit Namen zusammenführen, die die
+    bisherige Implementierung getrennt gehalten hat.
+    """
     row = conn.execute(
-        "SELECT person_id FROM people_aliases WHERE alias = ? COLLATE NOCASE", (alias,)
+        "SELECT person_id FROM people_aliases "
+        "WHERE planner_nocase(alias) = planner_nocase(%s)",
+        (alias,),
     ).fetchone()
     if row:
         return row["person_id"]
     row = conn.execute(
-        "SELECT id FROM people WHERE name = ? COLLATE NOCASE", (alias,)
+        "SELECT id FROM people WHERE planner_nocase(name) = planner_nocase(%s)",
+        (alias,),
     ).fetchone()
     return row["id"] if row else None
 
@@ -452,20 +399,19 @@ def find_person_by_alias(conn, alias: str):
 # denselben Auflösungsweg (erst Alias, dann Personenname) als reinen
 # In-Memory-Lookup an.
 
-# SQLites eingebaute NOCASE-Kollation faltet laut eigener Dokumentation bewusst
-# NUR ASCII-Buchstaben (A-Z/a-z) - kein volles Unicode-Case-Folding. Python
-# str.casefold()/str.lower() würden z.B. 'Ü' -> 'ü' oder 'ß' -> 'ss' faltet und
-# damit Namen als gleich behandeln, die SQLite als unterschiedlich einstuft
-# (verifiziert u.a. an echten Namen wie "René"). Diese Übersetzungstabelle
-# repliziert exakt SQLites Verhalten, um die bestehende Auflösungssemantik nicht
-# stillschweigend zu verändern.
+# Diese Übersetzungstabelle ist die Python-Seite derselben Faltung, die
+# planner_nocase() in SQL macht (ASCII-only, exakt wie SQLites NOCASE). Python
+# str.casefold()/str.lower() würden z.B. 'Ü' -> 'ü' oder 'ß' -> 'ss' falten und
+# damit Namen als gleich behandeln, die die Datenbankseite als unterschiedlich
+# einstuft (verifiziert u.a. an echten Namen wie "René"). Beide Wege müssen
+# deckungsgleich bleiben - siehe backend/tests/test_person_lookup.py.
 _ASCII_UPPER_TO_LOWER = str.maketrans(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
 )
 
 
 def _nocase_fold(value: str) -> str:
-    """Bildet SQLites `COLLATE NOCASE` nach (nur ASCII wird gefaltet)."""
+    """Python-Pendant zu `planner_nocase()` (nur ASCII wird gefaltet)."""
     return value.translate(_ASCII_UPPER_TO_LOWER)
 
 
@@ -481,7 +427,7 @@ class PersonLookup:
     """Einmal pro Vorgang geladene Alias-/Namensauflösung.
 
     by_alias/by_name sind nach _nocase_fold() geschlüsselt - dieselbe Semantik
-    wie `alias = ? COLLATE NOCASE` bzw. `name = ? COLLATE NOCASE`. Enthält
+    wie `planner_nocase(alias) = planner_nocase(?)` bzw. für `name`. Enthält
     bewusst auch soft-gelöschte Personen (deleted=1) und deren Aliasse, weil
     find_person_by_alias() ebenfalls nicht danach filtert; eine Filterung hier
     würde eine bestehende Auflösung stillschweigend verändern.
@@ -498,7 +444,7 @@ class PersonLookup:
     def register_person(self, person_id: int, name: str, department: str | None = None) -> None:
         """Nach einer echten Neuanlage (create_person) sofort in die Map übernehmen,
         damit spätere Zeilen desselben Vorgangs sie ohne erneute Datenbankabfrage
-        finden (siehe api._resolve_or_create)."""
+        finden (siehe routers/plans._resolve_or_create)."""
         self.by_name[_nocase_fold(name)] = PersonLookupEntry(person_id, name, department)
 
     def register_alias(self, alias: str, person_id: int, name: str, department: str | None = None) -> None:
@@ -506,7 +452,7 @@ class PersonLookup:
         self.by_alias[_nocase_fold(alias)] = PersonLookupEntry(person_id, name, department)
 
 
-def load_person_lookup(conn: sqlite3.Connection) -> PersonLookup:
+def load_person_lookup(conn) -> PersonLookup:
     """Lädt Personen und Aliasse mit zwei Queries in eine PersonLookup-Struktur.
 
     Öffnet keine eigene Verbindung, committet nicht, legt kein Schema an und
@@ -538,52 +484,66 @@ def load_person_lookup(conn: sqlite3.Connection) -> PersonLookup:
 
 def create_person(conn, name: str, department: str | None = None) -> int:
     existing = conn.execute(
-        "SELECT id, deleted FROM people WHERE name = ? COLLATE NOCASE",
+        "SELECT id, deleted FROM people WHERE planner_nocase(name) = planner_nocase(%s)",
         (name,),
     ).fetchone()
     if existing and existing["deleted"]:
         conn.execute(
-            "UPDATE people SET department = ?, active = 1, deleted = 0 WHERE id = ?",
+            "UPDATE people SET department = %s, active = 1, deleted = 0 WHERE id = %s",
             (department, existing["id"]),
         )
         conn.execute(
-            "DELETE FROM employee_statistics WHERE person_id = ?",
+            "DELETE FROM employee_statistics WHERE person_id = %s",
             (existing["id"],),
         )
         return existing["id"]
-    cur = conn.execute(
-        "INSERT INTO people (name, department, active, deleted) VALUES (?, ?, 1, 0)",
+    row = conn.execute(
+        "INSERT INTO people (name, department, active, deleted) "
+        "VALUES (%s, %s, 1, 0) RETURNING id",
         (name, department),
-    )
-    return cur.lastrowid
+    ).fetchone()
+    return row["id"]
 
 
 def add_alias(conn, person_id: int, alias: str):
+    """Legt einen Alias an, sofern er noch nicht existiert.
+
+    Ersetzt SQLites `INSERT OR IGNORE`. Das Conflict-Target ist bewusst
+    ausgeschrieben (`alias`) statt geraten - genau diese Spalte trägt den
+    UNIQUE-Constraint, den die alte Anweisung ignoriert hat.
+    """
     conn.execute(
-        "INSERT OR IGNORE INTO people_aliases (person_id, alias) VALUES (?, ?)",
+        "INSERT INTO people_aliases (person_id, alias) VALUES (%s, %s) "
+        "ON CONFLICT (alias) DO NOTHING",
         (person_id, alias),
     )
 
 
+# ---------------------------------------------------------------------------
+# Dienstpläne
+# ---------------------------------------------------------------------------
+
+
 def insert_week_plan(conn, kw, start_date, end_date, source_pdf) -> int:
-    cur = conn.execute(
-        "INSERT INTO week_plans (kw, start_date, end_date, source_pdf) VALUES (?, ?, ?, ?)",
+    row = conn.execute(
+        "INSERT INTO week_plans (kw, start_date, end_date, source_pdf) "
+        "VALUES (%s, %s, %s, %s) RETURNING id",
         (kw, start_date, end_date, source_pdf),
-    )
-    return cur.lastrowid
+    ).fetchone()
+    return row["id"]
 
 
 def insert_assignment(conn, week_plan_id, date, category, subcategory, person_id, raw_text):
     conn.execute(
         """INSERT INTO assignments (week_plan_id, date, category, subcategory, person_id, raw_text)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s, %s)""",
         (week_plan_id, date, category, subcategory, person_id, raw_text),
     )
 
 
 def insert_absence(conn, week_plan_id, date, person_id, typ):
     conn.execute(
-        "INSERT INTO absences (week_plan_id, date, person_id, typ) VALUES (?, ?, ?, ?)",
+        "INSERT INTO absences (week_plan_id, date, person_id, typ) VALUES (%s, %s, %s, %s)",
         (week_plan_id, date, person_id, typ),
     )
 
@@ -604,7 +564,7 @@ def get_assignments_for_week(conn, week_plan_id):
     return conn.execute(
         """SELECT a.date, a.category, a.subcategory, p.name AS person, a.raw_text
            FROM assignments a LEFT JOIN people p ON a.person_id = p.id
-           WHERE a.week_plan_id = ? ORDER BY a.date, a.category""",
+           WHERE a.week_plan_id = %s ORDER BY a.date, a.category""",
         (week_plan_id,),
     ).fetchall()
 
@@ -613,28 +573,44 @@ def get_absences_for_week(conn, week_plan_id):
     return conn.execute(
         """SELECT ab.date, p.name AS person, ab.typ
            FROM absences ab LEFT JOIN people p ON ab.person_id = p.id
-           WHERE ab.week_plan_id = ? ORDER BY ab.date""",
+           WHERE ab.week_plan_id = %s ORDER BY ab.date""",
         (week_plan_id,),
     ).fetchall()
 
 
 def delete_week_plan(conn, week_plan_id):
-    conn.execute("DELETE FROM assignments WHERE week_plan_id = ?", (week_plan_id,))
-    conn.execute("DELETE FROM absences WHERE week_plan_id = ?", (week_plan_id,))
-    conn.execute("DELETE FROM week_plans WHERE id = ?", (week_plan_id,))
+    """Löscht eine Woche samt Zuweisungen und Abwesenheiten.
+
+    Die beiden expliziten DELETEs bleiben bewusst stehen, obwohl die
+    Fremdschlüssel jetzt ON DELETE CASCADE tragen: das Verhalten ist dadurch
+    identisch zum bisherigen Code und nicht von der FK-Definition abhängig.
+    """
+    conn.execute("DELETE FROM assignments WHERE week_plan_id = %s", (week_plan_id,))
+    conn.execute("DELETE FROM absences WHERE week_plan_id = %s", (week_plan_id,))
+    conn.execute("DELETE FROM week_plans WHERE id = %s", (week_plan_id,))
+
+
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
 
 
 def get_setting(conn, key: str, default: str | None = None) -> str | None:
-    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    row = conn.execute("SELECT value FROM settings WHERE key = %s", (key,)).fetchone()
     return row["value"] if row else default
 
 
 def set_setting(conn, key: str, value: str):
     conn.execute(
-        "INSERT INTO settings (key, value) VALUES (?, ?) "
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        "INSERT INTO settings (key, value) VALUES (%s, %s) "
+        "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
         (key, value),
     )
+
+
+# ---------------------------------------------------------------------------
+# Gedächtnis-Overrides
+# ---------------------------------------------------------------------------
 
 
 def get_memory_overrides(conn, person_id: int | None = None):
@@ -643,7 +619,7 @@ def get_memory_overrides(conn, person_id: int | None = None):
             "SELECT * FROM person_memory_overrides ORDER BY person_id, facet, item_key"
         ).fetchall()
     return conn.execute(
-        "SELECT * FROM person_memory_overrides WHERE person_id = ? ORDER BY facet, item_key",
+        "SELECT * FROM person_memory_overrides WHERE person_id = %s ORDER BY facet, item_key",
         (person_id,),
     ).fetchall()
 
@@ -659,32 +635,38 @@ def set_memory_override(
 ):
     conn.execute(
         """INSERT INTO person_memory_overrides (person_id, facet, item_key, state, value, note)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(person_id, facet, item_key) DO UPDATE SET
+           VALUES (%s, %s, %s, %s, %s, %s)
+           ON CONFLICT (person_id, facet, item_key) DO UPDATE SET
                state = excluded.state,
                value = excluded.value,
                note = excluded.note,
-               updated_at = CURRENT_TIMESTAMP""",
+               updated_at = planner_now_text()""",
         (person_id, facet, item_key, state, value, note),
     )
 
 
 def clear_memory_override(conn, person_id: int, facet: str, item_key: str):
     conn.execute(
-        "DELETE FROM person_memory_overrides WHERE person_id = ? AND facet = ? AND item_key = ?",
+        "DELETE FROM person_memory_overrides "
+        "WHERE person_id = %s AND facet = %s AND item_key = %s",
         (person_id, facet, item_key),
     )
 
 
 def clear_memory_overrides_for_person(conn, person_id: int, facet: str | None = None):
     if facet is None:
-        conn.execute("DELETE FROM person_memory_overrides WHERE person_id = ?", (person_id,))
+        conn.execute("DELETE FROM person_memory_overrides WHERE person_id = %s", (person_id,))
     else:
         conn.execute(
-            "DELETE FROM person_memory_overrides WHERE person_id = ? AND facet = ?",
+            "DELETE FROM person_memory_overrides WHERE person_id = %s AND facet = %s",
             (person_id, facet),
         )
     conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Künstlerplan
+# ---------------------------------------------------------------------------
 
 
 def upsert_artist_plan(
@@ -695,29 +677,27 @@ def upsert_artist_plan(
     sheet_name: str | None,
     entries: list[dict],
 ) -> int:
-    conn.execute(
+    row = conn.execute(
         """INSERT INTO artist_plans
                (start_date, end_date, source_filename, sheet_name)
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT(start_date) DO UPDATE SET
+           VALUES (%s, %s, %s, %s)
+           ON CONFLICT (start_date) DO UPDATE SET
                end_date = excluded.end_date,
                source_filename = excluded.source_filename,
                sheet_name = excluded.sheet_name,
-               updated_at = CURRENT_TIMESTAMP""",
+               updated_at = planner_now_text()
+           RETURNING id""",
         (start_date, end_date, source_filename, sheet_name),
-    )
-    row = conn.execute(
-        "SELECT id FROM artist_plans WHERE start_date = ?", (start_date,)
     ).fetchone()
     artist_plan_id = row["id"]
     conn.execute(
-        "DELETE FROM artist_plan_entries WHERE artist_plan_id = ?",
+        "DELETE FROM artist_plan_entries WHERE artist_plan_id = %s",
         (artist_plan_id,),
     )
     conn.executemany(
         """INSERT INTO artist_plan_entries
                (artist_plan_id, date, field_key, content)
-           VALUES (?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s)""",
         [
             (
                 artist_plan_id,
@@ -733,7 +713,8 @@ def upsert_artist_plan(
 
 def get_artist_plans(conn):
     return conn.execute(
-        """SELECT ap.*,
+        """SELECT ap.id, ap.start_date, ap.end_date, ap.source_filename, ap.sheet_name,
+                  ap.imported_at, ap.updated_at,
                   COUNT(CASE WHEN TRIM(COALESCE(e.content, '')) <> '' THEN 1 END) AS filled_entries
            FROM artist_plans ap
            LEFT JOIN artist_plan_entries e ON e.artist_plan_id = ap.id
@@ -744,13 +725,13 @@ def get_artist_plans(conn):
 
 def get_artist_plan(conn, artist_plan_id: int):
     return conn.execute(
-        "SELECT * FROM artist_plans WHERE id = ?", (artist_plan_id,)
+        "SELECT * FROM artist_plans WHERE id = %s", (artist_plan_id,)
     ).fetchone()
 
 
 def get_artist_plan_by_start(conn, start_date: str):
     return conn.execute(
-        "SELECT * FROM artist_plans WHERE start_date = ?", (start_date,)
+        "SELECT * FROM artist_plans WHERE start_date = %s", (start_date,)
     ).fetchone()
 
 
@@ -758,7 +739,7 @@ def get_artist_plan_entries(conn, artist_plan_id: int):
     return conn.execute(
         """SELECT date, field_key, content
            FROM artist_plan_entries
-           WHERE artist_plan_id = ?
+           WHERE artist_plan_id = %s
            ORDER BY date, field_key""",
         (artist_plan_id,),
     ).fetchall()
@@ -766,10 +747,15 @@ def get_artist_plan_entries(conn, artist_plan_id: int):
 
 def delete_artist_plan(conn, artist_plan_id: int):
     conn.execute(
-        "DELETE FROM artist_plan_entries WHERE artist_plan_id = ?",
+        "DELETE FROM artist_plan_entries WHERE artist_plan_id = %s",
         (artist_plan_id,),
     )
-    conn.execute("DELETE FROM artist_plans WHERE id = ?", (artist_plan_id,))
+    conn.execute("DELETE FROM artist_plans WHERE id = %s", (artist_plan_id,))
+
+
+# ---------------------------------------------------------------------------
+# Probenplan
+# ---------------------------------------------------------------------------
 
 
 def upsert_rehearsal_plan(
@@ -779,39 +765,40 @@ def upsert_rehearsal_plan(
     source_filename: str | None,
     rehearsals: list[dict],
 ) -> int:
-    conn.execute(
+    plan_row = conn.execute(
         """INSERT INTO rehearsal_plans (start_date, end_date, source_filename)
-           VALUES (?, ?, ?)
-           ON CONFLICT(start_date) DO UPDATE SET
+           VALUES (%s, %s, %s)
+           ON CONFLICT (start_date) DO UPDATE SET
                end_date = excluded.end_date,
                source_filename = excluded.source_filename,
-               updated_at = CURRENT_TIMESTAMP""",
+               updated_at = planner_now_text()
+           RETURNING id""",
         (start_date, end_date, source_filename),
-    )
-    plan_row = conn.execute(
-        "SELECT id FROM rehearsal_plans WHERE start_date = ?", (start_date,)
     ).fetchone()
     plan_id = plan_row["id"]
     rehearsal_ids = [
         row["id"]
         for row in conn.execute(
-            "SELECT id FROM rehearsals WHERE rehearsal_plan_id = ?", (plan_id,)
+            "SELECT id FROM rehearsals WHERE rehearsal_plan_id = %s", (plan_id,)
         ).fetchall()
     ]
     if rehearsal_ids:
-        placeholders = ",".join("?" for _ in rehearsal_ids)
+        # = ANY(%s) statt einer dynamisch zusammengebauten IN-(?,?,...)-Liste:
+        # ein einziger Parameter, kein SQL-String-Bau, keine Grenze durch die
+        # maximale Parameteranzahl.
         conn.execute(
-            f"DELETE FROM rehearsal_people WHERE rehearsal_id IN ({placeholders})",
-            rehearsal_ids,
+            "DELETE FROM rehearsal_people WHERE rehearsal_id = ANY(%s)",
+            (rehearsal_ids,),
         )
-    conn.execute("DELETE FROM rehearsals WHERE rehearsal_plan_id = ?", (plan_id,))
+    conn.execute("DELETE FROM rehearsals WHERE rehearsal_plan_id = %s", (plan_id,))
 
     for rehearsal in rehearsals:
-        cursor = conn.execute(
+        row = conn.execute(
             """INSERT INTO rehearsals
                    (rehearsal_plan_id, date, start_time, end_time, location, activity,
                     show_code, participants_raw, choreographer_raw, end_inferred)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING id""",
             (
                 plan_id,
                 rehearsal["date"],
@@ -824,12 +811,12 @@ def upsert_rehearsal_plan(
                 rehearsal.get("choreographer_raw"),
                 1 if rehearsal.get("end_inferred") else 0,
             ),
-        )
-        rehearsal_id = cursor.lastrowid
+        ).fetchone()
+        rehearsal_id = row["id"]
         conn.executemany(
             """INSERT INTO rehearsal_people
                    (rehearsal_id, raw_name, person_name, role, start_time, end_time)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s)""",
             [
                 (
                     rehearsal_id,
@@ -847,7 +834,9 @@ def upsert_rehearsal_plan(
 
 def get_rehearsal_plans(conn):
     return conn.execute(
-        """SELECT rp.*, COUNT(r.id) AS rehearsal_count
+        """SELECT rp.id, rp.start_date, rp.end_date, rp.source_filename,
+                  rp.imported_at, rp.updated_at,
+                  COUNT(r.id) AS rehearsal_count
            FROM rehearsal_plans rp
            LEFT JOIN rehearsals r ON r.rehearsal_plan_id = rp.id
            GROUP BY rp.id
@@ -857,20 +846,20 @@ def get_rehearsal_plans(conn):
 
 def get_rehearsal_plan(conn, rehearsal_plan_id: int):
     return conn.execute(
-        "SELECT * FROM rehearsal_plans WHERE id = ?", (rehearsal_plan_id,)
+        "SELECT * FROM rehearsal_plans WHERE id = %s", (rehearsal_plan_id,)
     ).fetchone()
 
 
 def get_rehearsal_plan_by_start(conn, start_date: str):
     return conn.execute(
-        "SELECT * FROM rehearsal_plans WHERE start_date = ?", (start_date,)
+        "SELECT * FROM rehearsal_plans WHERE start_date = %s", (start_date,)
     ).fetchone()
 
 
 def get_rehearsals(conn, rehearsal_plan_id: int):
     rows = conn.execute(
         """SELECT * FROM rehearsals
-           WHERE rehearsal_plan_id = ?
+           WHERE rehearsal_plan_id = %s
            ORDER BY date, start_time, id""",
         (rehearsal_plan_id,),
     ).fetchall()
@@ -883,7 +872,7 @@ def get_rehearsals(conn, rehearsal_plan_id: int):
             for person in conn.execute(
                 """SELECT raw_name, person_name, role, start_time, end_time
                    FROM rehearsal_people
-                   WHERE rehearsal_id = ?
+                   WHERE rehearsal_id = %s
                    ORDER BY role, id""",
                 (row["id"],),
             ).fetchall()
@@ -899,7 +888,7 @@ def get_rehearsal_intervals(conn, start_date: str, end_date: str):
            FROM rehearsal_people p
            JOIN rehearsals r ON r.id = p.rehearsal_id
            WHERE p.person_name IS NOT NULL
-             AND r.date BETWEEN ? AND ?
+             AND r.date BETWEEN %s AND %s
            ORDER BY r.date, p.start_time, p.person_name""",
         (start_date, end_date),
     ).fetchall()
@@ -909,7 +898,7 @@ def get_rehearsal_events(conn, start_date: str, end_date: str):
     return conn.execute(
         """SELECT date, start_time, end_time, activity, show_code
            FROM rehearsals
-           WHERE date BETWEEN ? AND ?
+           WHERE date BETWEEN %s AND %s
            ORDER BY date, start_time, id""",
         (start_date, end_date),
     ).fetchall()
@@ -919,25 +908,70 @@ def delete_rehearsal_plan(conn, rehearsal_plan_id: int):
     rehearsal_ids = [
         row["id"]
         for row in conn.execute(
-            "SELECT id FROM rehearsals WHERE rehearsal_plan_id = ?",
+            "SELECT id FROM rehearsals WHERE rehearsal_plan_id = %s",
             (rehearsal_plan_id,),
         ).fetchall()
     ]
     if rehearsal_ids:
-        placeholders = ",".join("?" for _ in rehearsal_ids)
         conn.execute(
-            f"DELETE FROM rehearsal_people WHERE rehearsal_id IN ({placeholders})",
-            rehearsal_ids,
+            "DELETE FROM rehearsal_people WHERE rehearsal_id = ANY(%s)",
+            (rehearsal_ids,),
         )
     conn.execute(
-        "DELETE FROM rehearsals WHERE rehearsal_plan_id = ?",
+        "DELETE FROM rehearsals WHERE rehearsal_plan_id = %s",
         (rehearsal_plan_id,),
     )
     conn.execute(
-        "DELETE FROM rehearsal_plans WHERE id = ?",
+        "DELETE FROM rehearsal_plans WHERE id = %s",
         (rehearsal_plan_id,),
     )
 
+
+# ---------------------------------------------------------------------------
+# Wartung
+# ---------------------------------------------------------------------------
+
+#: Reihenfolge, in der Tabellen befüllt bzw. geleert werden können, ohne
+#: Fremdschlüssel zu verletzen (Eltern vor Kindern). Wird vom Migrationstool
+#: und von der Testinfrastruktur genutzt - eine einzige Quelle der Wahrheit.
+#:
+#: Bewusst OHNE app_users (Auth-Sprint): diese Tabelle hat in SQLite nie
+#: existiert, das einmalige Übernahmetool kann sie also nicht kopieren. Beim
+#: Leeren verschwindet sie trotzdem zuverlässig - TRUNCATE ... CASCADE erfasst
+#: jede Tabelle, die auf eine der hier genannten verweist.
+TABLES_IN_DEPENDENCY_ORDER: tuple[str, ...] = (
+    "settings",
+    "people",
+    "people_aliases",
+    "week_plans",
+    "assignments",
+    "absences",
+    "artist_plans",
+    "artist_plan_entries",
+    "rehearsal_plans",
+    "rehearsals",
+    "rehearsal_people",
+    "person_memory_overrides",
+    "employee_skills",
+    "employee_memory",
+    "employee_statistics",
+    "plan_audit_log",
+    "recommendation_history",
+)
+
+
+def truncate_all_tables(conn) -> None:
+    """Leert alle Fachtabellen (nur für Testinfrastruktur und Migrationstool).
+
+    Nutzt bewusst pgsql.Identifier statt String-Interpolation, obwohl die Namen
+    aus einer Konstante stammen.
+    """
+    statement = pgsql.SQL("TRUNCATE TABLE {} RESTART IDENTITY CASCADE").format(
+        pgsql.SQL(", ").join(
+            pgsql.Identifier(table) for table in TABLES_IN_DEPENDENCY_ORDER
+        )
+    )
+    conn.execute(statement)
 
 # --- Auth-Sprint: app_users (Supabase-Auth-Benutzer -> Rolle + Person) ---------
 #
@@ -963,7 +997,7 @@ def get_app_user(conn, user_id):
     """Genau die Zeile zu einer Auth-UUID - oder None."""
     return conn.execute(
         "SELECT user_id, person_id, role, is_active, created_at, updated_at "
-        "FROM app_users WHERE user_id = ?",
+        "FROM app_users WHERE user_id = %s",
         (normalize_user_id(user_id),),
     ).fetchone()
 
@@ -985,7 +1019,7 @@ def get_app_user_detail(conn, user_id):
         "SELECT a.user_id, a.person_id, a.role, a.is_active, a.created_at, a.updated_at, "
         "       p.name AS person_name "
         "FROM app_users a LEFT JOIN people p ON p.id = a.person_id "
-        "WHERE a.user_id = ?",
+        "WHERE a.user_id = %s",
         (normalize_user_id(user_id),),
     ).fetchone()
 
@@ -994,7 +1028,7 @@ def count_app_users(conn, role: str | None = None) -> int:
     if role is None:
         row = conn.execute("SELECT COUNT(*) AS n FROM app_users").fetchone()
     else:
-        row = conn.execute("SELECT COUNT(*) AS n FROM app_users WHERE role = ?", (role,)).fetchone()
+        row = conn.execute("SELECT COUNT(*) AS n FROM app_users WHERE role = %s", (role,)).fetchone()
     return int(row["n"])
 
 
@@ -1002,7 +1036,7 @@ def create_app_user(conn, user_id, role: str, person_id: int | None = None, is_a
     """Legt eine neue Zuordnung an. Schlägt fehl, wenn sie bereits existiert -
     bewusst kein stilles Überschreiben einer bestehenden Rolle."""
     conn.execute(
-        "INSERT INTO app_users (user_id, person_id, role, is_active) VALUES (?, ?, ?, ?)",
+        "INSERT INTO app_users (user_id, person_id, role, is_active) VALUES (%s, %s, %s, %s)",
         (normalize_user_id(user_id), person_id, role, 1 if is_active else 0),
     )
 
@@ -1024,15 +1058,15 @@ def update_app_user(
     fields = []
     values: list = []
     if role is not None:
-        fields.append("role = ?")
+        fields.append("role = %s")
         values.append(role)
     if clear_person:
         fields.append("person_id = NULL")
     elif person_id is not None:
-        fields.append("person_id = ?")
+        fields.append("person_id = %s")
         values.append(person_id)
     if is_active is not None:
-        fields.append("is_active = ?")
+        fields.append("is_active = %s")
         values.append(1 if is_active else 0)
     if not fields:
         return get_app_user(conn, user_id) is not None
@@ -1040,7 +1074,7 @@ def update_app_user(
     fields.append("updated_at = CURRENT_TIMESTAMP")
     values.append(normalize_user_id(user_id))
     cursor = conn.execute(
-        f"UPDATE app_users SET {', '.join(fields)} WHERE user_id = ?",
+        f"UPDATE app_users SET {', '.join(fields)} WHERE user_id = %s",
         values,
     )
     return cursor.rowcount > 0
@@ -1050,6 +1084,6 @@ def delete_app_user(conn, user_id) -> bool:
     """Entfernt nur die Planner-Zuordnung. Der Supabase-Auth-Benutzer selbst
     bleibt unberührt - der wird in Supabase verwaltet, nicht hier."""
     cursor = conn.execute(
-        "DELETE FROM app_users WHERE user_id = ?", (normalize_user_id(user_id),)
+        "DELETE FROM app_users WHERE user_id = %s", (normalize_user_id(user_id),)
     )
     return cursor.rowcount > 0

@@ -9,6 +9,8 @@ import json
 from collections import Counter
 from datetime import date, timedelta
 
+from psycopg import sql as pgsql
+
 from .. import memory, planning_rules, stats
 
 SKILL_DEFINITIONS = {
@@ -22,11 +24,21 @@ SKILL_DEFINITIONS = {
 }
 
 
+#: Quelltabellen des Statistik-Fingerabdrucks. Feste Liste, kein Nutzereingabewert -
+#: wird trotzdem über psycopg.sql.Identifier eingesetzt statt per f-String, damit hier
+#: gar kein Weg für String-Interpolation in SQL offen bleibt.
+_SOURCE_VERSION_TABLES = (
+    "week_plans", "assignments", "absences", "rehearsals", "rehearsal_people",
+)
+
+
 def _source_version(conn) -> str:
     parts = []
-    for table in ("week_plans", "assignments", "absences", "rehearsals", "rehearsal_people"):
+    for table in _SOURCE_VERSION_TABLES:
         row = conn.execute(
-            f"SELECT COUNT(*) AS count, COALESCE(MAX(id), 0) AS max_id FROM {table}"
+            pgsql.SQL(
+                "SELECT COUNT(*) AS count, COALESCE(MAX(id), 0) AS max_id FROM {}"
+            ).format(pgsql.Identifier(table))
         ).fetchone()
         parts.append(f"{table}:{row['count']}:{row['max_id']}")
     return "|".join(parts)
@@ -75,7 +87,7 @@ def _level_for_count(count: int) -> int:
 def _manual_skills(conn, person_id: int) -> list[dict]:
     rows = conn.execute(
         """SELECT skill_id, name, level, source, evidence_json, updated_at
-           FROM employee_skills WHERE person_id = ? ORDER BY name""",
+           FROM employee_skills WHERE person_id = %s ORDER BY name""",
         (person_id,),
     ).fetchall()
     result = []
@@ -144,28 +156,28 @@ def _current_week_statistics(conn, person: dict, current_week_start: str) -> dic
     current = _empty_current_week()
     current_end = (date.fromisoformat(current_week_start) + timedelta(days=6)).isoformat()
     latest_week = conn.execute(
-        "SELECT id FROM week_plans WHERE start_date = ? ORDER BY id DESC LIMIT 1",
+        "SELECT id FROM week_plans WHERE start_date = %s ORDER BY id DESC LIMIT 1",
         (current_week_start,),
     ).fetchone()
     if latest_week:
         rows = conn.execute(
             """SELECT date, category, subcategory FROM assignments
-               WHERE person_id = ? AND week_plan_id = ?""",
+               WHERE person_id = %s AND week_plan_id = %s""",
             (person["id"], latest_week["id"]),
         ).fetchall()
         absence_rows = conn.execute(
-            "SELECT date FROM absences WHERE person_id = ? AND week_plan_id = ?",
+            "SELECT date FROM absences WHERE person_id = %s AND week_plan_id = %s",
             (person["id"], latest_week["id"]),
         ).fetchall()
     else:
         rows = conn.execute(
             """SELECT date, category, subcategory FROM assignments
-               WHERE person_id = ? AND date BETWEEN ? AND ?""",
+               WHERE person_id = %s AND date BETWEEN %s AND %s""",
             (person["id"], current_week_start, current_end),
         ).fetchall()
         absence_rows = conn.execute(
             """SELECT date FROM absences
-               WHERE person_id = ? AND date BETWEEN ? AND ?""",
+               WHERE person_id = %s AND date BETWEEN %s AND %s""",
             (person["id"], current_week_start, current_end),
         ).fetchall()
     current["assignments"] = len(rows)
@@ -185,12 +197,17 @@ def _current_week_statistics(conn, person: dict, current_week_start: str) -> dic
         if any(interval[0] < other[1] and other[0] < interval[1] for other in existing):
             current["conflicts"] += 1
         existing.append(interval)
+    # planner_nocase() ersetzt SQLites COLLATE NOCASE 1:1 (nur ASCII wird gefaltet,
+    # siehe backend/migrations/001_initial_postgres.sql). Funktionale Indizes auf
+    # planner_nocase(person_name)/planner_nocase(raw_name) machen daraus einen
+    # Indexzugriff statt des vollen Scans, den SQLite hier gemacht hat.
     show_rows = conn.execute(
         """SELECT DISTINCT r.date, r.show_code, r.activity
            FROM rehearsal_people rp
            JOIN rehearsals r ON r.id = rp.rehearsal_id
-           WHERE (rp.person_name = ? COLLATE NOCASE OR rp.raw_name = ? COLLATE NOCASE)
-             AND r.date BETWEEN ? AND ?""",
+           WHERE (planner_nocase(rp.person_name) = planner_nocase(%s)
+                  OR planner_nocase(rp.raw_name) = planner_nocase(%s))
+             AND r.date BETWEEN %s AND %s""",
         (person["name"], person["name"], current_week_start, current_end),
     ).fetchall()
     current["shows"] = len({
@@ -216,7 +233,7 @@ def calculate_employee_statistics(
     nie ein zusätzlicher build_memory()-Aufruf. `memory_data=None` (Standard)
     entspricht exakt dem bisherigen Verhalten."""
     person_row = conn.execute(
-        "SELECT id, name, department, active FROM people WHERE id = ? AND deleted = 0",
+        "SELECT id, name, department, active FROM people WHERE id = %s AND deleted = 0",
         (person_id,),
     ).fetchone()
     if person_row is None:
@@ -226,7 +243,7 @@ def calculate_employee_statistics(
 
     if use_cache:
         cached = conn.execute(
-            "SELECT data_version, payload_json FROM employee_statistics WHERE person_id = ?",
+            "SELECT data_version, payload_json FROM employee_statistics WHERE person_id = %s",
             (person_id,),
         ).fetchone()
         if cached and cached["data_version"] == version:
@@ -245,20 +262,21 @@ def calculate_employee_statistics(
                SELECT start_date, MAX(id) AS latest_id
                FROM week_plans GROUP BY start_date
            ) latest ON latest.latest_id = wp.id
-           ORDER BY wp.start_date DESC LIMIT ?""",
+           ORDER BY wp.start_date DESC LIMIT %s""",
         (weeks,),
     ).fetchall()
     week_ids = [row["id"] for row in week_rows]
     assignments = []
     if week_ids:
-        placeholders = ",".join("?" for _ in week_ids)
+        # = ANY(%s) statt einer zur Laufzeit zusammengebauten IN-(?,?,...)-Liste:
+        # ein einziger Parameter, kein SQL-String-Bau.
         assignments = conn.execute(
-            f"""SELECT a.date, a.category, a.subcategory, wp.start_date
-                FROM assignments a
-                JOIN week_plans wp ON wp.id = a.week_plan_id
-                WHERE a.person_id = ? AND a.week_plan_id IN ({placeholders})
-                ORDER BY a.date""",
-            (person_id, *week_ids),
+            """SELECT a.date, a.category, a.subcategory, wp.start_date
+               FROM assignments a
+               JOIN week_plans wp ON wp.id = a.week_plan_id
+               WHERE a.person_id = %s AND a.week_plan_id = ANY(%s)
+               ORDER BY a.date""",
+            (person_id, week_ids),
         ).fetchall()
 
     category_counts: Counter[str] = Counter()
@@ -350,11 +368,11 @@ def calculate_employee_statistics(
         }
         conn.execute(
             """INSERT INTO employee_statistics(person_id, data_version, payload_json)
-               VALUES (?, ?, ?)
+               VALUES (%s, %s, %s)
                ON CONFLICT(person_id) DO UPDATE SET
                    data_version = excluded.data_version,
                    payload_json = excluded.payload_json,
-                   calculated_at = CURRENT_TIMESTAMP""",
+                   calculated_at = planner_now_text()""",
             (person_id, version, json.dumps(cache_payload, ensure_ascii=False)),
         )
         conn.commit()
@@ -373,24 +391,24 @@ def upsert_skill(
         raise ValueError("Skill-Level muss zwischen 1 und 5 liegen.")
     conn.execute(
         """INSERT INTO employee_skills(person_id, skill_id, name, level, source, evidence_json)
-           VALUES (?, ?, ?, ?, 'manual', ?)
+           VALUES (%s, %s, %s, %s, 'manual', %s)
            ON CONFLICT(person_id, skill_id) DO UPDATE SET
                name = excluded.name,
                level = excluded.level,
                source = 'manual',
                evidence_json = excluded.evidence_json,
-               updated_at = CURRENT_TIMESTAMP""",
+               updated_at = planner_now_text()""",
         (person_id, skill_id.strip(), name.strip(), level, json.dumps(evidence or [], ensure_ascii=False)),
     )
-    conn.execute("DELETE FROM employee_statistics WHERE person_id = ?", (person_id,))
+    conn.execute("DELETE FROM employee_statistics WHERE person_id = %s", (person_id,))
     conn.commit()
     return calculate_employee_statistics(conn, person_id, use_cache=False)
 
 
 def delete_skill(conn, person_id: int, skill_id: str) -> None:
     conn.execute(
-        "DELETE FROM employee_skills WHERE person_id = ? AND skill_id = ?",
+        "DELETE FROM employee_skills WHERE person_id = %s AND skill_id = %s",
         (person_id, skill_id),
     )
-    conn.execute("DELETE FROM employee_statistics WHERE person_id = ?", (person_id,))
+    conn.execute("DELETE FROM employee_statistics WHERE person_id = %s", (person_id,))
     conn.commit()

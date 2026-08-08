@@ -22,32 +22,39 @@ from backend.routers import plans
 def _conn(tmp_path, monkeypatch, filename: str):
     """AP4-Konvention: get_conn() legt kein Schema mehr an, deshalb hier einmalig
     explizit initialize_database() aufrufen."""
-    monkeypatch.setattr(db, "DATABASE_PATH", tmp_path / filename)
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
-    db.initialize_database()
     return db.get_conn()
 
 
 def _count_lookup_statements(conn, fn, *args, **kwargs):
     """Führt fn(*args, **kwargs) aus und zählt dabei ausschließlich Alias-/
     Personennamen-Lookup-Statements (SELECT gegen people_aliases/people) -
-    keine feste Prüfung auf die absolute Gesamtzahl aller SQL-Statements."""
+    keine feste Prüfung auf die absolute Gesamtzahl aller SQL-Statements.
+
+    Gezählt wird durch temporäres Umhängen von `Connection.execute`. Vorher lief
+    das über SQLites `set_trace_callback()`; psycopg hat keinen vergleichbaren
+    verbindungsweiten Hook, und `backend.db.Connection` ist eine normale
+    Python-Klasse, deren `execute` sich sauber umschließen lässt. Gezählt wird
+    exakt dasselbe wie zuvor: die tatsächlich abgesetzten SELECTs.
+    """
     counts = {"alias": 0, "name": 0}
+    original_execute = conn.execute
 
-    def trace(sql: str) -> None:
-        upper = sql.strip().upper()
-        if not upper.startswith("SELECT"):
-            return
-        if "PEOPLE_ALIASES" in upper:
-            counts["alias"] += 1
-        elif "FROM PEOPLE" in upper and ("WHERE NAME" in upper or "WHERE ID" in upper):
-            counts["name"] += 1
+    def counting_execute(query, params=None):
+        upper = str(query).strip().upper()
+        if upper.startswith("SELECT"):
+            if "PEOPLE_ALIASES" in upper:
+                counts["alias"] += 1
+            elif "FROM PEOPLE" in upper and (
+                "WHERE PLANNER_NOCASE(NAME)" in upper or "WHERE ID" in upper
+            ):
+                counts["name"] += 1
+        return original_execute(query, params)
 
-    conn.set_trace_callback(trace)
+    conn.execute = counting_execute
     try:
         result = fn(*args, **kwargs)
     finally:
-        conn.set_trace_callback(None)
+        del conn.execute
     return result, counts
 
 

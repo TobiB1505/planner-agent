@@ -3,43 +3,50 @@
 Bestandsaufnahme der Anwendung **vor** der Einführung von Authentifizierung
 und Rollen. Grundlage für jede Einstufung in `ROLE_MATRIX.md`.
 
-Stand: Branch-Basis `claude/supabase-auth-rbac-i5tnsx` (Merge-Commit
-`b97f544`).
+Stand der Bestandsaufnahme: Branch-Basis `b97f544`. Zum Zeitpunkt des
+Sprint-Abschlusses wurde zusätzlich der inzwischen gemergte PostgreSQL-Stand
+(`origin/main`, PR #21) eingearbeitet - siehe Abschnitt 1.
 
-## 1. Abweichung von der Sprint-Annahme: die Datenbank
+## 1. Die Datenbank: parallel laufende Migration
 
 Der Sprint-Auftrag geht davon aus, dass die operative Datenbank bereits von
-SQLite auf Supabase PostgreSQL migriert ist und ein
-PostgreSQL-Migrationssystem existiert. **Im vorliegenden Repository-Stand
-ist das nicht der Fall.** Belege:
+SQLite auf Supabase PostgreSQL migriert ist. Beim Start dieses Sprints war
+das im Repository **noch nicht** der Fall - der Branch-Punkt `b97f544` war
+durchgehend SQLite:
 
-- `backend/db.py` beginnt mit `"""SQLite storage for extracted Dienstpläne."""`
-  und arbeitet durchgehend mit `sqlite3` (`sqlite3.connect`, `sqlite3.Row`,
-  `PRAGMA journal_mode=WAL`, `busy_timeout`).
-- Das Schema entsteht als ein `CREATE TABLE IF NOT EXISTS`-Skript
-  (`db.SCHEMA`) plus additiver Spaltenprüfungen (`db._migrate()`), ausgeführt
-  einmalig beim App-Start (`api.py`, Lifespan).
-- Kein Alembic, keine versionierten SQL-Migrationen, kein
-  `psycopg`/`asyncpg` in `backend/requirements.txt`.
-- Alle Router typisieren ihre Verbindung als `sqlite3.Connection`.
-- Die Dokumentation nennt die PostgreSQL-Migration ausdrücklich als offenen
-  Punkt (`docs/deployment/ARCHITECTURE.md`: "Eine PostgreSQL-Migration ist
-  bewusst **nicht** Teil dieses Sprints";
-  `docs/release/DEPLOYMENT_HANDOFF.md`).
+- `backend/db.py` begann mit `"""SQLite storage for extracted Dienstpläne."""`
+  und arbeitete mit `sqlite3` (`sqlite3.connect`, `sqlite3.Row`,
+  `PRAGMA journal_mode=WAL`).
+- Das Schema entstand als ein `CREATE TABLE IF NOT EXISTS`-Skript
+  (`db.SCHEMA`) plus additiver Spaltenprüfungen (`db._migrate()`).
+- Kein Alembic, keine versionierten SQL-Migrationen, kein `psycopg` in
+  `backend/requirements.txt`.
+- Alle Router typisierten ihre Verbindung als `sqlite3.Connection`.
 
-**Konsequenz für diesen Sprint** (getroffene Annahme, nicht stillschweigend
-umgangen):
+**Was tatsächlich passiert ist:** die Migration lief parallel in einem
+eigenen Branch und wurde während dieses Sprints als PR #21
+(`refactor(db): migrate planner persistence from sqlite to postgres`) nach
+`main` gemergt. Der Auth-Sprint wurde daraufhin auf diesen Stand gehoben
+(`git merge origin/main`) und vollständig darauf portiert:
 
-- `app_users` entsteht dort, wo das Schema tatsächlich entsteht - im
-  bestehenden Mechanismus in `backend/db.py`. Damit ist die Tabelle sofort
-  wirksam, ohne ein zweites, paralleles Migrationssystem einzuführen (das
-  wäre eine Architekturentscheidung weit über einen Auth-Sprint hinaus).
-- Zusätzlich liegt die PostgreSQL-Fassung als eigenständig ausführbare
-  Migration bereit: `backend/migrations/0001_app_users.sql` (echter
-  `uuid`-Typ, FK auf `auth.users`, `updated_at`-Trigger, RLS aktiviert).
-  Sie ist bei der Migration des Gesamtprojekts die maßgebliche Definition.
-- Alles andere in diesem Sprint - Token-Verifikation, Rollen, Dependencies,
-  Frontend - ist von der Frage SQLite/PostgreSQL unabhängig.
+- `app_users` ist jetzt eine **versionierte Migration** im bereits
+  vorhandenen Runner: `backend/migrations/002_app_users.sql`. Kein zweites,
+  paralleles Migrationssystem - die Tabelle folgt exakt den Konventionen von
+  `001_initial_postgres.sql` (boolesche Flags als INTEGER, Zeitstempel als
+  TEXT über `planner_now_text()`, IDs als BIGINT), damit sich kein
+  Antwortformat ändert.
+- Alle Auth-Abfragen nutzen `%s`-Platzhalter und `db.Connection` statt
+  `sqlite3`; die Integritätsfehler kommen aus `psycopg.errors`.
+- Die Auth-Testinfrastruktur läuft über das isolierte Testschema pro Test
+  (`conftest._isolated_schema`) statt über eine temporäre SQLite-Datei.
+- `app_users` steht bewusst **nicht** in `TABLES_IN_DEPENDENCY_ORDER`: diese
+  Liste speist das einmalige SQLite-Übernahmetool, und dort hat eine Tabelle
+  nichts zu suchen, die es in SQLite nie gab. Beim Leeren wird sie über
+  `TRUNCATE ... CASCADE` trotzdem zuverlässig erfasst.
+
+Bemerkenswert: die Token-Verifikation, das Rollenmodell, die Dependencies und
+das gesamte Frontend waren von dieser Frage unberührt - portiert werden
+mussten ausschliesslich die knapp 100 Zeilen Datenzugriff.
 
 ## 2. Architektur (vorher)
 
@@ -51,7 +58,7 @@ Next.js 16 (App Router, Vercel)   ← rewrite /api/:path* → BACKEND_INTERNAL_U
   ▼
 FastAPI (Render/Container)
   ▼
-SQLite (local_data/database/dienstplaene.db)
+SQLite (local_data/database/dienstplaene.db)   ← inzwischen PostgreSQL, siehe Abschnitt 1
 ```
 
 - **Keine Authentifizierung an irgendeiner Stelle.** Kein Login, keine
@@ -153,11 +160,14 @@ Keine Tabelle enthielt Benutzer, Rollen oder Zugangsdaten.
 
 ## 5. Bestand an Tests (vorher)
 
-259 Backend-Tests, 100 Frontend-Tests, beide grün. Relevante Eigenheiten
-für die Auth-Einführung:
+Bei Sprint-Beginn 259 Backend-Tests, 100 Frontend-Tests, beide grün; nach
+dem Merge des PostgreSQL-Stands 417 Backend-Tests. Relevante Eigenheiten für
+die Auth-Einführung:
 
-- `backend/tests/conftest.py` enthält eine autouse-Fixture, die **jeden**
-  Zugriff auf die echte lokale Datenbank verhindert. Bleibt unangetastet.
+- `backend/tests/conftest.py` enthält autouse-Fixtures, die jeden Test
+  isolieren und einen Zugriff auf eine Produktionsdatenbank verhindern
+  (nach dem Merge: ein eigenes PostgreSQL-Schema pro Test). Beides bleibt
+  unangetastet - die Auth-Fixtures kommen additiv dazu.
 - Drei Testdateien starten einen **echten Backend-Prozess** und sprechen ihn
   über HTTP an (`test_preview_mode_smoke.py`,
   `test_preview_persistence.py`, `test_uvicorn_real_concurrency.py`). Für
@@ -168,10 +178,12 @@ für die Auth-Einführung:
 - Drei Tests in `test_async_imports.py` benutzten `?api_key=test-key`.
   Durch das Entfernen des Parameters setzen sie den Key jetzt als
   Umgebungsvariable.
-- CI läuft auf **Python 3.9** (`.github/workflows/ci.yml`), lokal ist 3.11
-  installiert. Der neue Code hält sich deshalb an 3.9-taugliche Syntax
-  (`Optional[...]` statt `X | Y` in allem, was zur Laufzeit ausgewertet
-  wird; `from __future__ import annotations` überall).
+- CI lief bei Sprint-Beginn auf **Python 3.9**; der PostgreSQL-Merge hat sie
+  auf 3.11 gehoben und eine `postgres:16`-Servicedatenbank ergänzt. Der
+  Auth-Code hält sich trotzdem an die konservativere Schreibweise
+  (`Optional[...]` statt `X | Y` in allem, was zur Laufzeit ausgewertet wird;
+  `from __future__ import annotations` überall) - sie kostet nichts und
+  bleibt auf beiden Versionen gültig.
 
 ## 6. Was der Sprint daraus gemacht hat
 
@@ -184,3 +196,4 @@ für die Auth-Einführung:
 | Systemneustart ohne Prüfung (2 Wege) | beide Wege ADMIN-pflichtig |
 | Navigation für alle gleich | rollenabhängig, plus eigener Mitarbeiterbereich |
 | kein Frontend-Routing-Schutz | `proxy.ts` + serverseitige Prüfung im Layout |
+| 417 Backend-Tests (nach PostgreSQL-Merge) | 437 Backend-Tests, davon 66 zu Auth/RBAC |

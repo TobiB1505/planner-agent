@@ -13,7 +13,6 @@ Employee-Ansicht, obwohl sie nur gelesen werden.
 """
 from __future__ import annotations
 
-import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -28,17 +27,17 @@ router = APIRouter(dependencies=[Depends(require_planner)])
 
 
 @router.get("/api/dashboard/overview")
-def dashboard_overview(conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def dashboard_overview(conn: db.Connection = Depends(db.get_db_connection)):
     return clean(stats.overview_stats(conn))
 
 
 @router.get("/api/dashboard/person-totals")
-def dashboard_person_totals(conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def dashboard_person_totals(conn: db.Connection = Depends(db.get_db_connection)):
     return records(stats.person_totals(conn))
 
 
 @router.get("/api/dashboard/category-matrix")
-def dashboard_category_matrix(conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def dashboard_category_matrix(conn: db.Connection = Depends(db.get_db_connection)):
     matrix = stats.person_category_matrix(conn)
     if matrix.empty:
         return {"columns": [], "rows": []}
@@ -50,12 +49,12 @@ def dashboard_category_matrix(conn: sqlite3.Connection = Depends(db.get_db_conne
 
 
 @router.get("/api/dashboard/department-activity")
-def dashboard_department_activity(conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def dashboard_department_activity(conn: db.Connection = Depends(db.get_db_connection)):
     return records(stats.department_activity(conn))
 
 
 @router.get("/api/dashboard/fairness-alerts")
-def dashboard_fairness_alerts(week_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def dashboard_fairness_alerts(week_id: int, conn: db.Connection = Depends(db.get_db_connection)):
     return stats.fairness_alerts(conn, week_id)
 
 
@@ -65,7 +64,7 @@ def planning_rule_list():
 
 
 @router.get("/api/dashboard/insights")
-def dashboard_insights(week_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def dashboard_insights(week_id: int, conn: db.Connection = Depends(db.get_db_connection)):
     try:
         return clean({
             **stats.week_insights(conn, week_id),

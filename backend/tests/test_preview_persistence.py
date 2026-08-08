@@ -1,13 +1,23 @@
-"""Deployment-Smoke-Test (Sprint 2: Preview-Deployment, Schritt 7).
+"""Deployment-Smoke-Test: Daten überleben einen Neustart des Backends.
 
 Simuliert lokal, was gegen die echte Render-Instanz nicht ausgeführt werden
 konnte (kein Netzwerkzugriff auf api.render.com aus der Sandbox, siehe
 docs/deployment/PREVIEW_DEPLOYMENT.md): Backend starten, eine synthetische
 Person über die API anlegen, den Prozess beenden (wie bei einem
-Render-Redeploy) und mit DEMSELBEN PLANNER_DATA_DIR neu starten - die
-Person muss danach weiterhin lesbar sein. Prüft zusätzlich, dass Backup-
-Erstellung auf dieselbe persistente Disk schreibt und temporäre
-Excel-Exportdateien nicht auf der Disk liegen bleiben.
+Render-Redeploy) und neu starten - die Person muss danach weiterhin lesbar
+sein.
+
+Seit der PostgreSQL-Migration prüft dieser Test eine STÄRKERE Aussage als
+vorher (Sprint-Punkt 31): der zweite Prozess startet mit einem KOMPLETT
+ANDEREN, frischen PLANNER_DATA_DIR. Früher wäre der Test damit
+fehlgeschlagen - die Daten lagen in der SQLite-Datei unter diesem Ordner.
+Dass er jetzt trotzdem grün ist, ist genau der Nachweis, dass die operative
+Datenhaltung nicht mehr an einer persistenten Render-Disk hängt, sondern
+ausschließlich an DATABASE_URL.
+
+Der zweite Test dokumentiert den verbliebenen Datei-Restpunkt: Excel-Exporte
+laufen weiterhin über tempfile und dürfen nichts auf der Disk liegen lassen
+(siehe docs/database/POSTGRES_STORAGE_GAPS.md).
 """
 from __future__ import annotations
 
@@ -101,11 +111,14 @@ def _get_json(url: str) -> object:
         return json.loads(resp.read())
 
 
-def test_synthetic_person_survives_a_backend_restart_with_the_same_data_dir(tmp_path):
-    """Entspricht Schritt 7 des Preview-Sprints: Person anlegen, lesen,
-    Prozess beenden+neu starten (== Render-Redeploy derselben Version),
-    erneut lesen - Daten müssen erhalten bleiben, weil sie auf der
-    "persistenten Disk" (hier: tmp_path) liegen, nicht im Prozessspeicher."""
+def test_synthetic_person_survives_a_backend_restart_with_a_fresh_data_dir(tmp_path):
+    """Person anlegen, lesen, Prozess beenden + neu starten (== Render-Redeploy),
+    erneut lesen - Daten müssen erhalten bleiben.
+
+    Der Neustart bekommt bewusst ein LEERES, neues PLANNER_DATA_DIR: nur wenn
+    die Daten das überleben, ist bewiesen, dass sie in PostgreSQL liegen und
+    nicht auf einer Disk, die ein Redeploy verlieren kann.
+    """
     data_dir = tmp_path / "data"
     log_path = tmp_path / "backend.log"
 
@@ -115,9 +128,7 @@ def test_synthetic_person_survives_a_backend_restart_with_the_same_data_dir(tmp_
     try:
         _wait_until_healthy(base_url_a, proc, log_path)
         # Erst nach dem Start existiert das Schema in der Preview-DB.
-        auth_helpers.seed_app_user(
-            data_dir / "database" / "dienstplaene.db", auth_helpers.PLANNER_UUID, "planner"
-        )
+        auth_helpers.seed_app_user(auth_helpers.PLANNER_UUID, "planner")
 
         # Preview-DB ist leer.
         assert _get_json(f"{base_url_a}/api/team") == []
@@ -132,11 +143,11 @@ def test_synthetic_person_survives_a_backend_restart_with_the_same_data_dir(tmp_
     finally:
         _stop_backend(proc)
 
-    # "Render-Redeploy derselben Version": neuer Prozess, identisches
-    # PLANNER_DATA_DIR, neuer Port (wie bei einem echten Redeploy, bei dem
-    # der alte Prozess/Port nicht mehr existiert).
+    # "Render-Redeploy": neuer Prozess, FRISCHES (leeres) PLANNER_DATA_DIR,
+    # neuer Port - wie bei einem Deployment ohne persistente Disk.
+    fresh_data_dir = tmp_path / "data-after-redeploy"
     port_b = _free_port()
-    proc2 = _start_backend(data_dir, log_path, port_b)
+    proc2 = _start_backend(fresh_data_dir, log_path, port_b)
     base_url_b = f"http://127.0.0.1:{port_b}"
     try:
         _wait_until_healthy(base_url_b, proc2, log_path)
@@ -148,15 +159,28 @@ def test_synthetic_person_survives_a_backend_restart_with_the_same_data_dir(tmp_
     finally:
         _stop_backend(proc2)
 
-    assert (data_dir / "database" / "dienstplaene.db").exists()
+    # Es darf ausdrücklich KEINE Datenbankdatei mehr entstanden sein - weder im
+    # ursprünglichen noch im frischen Datenordner.
+    assert list(data_dir.rglob("*.db")) == []
+    assert list(fresh_data_dir.rglob("*.db")) == []
 
 
-def test_backup_lands_on_the_persistent_disk_and_export_tempfiles_do_not(tmp_path):
-    """Schritt 7, letzter Teil: Backup-Dateien liegen auf der persistenten
-    Disk (PLANNER_DATA_DIR), Excel-Export-Zwischendateien dagegen NICHT
-    (siehe docs/deployment/STORAGE_INVENTORY.md - Exporte laufen über
-    tempfile.mkstemp() + sofortigem Unlink nach Auslieferung, nie über
-    EXPORT_DIR)."""
+def test_no_database_file_is_written_and_export_tempfiles_do_not_linger(tmp_path):
+    """Der Datenordner enthält nach normalem Betrieb keine Datenbankdatei mehr.
+
+    Vorher prüfte dieser Test, dass `python -m backend.backup` eine
+    SQLite-Sicherung auf der persistenten Disk ablegt. Dieses Backup existiert
+    bewusst nicht mehr als produktiver Mechanismus (siehe backend/backup.py:
+    als deprecated markiert, und docs/database/POSTGRES_BACKUP.md für die
+    gültige Strategie). Was hier stattdessen nachweisbar und relevant ist:
+
+      1. der laufende Betrieb legt keine Datenbankdatei mehr an,
+      2. das deprecated Backup-Skript tut nicht so, als hätte es die operative
+         Datenbank gesichert, sondern scheitert sichtbar und mit klarer Meldung,
+      3. Excel-Export-Zwischendateien bleiben nicht liegen (unverändert -
+         Exporte laufen über tempfile.mkstemp() + sofortigem Unlink nach
+         Auslieferung, nie über EXPORT_DIR).
+    """
     data_dir = tmp_path / "data"
     log_path = tmp_path / "backend.log"
     port = _free_port()
@@ -165,12 +189,14 @@ def test_backup_lands_on_the_persistent_disk_and_export_tempfiles_do_not(tmp_pat
     base_url = f"http://127.0.0.1:{port}"
     try:
         _wait_until_healthy(base_url, proc, log_path)
-        auth_helpers.seed_app_user(
-            data_dir / "database" / "dienstplaene.db", auth_helpers.PLANNER_UUID, "planner"
-        )
+        auth_helpers.seed_app_user(auth_helpers.PLANNER_UUID, "planner")
         _post_json(f"{base_url}/api/team", {"name": "Backup Testperson", "department": "QA"})
     finally:
         _stop_backend(proc)
+
+    assert list(data_dir.rglob("*.db")) == [], (
+        "Der Betrieb darf keine Datenbankdatei mehr auf der Disk anlegen"
+    )
 
     env = os.environ.copy()
     env["PLANNER_DATA_DIR"] = str(data_dir)
@@ -182,14 +208,18 @@ def test_backup_lands_on_the_persistent_disk_and_export_tempfiles_do_not(tmp_pat
         text=True,
         timeout=30,
     )
-    assert result.returncode == 0, result.stdout + result.stderr
+    output = result.stdout + result.stderr
+    assert result.returncode != 0, (
+        "Das deprecated SQLite-Backup darf keinen Erfolg melden, wenn es gar "
+        f"keine SQLite-Datei mehr gibt:\n{output}"
+    )
+    assert "POSTGRES_BACKUP.md" in output, (
+        f"Die Meldung muss auf die gültige Backup-Strategie verweisen:\n{output}"
+    )
+    assert list((data_dir / "backups").glob("*.db")) == []
 
-    backups = list((data_dir / "backups").glob("*.db"))
-    assert len(backups) == 1, "Backup wurde nicht auf der persistenten Disk abgelegt"
-
-    # exports/ ist provisioniert, aber aktuell ungenutzt (siehe
-    # STORAGE_INVENTORY.md) - es dürfen keine liegen gebliebenen
-    # Export-Zwischendateien darin existieren.
+    # exports/ ist provisioniert, aber aktuell ungenutzt - es dürfen keine
+    # liegen gebliebenen Export-Zwischendateien darin existieren.
     exports_dir = data_dir / "exports"
     if exports_dir.exists():
         assert list(exports_dir.glob("*")) == []

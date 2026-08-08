@@ -1,21 +1,25 @@
-"""Tests für SQLite-Thread-Sicherheit unter echter Nebenläufigkeit (Safety Fix).
+"""Thread-Sicherheit der Request-Connections unter echter Nebenläufigkeit.
 
-Reproduziert und verifiziert die Behebung eines echten Fehlers: FastAPI
-wickelt einen sync-generator-basierten Dependency wie
-`Depends(db.get_db_connection)` über `contextmanager_in_threadpool` in bis zu
-drei separaten `anyio.to_thread.run_sync(...)`-Aufrufen ab (Dependency-Enter,
-Endpunkt-Body, Dependency-Exit). Unter echter Parallelität (mehrere Requests
-konkurrieren um denselben kleinen Worker-Pool) landen diese drei Schritte
-nicht zuverlässig im selben OS-Thread. Vor dem Fix
-(`check_same_thread=False` in `db.create_connection()`) führte das
-reproduzierbar zu
-`sqlite3.ProgrammingError: SQLite objects created in a thread can only be
-used in that same thread`, sobald mehrere echte parallele Requests
-(TestClient aus mehreren Python-Threads angesprochen, nicht nur sequenziell)
-denselben `Depends(db.get_db_connection)`-Pfad durchliefen.
+Vorgeschichte (SQLite): FastAPI wickelt einen sync-generator-basierten
+Dependency wie `Depends(db.get_db_connection)` über
+`contextmanager_in_threadpool` in bis zu drei separaten
+`anyio.to_thread.run_sync(...)`-Aufrufen ab (Dependency-Enter, Endpunkt-Body,
+Dependency-Exit). Unter echter Parallelität landen diese drei Schritte nicht
+zuverlässig im selben OS-Thread. sqlite3 verbot den bloßen Thread-Wechsel und
+warf `SQLite objects created in a thread can only be used in that same
+thread`; behoben wurde das damals mit `check_same_thread=False`.
 
-Immer gegen eine isolierte Testdatenbank (`test_db_path`/`test_conn` aus
-conftest.py) - nie gegen die echte lokale Datenbank.
+Mit psycopg gibt es diese Einschränkung nicht mehr - eine Verbindung darf den
+Thread wechseln, solange sie nicht gleichzeitig von zweien benutzt wird (genau
+das garantiert der Ablauf oben). Diese Tests bleiben trotzdem bestehen und
+wurden nicht gelöscht: sie sichern weiterhin ab, was fachlich zählt und was
+sich beim Wechsel auf einen Connection Pool sogar neu verschieben könnte -
+dass jeder Request genau eine eigene Verbindung bekommt, dass jede davon
+zuverlässig freigegeben wird und dass parallele Bursts stabil bleiben, statt
+den Pool leerlaufen zu lassen.
+
+Immer gegen ein isoliertes PostgreSQL-Testschema (autouse-Fixture in
+conftest.py) - nie gegen eine echte Planungsdatenbank.
 """
 from __future__ import annotations
 
@@ -27,7 +31,7 @@ from backend import api, db
 
 
 class ConnectionCloseSpy:
-    """Dünner Wrapper um eine echte sqlite3.Connection, der nur das Schließen
+    """Dünner Wrapper um eine echte db.Connection, der nur das Schließen
     beobachtbar macht - kein Mock der Fachlogik, alle echten Aufrufe gehen
     unverändert an die reale Verbindung weiter (Muster wie in
     test_connection_lifecycle.py)."""
@@ -113,9 +117,11 @@ def test_parallel_read_requests_close_every_connection(test_db_path, monkeypatch
 
 
 def test_save_and_read_parallelism_does_not_error_or_deadlock(test_db_path):
-    """Ein Schreibzugriff (Plan speichern) parallel zu mehreren Lesezugriffen -
-    kein SQLITE_BUSY dank WAL+busy_timeout (AP3), keine Thread-Fehler (Safety
-    Fix)."""
+    """Ein Schreibzugriff (Plan speichern) parallel zu mehreren Lesezugriffen.
+
+    Unter SQLite war hier SQLITE_BUSY das Risiko (abgefangen über WAL +
+    busy_timeout). Unter PostgreSQL ist es die Poolgröße: mehr gleichzeitige
+    Requests als Poolplätze dürfen warten, aber nicht scheitern."""
     payload = {
         "start_date": "2026-08-10",
         "end_date": "2026-08-16",
@@ -147,8 +153,8 @@ def test_save_and_read_parallelism_does_not_error_or_deadlock(test_db_path):
 def test_repeated_parallel_bursts_stay_stable(test_db_path):
     """Mehrere aufeinanderfolgende Bursts echter paralleler Requests - stellt
     sicher, dass sich über mehrere Bursts hinweg kein Zustand aufbaut (z.B.
-    nicht geschlossene Connections), der irgendwann SQLITE_BUSY oder
-    Thread-Fehler auslöst."""
+    nicht zurückgegebene Pool-Verbindungen), der irgendwann zu Wartezeiten
+    bis zum Pool-Timeout oder zu Fehlern führt."""
     with TestClient(api.app) as client:
         for burst in range(3):
             results, errors = _run_concurrent(

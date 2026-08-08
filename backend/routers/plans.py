@@ -22,7 +22,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
-import sqlite3
 
 from .. import artist_plan
 from .. import assignment
@@ -46,7 +45,7 @@ router = APIRouter(dependencies=[Depends(require_planner)])
 # ---------- Weeks / Archiv ----------
 
 @router.get("/api/weeks")
-def get_weeks(conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def get_weeks(conn: db.Connection = Depends(db.get_db_connection)):
     weeks = db.get_week_plans(conn)
     result = []
     for w in weeks:
@@ -63,14 +62,14 @@ def get_weeks(conn: sqlite3.Connection = Depends(db.get_db_connection)):
 
 
 @router.get("/api/weeks/{week_id}")
-def get_week_detail(week_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def get_week_detail(week_id: int, conn: db.Connection = Depends(db.get_db_connection)):
     assignments = [dict(a) for a in db.get_assignments_for_week(conn, week_id)]
     absences = [dict(a) for a in db.get_absences_for_week(conn, week_id)]
     return {"assignments": clean(assignments), "absences": clean(absences)}
 
 
 @router.delete("/api/weeks/{week_id}")
-def delete_week(week_id: int, conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def delete_week(week_id: int, conn: db.Connection = Depends(db.get_db_connection)):
     db.delete_week_plan(conn, week_id)
     conn.commit()
     return {"ok": True}
@@ -93,7 +92,7 @@ class FreeSuggestionRequest(BaseModel):
 @router.post("/api/plan/free-suggestion")
 def plan_free_suggestion(
     payload: FreeSuggestionRequest,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     return clean(memory.suggest_free_days(
         conn,
@@ -131,7 +130,7 @@ def _rotation_week_id(conn, template_code: str | None, explicit_week_id: int | N
 
 
 @router.get("/api/plan/templates")
-def plan_template_list(conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def plan_template_list(conn: db.Connection = Depends(db.get_db_connection)):
     try:
         return plan_templates.public_templates(conn)
     except (FileNotFoundError, ValueError) as exc:
@@ -170,7 +169,7 @@ def _archived_assignment_for_grid(row: dict) -> dict:
 
 
 def _build_shared_plan_fields(
-    conn: sqlite3.Connection,
+    conn: db.Connection,
     *,
     week_dates_iso: list[str],
     grid_rows: list[dict],
@@ -249,7 +248,7 @@ def _build_shared_plan_fields(
 @router.get("/api/plan/existing")
 def plan_existing(
     start_date: str,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     """Lädt einen bereits archivierten/fertig hochgeladenen Dienstplan in den Editor."""
     try:
@@ -264,7 +263,7 @@ def plan_existing(
                   (SELECT COUNT(*) FROM absences ab
                    WHERE ab.week_plan_id = wp.id) AS absence_count
            FROM week_plans wp
-           WHERE wp.start_date = ?
+           WHERE wp.start_date = %s
            ORDER BY wp.id DESC
            LIMIT 1""",
         (start_date,),
@@ -369,7 +368,7 @@ def plan_existing(
 @router.post("/api/plan/generate")
 def plan_generate(
     payload: PlanGenerateRequest,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     new_start = datetime.strptime(payload.new_start, "%Y-%m-%d").date()
     absent_by_date: dict[str, set[str]] = {}
@@ -618,7 +617,7 @@ def _assignment_warnings(
 @router.post("/api/plan/save")
 def plan_save(
     payload: PlanSaveRequest,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     day_iso_by_label = {
         lbl: iso for lbl, iso in zip(payload.day_labels, _week_dates(payload.start_date))
@@ -639,7 +638,7 @@ def plan_save(
         # bei einem sehr schnellen zweiten Klick oder nach einem Teil-Reload),
         # darf dadurch kein zweiter Dienstplan für dasselbe Startdatum entstehen.
         existing_for_start = conn.execute(
-            "SELECT id FROM week_plans WHERE start_date = ? ORDER BY id DESC LIMIT 1",
+            "SELECT id FROM week_plans WHERE start_date = %s ORDER BY id DESC LIMIT 1",
             (payload.start_date,),
         ).fetchone()
         if existing_for_start is not None:
@@ -647,16 +646,16 @@ def plan_save(
 
     if existing_week_id is not None:
         existing = conn.execute(
-            "SELECT id, start_date FROM week_plans WHERE id = ?",
+            "SELECT id, start_date FROM week_plans WHERE id = %s",
             (existing_week_id,),
         ).fetchone()
         if existing is None or existing["start_date"] != payload.start_date:
             raise HTTPException(404, "Der zu bearbeitende Archivplan wurde nicht gefunden.")
         week_plan_id = existing_week_id
-        conn.execute("DELETE FROM assignments WHERE week_plan_id = ?", (week_plan_id,))
-        conn.execute("DELETE FROM absences WHERE week_plan_id = ?", (week_plan_id,))
+        conn.execute("DELETE FROM assignments WHERE week_plan_id = %s", (week_plan_id,))
+        conn.execute("DELETE FROM absences WHERE week_plan_id = %s", (week_plan_id,))
         conn.execute(
-            "UPDATE week_plans SET end_date = ? WHERE id = ?",
+            "UPDATE week_plans SET end_date = %s WHERE id = %s",
             (payload.end_date, week_plan_id),
         )
     else:
@@ -688,7 +687,7 @@ def plan_save(
         """SELECT wp.*,
                   (SELECT COUNT(*) FROM assignments a WHERE a.week_plan_id = wp.id) AS assignment_count,
                   (SELECT COUNT(*) FROM absences ab WHERE ab.week_plan_id = wp.id) AS absence_count
-           FROM week_plans wp WHERE wp.id = ?""",
+           FROM week_plans wp WHERE wp.id = %s""",
         (week_plan_id,),
     ).fetchone()
     kw = week_row["kw"] or datetime.strptime(
@@ -746,7 +745,7 @@ class XlsxGenerateRequest(BaseModel):
 @router.post("/api/xlsx/generate")
 def xlsx_generate(
     payload: XlsxGenerateRequest,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     try:
         spec = plan_templates.get_template(conn, payload.template_code)

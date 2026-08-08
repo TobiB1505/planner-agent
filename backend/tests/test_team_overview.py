@@ -7,9 +7,6 @@ from backend.intelligence import team_overview
 def test_team_overview_is_derived_from_history_and_marks_cold_start(tmp_path, monkeypatch):
     # AP4: get_conn() legt das Schema nicht mehr implizit an - deshalb hier
     # einmalig explizit initialize_database() aufrufen (siehe backend/db.py).
-    monkeypatch.setattr(db, "DATABASE_PATH", tmp_path / "team-overview.db")
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
-    db.initialize_database()
     conn = db.get_conn()
     experienced_id = db.create_person(conn, "Tobi", "Manager")
     new_id = db.create_person(conn, "Dylana", "T&C")

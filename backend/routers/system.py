@@ -20,8 +20,8 @@ Auth-Sprint: der einzige Router mit einem bewusst öffentlichen Endpunkt.
 """
 from __future__ import annotations
 
+import logging
 import os
-import sqlite3
 import sys
 import threading
 import time
@@ -30,12 +30,16 @@ from typing import Optional
 
 import shutil
 
+import psycopg
 from fastapi import APIRouter, Depends
 
 from .. import db
+from .. import migrations as db_migrations
 from ..auth import require_admin
 from ..config import paths as config_paths
 from .shared import _cors_origins
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 _PROCESS_STARTED_AT = time.monotonic()
@@ -64,9 +68,30 @@ def _templates_present() -> bool:
     )
 
 
+def _database_label() -> str:
+    """Menschenlesbare Kennzeichnung der Datenbank OHNE Zugangsdaten.
+
+    Ersetzt den früheren Dateipfad im `database_path`-Feld. Die DATABASE_URL
+    enthält Benutzername und Passwort - hier wird deshalb ausschließlich
+    Host/Port/Datenbankname zusammengesetzt und niemals die rohe URL.
+    """
+    try:
+        raw = db.database_url()
+    except db.DatabaseNotConfigured:
+        return "nicht konfiguriert"
+    try:
+        info = psycopg.conninfo.conninfo_to_dict(raw)
+    except psycopg.Error:
+        return "postgresql"
+    host = info.get("host") or "?"
+    port = info.get("port") or "5432"
+    name = info.get("dbname") or "?"
+    return f"postgresql://{host}:{port}/{name}"
+
+
 @router.get("/api/health")
 def health():
-    """Reiner Lesezugriff - verändert nie Daten, legt auch keine Datenbank an.
+    """Reiner Lesezugriff - verändert nie Daten, legt auch kein Schema an.
 
     Für Deployment-Plattformen nutzbar (Liveness/Readiness): prüft neben der
     Datenbank auch, ob die Excel-Grundvorlagen vorhanden und das
@@ -75,22 +100,24 @@ def health():
     vorbehalten, siehe dort). Enthält nie Secrets, volle interne Serverpfade,
     API-Keys oder Stacktraces.
 
-    Safety Fix: liest db.DATABASE_PATH statt config_paths.DATABASE_PATH, damit
-    dieser Endpunkt in Tests denselben Monkeypatch-Mechanismus respektiert wie
-    jede andere DB-Nutzung (Depends(db.get_db_connection) etc.) - in Produktion
-    identischer Wert, da db.DATABASE_PATH von dort importiert wird.
+    Die Antwortstruktur ist gegenüber der SQLite-Version unverändert (gleiche
+    Felder, gleiche Statuswerte) - nur die Bedeutung von `database_path` ist
+    jetzt eine Host/Datenbank-Kennung statt eines Dateipfads, weil es keine
+    Datenbankdatei mehr gibt. `missing` bedeutet jetzt "DATABASE_URL nicht
+    konfiguriert" statt "Datei existiert nicht".
     """
     database_status = "missing"
-    if db.DATABASE_PATH.exists():
+    try:
+        conn = db.create_connection()
         try:
-            conn = sqlite3.connect(str(db.DATABASE_PATH))
-            try:
-                conn.execute("SELECT 1")
-                database_status = "connected"
-            finally:
-                conn.close()
-        except sqlite3.Error:
-            database_status = "error"
+            conn.execute("SELECT 1")
+            database_status = "connected"
+        finally:
+            conn.close()
+    except db.DatabaseNotConfigured:
+        database_status = "missing"
+    except (psycopg.Error, OSError):
+        database_status = "error"
 
     templates_ok = _templates_present()
     data_dir_writable = _is_writable(config_paths.LOCAL_DATA_DIR)
@@ -99,7 +126,7 @@ def health():
     return {
         "status": "ok" if healthy else "degraded",
         "database": database_status,
-        "database_path": config_paths.relative_to_project(db.DATABASE_PATH),
+        "database_path": _database_label(),
         "templates_ok": templates_ok,
         "data_dir_writable": data_dir_writable,
     }
@@ -120,23 +147,36 @@ def system_diagnostics():
     als Konsolenausgabe. Verändert nichts, legt nichts an (bis auf eine
     sofort wieder gelöschte Prüfdatei je Ordner, um "beschreibbar" zu testen).
 
-    Safety Fix: liest db.DATABASE_PATH statt config_paths.DATABASE_PATH (siehe
-    health() oben) - in Produktion identischer Wert.
+    PostgreSQL hat kein Äquivalent zu SQLites `PRAGMA integrity_check` - eine
+    Prüfsumme über die Datendatei ergibt bei einem verwalteten Serverdienst
+    keinen Sinn und wäre aus dem Anwendungsprozess heraus auch gar nicht
+    aufrufbar. Das Feld `integrity_check` bleibt deshalb im Antwortvertrag
+    erhalten (das Frontend zeigt es an), meldet jetzt aber den Zustand, den ein
+    Client hier tatsächlich prüfen kann: erreichbare Verbindung + angewendete
+    Schemaversion. Der Wert "ok" hat unverändert die Bedeutung "Datenbank in
+    Ordnung".
     """
-    database_exists = db.DATABASE_PATH.exists()
     integrity: Optional[str] = None
     database_status = "missing"
-    if database_exists:
+    try:
+        conn = db.create_connection()
         try:
-            conn = sqlite3.connect(str(db.DATABASE_PATH))
-            try:
-                integrity = conn.execute("PRAGMA integrity_check;").fetchone()[0]
-                database_status = "connected" if integrity == "ok" else "error"
-            finally:
-                conn.close()
-        except sqlite3.Error as exc:
-            database_status = "error"
-            integrity = str(exc)
+            conn.execute("SELECT 1")
+            version = db_migrations.current_version(conn)
+            if version is None:
+                database_status = "error"
+                integrity = "Schema nicht migriert (schema_migrations ist leer)"
+            else:
+                database_status = "connected"
+                integrity = "ok"
+        finally:
+            conn.close()
+    except db.DatabaseNotConfigured as exc:
+        database_status = "missing"
+        integrity = str(exc)
+    except (psycopg.Error, OSError) as exc:
+        database_status = "error"
+        integrity = str(exc)
 
     templates = [
         {"name": name, "filename": path.name, "exists": path.exists()}
@@ -160,7 +200,9 @@ def system_diagnostics():
         "database": {
             "status": database_status,
             "integrity_check": integrity,
-            "path": config_paths.relative_to_project(db.DATABASE_PATH),
+            # Früher der Dateipfad der SQLite-Datei. Es gibt keine Datei mehr;
+            # hier steht jetzt Host/Port/Datenbankname - nie Zugangsdaten.
+            "path": _database_label(),
         },
         "templates": templates,
         "directories": directories,

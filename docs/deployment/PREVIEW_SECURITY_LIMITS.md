@@ -1,5 +1,13 @@
 # Preview-Sicherheitsgrenzen
 
+> **Hinweis (PostgreSQL-Migration, August 2026):** Dieses Dokument beschreibt
+> den Stand VOR der Migration der operativen Datenbank von SQLite auf
+> PostgreSQL. Die Aussagen zu SQLite, zur persistenten Disk und zum
+> Einzel-Instanz-Betrieb sind dadurch überholt. Aktueller Stand:
+> `docs/database/POSTGRES_MIGRATION_AUDIT.md`,
+> `docs/database/POSTGRES_STORAGE_GAPS.md` und
+> `docs/database/SUPABASE_SETUP.md`.
+
 Diese Preview-Umgebung ist eine **zeitlich begrenzte technische
 Testumgebung**, kein produktionsreifes System. Dieses Dokument fasst
 zusammen, warum, und was vor einer echten Production-Freigabe fehlt. Siehe

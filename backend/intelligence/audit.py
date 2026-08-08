@@ -50,7 +50,7 @@ def record_events(
         """INSERT INTO plan_audit_log
                (week_plan_id, start_date, user_name, event_type, cause, cell_key,
                 previous_value, new_value, metadata_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         [
             (
                 week_plan_id,
@@ -85,14 +85,14 @@ def record_plan_saved(conn, *, week_plan_id: int, start_date: str, assignments: 
 def list_events(conn, *, week_plan_id: int | None = None, start_date: str | None = None, limit: int = 100) -> list[dict]:
     if week_plan_id is not None:
         rows = conn.execute(
-            """SELECT * FROM plan_audit_log WHERE week_plan_id = ?
-               ORDER BY id DESC LIMIT ?""",
+            """SELECT * FROM plan_audit_log WHERE week_plan_id = %s
+               ORDER BY id DESC LIMIT %s""",
             (week_plan_id, limit),
         ).fetchall()
     elif start_date:
         rows = conn.execute(
-            """SELECT * FROM plan_audit_log WHERE start_date = ?
-               ORDER BY id DESC LIMIT ?""",
+            """SELECT * FROM plan_audit_log WHERE start_date = %s
+               ORDER BY id DESC LIMIT %s""",
             (start_date, limit),
         ).fetchall()
     else:

@@ -9,7 +9,6 @@ Aufrufer im Frontend ist die Systemseite, die ohnehin ADMIN ist.
 """
 from __future__ import annotations
 
-import sqlite3
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -21,7 +20,7 @@ router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 @router.get("/api/settings/{key}")
-def get_setting(key: str, conn: sqlite3.Connection = Depends(db.get_db_connection)):
+def get_setting(key: str, conn: db.Connection = Depends(db.get_db_connection)):
     return {"value": db.get_setting(conn, key)}
 
 
@@ -33,7 +32,7 @@ class SettingValue(BaseModel):
 def set_setting(
     key: str,
     payload: SettingValue,
-    conn: sqlite3.Connection = Depends(db.get_db_connection),
+    conn: db.Connection = Depends(db.get_db_connection),
 ):
     db.set_setting(conn, key, payload.value)
     conn.commit()

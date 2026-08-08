@@ -7,8 +7,7 @@ entsteht (Aufgabe 7).
 """
 from __future__ import annotations
 
-import sqlite3
-
+import psycopg
 import pytest
 
 from backend import db
@@ -23,7 +22,12 @@ EMPLOYEE_UUID = "33333333-3333-4333-8333-333333333333"
 
 def test_app_users_never_stores_credentials(test_conn):
     """Aufgabe 7: Passwörter gehören ausschliesslich zu Supabase Auth."""
-    columns = {row[1].lower() for row in test_conn.execute("PRAGMA table_info(app_users)")}
+    rows = test_conn.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = 'app_users' AND table_schema = current_schema()"
+    ).fetchall()
+    columns = {row["column_name"].lower() for row in rows}
+
     for forbidden in ("password", "password_hash", "salt", "reset_token", "token"):
         assert forbidden not in columns
 
@@ -37,14 +41,14 @@ def test_only_the_three_roles_are_accepted(test_conn):
     db.create_app_user(test_conn, EMPLOYEE_UUID, "employee", person_id=person_id)
     test_conn.commit()
 
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(psycopg.errors.IntegrityError):
         db.create_app_user(test_conn, "44444444-4444-4444-8444-444444444444", "superadmin")
 
 
 def test_employee_requires_a_person(test_conn):
     """Ohne Person gäbe es für einen Mitarbeiter kein "mein Dienstplan" -
     das Schema lässt diesen Zustand deshalb gar nicht erst zu."""
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(psycopg.errors.IntegrityError):
         db.create_app_user(test_conn, EMPLOYEE_UUID, "employee", person_id=None)
 
 
@@ -63,7 +67,7 @@ def test_a_person_can_only_belong_to_one_account(test_conn):
     db.create_app_user(test_conn, EMPLOYEE_UUID, "employee", person_id=person_id)
     test_conn.commit()
 
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(psycopg.errors.IntegrityError):
         db.create_app_user(test_conn, PLANNER_UUID, "planner", person_id=person_id)
 
 

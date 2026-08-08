@@ -23,7 +23,7 @@ FastAPI (Render)
 CurrentUser(user_id, role, person_id, email)
     │
     ▼
-PostgreSQL / SQLite
+PostgreSQL
 ```
 
 Der entscheidende Satz dazu: **die Sicherheitsgrenze verläuft in FastAPI.**
@@ -172,8 +172,10 @@ FastAPI.
 
 ## Datenmodell
 
-Siehe `backend/migrations/0001_app_users.sql` (PostgreSQL) und den
-`app_users`-Block in `backend/db.py` (aktuelles SQLite-Schema).
+Definiert in der versionierten Migration `backend/migrations/002_app_users.sql`
+(Konventionen wie in `001_initial_postgres.sql`: boolesche Flags als INTEGER,
+Zeitstempel als TEXT über `planner_now_text()` - damit sich kein
+Antwortformat ändert).
 
 ```
 auth.users (Supabase)

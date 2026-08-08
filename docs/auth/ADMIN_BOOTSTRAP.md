@@ -22,8 +22,9 @@ Ein Benutzer in Supabase (**Authentication → Users → Add user**, mit
 
 ## Ausführen
 
-Im Projektstamm, mit derselben Umgebung, mit der auch das Backend läuft
-(insbesondere `PLANNER_DATA_DIR` bzw. die Datenbankverbindung):
+Im Projektstamm, mit derselben Umgebung, mit der auch das Backend läuft -
+entscheidend ist `DATABASE_URL`, denn das Skript schreibt in genau die
+Datenbank, gegen die auch die Anwendung läuft:
 
 ```bash
 python -m backend.scripts.create_admin --user-id <UID>

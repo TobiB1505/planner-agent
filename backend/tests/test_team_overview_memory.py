@@ -24,9 +24,6 @@ from backend.intelligence import employee_stats, memory_engine, team_overview
 def _conn(tmp_path, monkeypatch, filename: str):
     """AP4-Konvention: get_conn() legt kein Schema mehr an, deshalb hier einmalig
     explizit initialize_database() aufrufen."""
-    monkeypatch.setattr(db, "DATABASE_PATH", tmp_path / filename)
-    monkeypatch.setattr(db, "ensure_runtime_directories", lambda: None)
-    db.initialize_database()
     return db.get_conn()
 
 
@@ -157,6 +154,12 @@ def test_team_overview_propagates_person_errors_like_before(tmp_path, monkeypatc
 def test_memory_build_calls_do_not_grow_with_person_count(tmp_path, monkeypatch):
     def measure(n_people: int, filename: str) -> int:
         conn = _conn(tmp_path, monkeypatch, filename)
+        # Beide Messungen laufen im selben isolierten Testschema (früher: zwei
+        # getrennte SQLite-Dateien). Vor jeder Messung leeren, damit die zweite
+        # nicht auf den Personen der ersten aufsetzt - gemessen wird weiterhin
+        # ausschließlich, ob build_memory() mit der Personenzahl skaliert.
+        db.truncate_all_tables(conn)
+        conn.commit()
         ids = _make_people(conn, n_people)
         for person_id in ids:
             _add_history(conn, person_id)
