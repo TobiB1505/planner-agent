@@ -35,8 +35,11 @@ def test_schema_migrations_table_records_the_applied_version(test_conn):
     nachgewiesen werden kann und muss: das Schema stammt aus einer
     nachvollziehbaren, versionierten Migration und ist vollständig angewendet.
     """
-    version = migrations_module.current_version(test_conn)
-    assert version == "001"
+    # Bewusst gegen die zuletzt vorhandene Migration statt gegen eine feste
+    # Nummer: sonst müsste dieser Test bei jeder neuen Migration angefasst
+    # werden, und genau dann prüft er nichts mehr.
+    latest = migrations_module.discover_migrations()[-1].version
+    assert migrations_module.current_version(test_conn) == latest
     assert migrations_module.pending_migrations(test_conn) == []
 
 

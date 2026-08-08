@@ -1,0 +1,184 @@
+/* Auth-Sprint: Login-Seite und Mitarbeiterbereich.
+   -------------------------------------------------------------------------
+   Ausschliesslich bestehende Design-Tokens (--surface, --border, --muted,
+   --space-*, --radius-*, --font-size-*). Keine neuen Farben, keine eigene
+   Typografie - die beiden neuen Oberflächen sollen aussehen, als hätten sie
+   immer zur Anwendung gehört. */
+
+/* ---------- Login ---------- */
+
+/* Kein Sidebar-Rahmen: die Seite füllt die volle Fläche und zentriert die
+   Karte. app-main--bare hebt die Standard-Innenabstände der Hauptfläche auf. */
+.app-main--bare {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.login-page {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  padding: var(--space-8);
+}
+
+.login-intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.login-brand {
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.login-brand em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.login-title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 680;
+}
+
+.login-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---------- Mitarbeiterbereich ---------- */
+
+.employee-sidebar .sidebar-nav {
+  gap: 2px;
+}
+
+/* Noch nicht gebaute Bereiche: sichtbar, aber klar als "kommt noch"
+   erkennbar - kein Link, der ins Leere führt. */
+.sidebar-link.is-upcoming {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.sidebar-link.is-upcoming:hover {
+  background: transparent;
+}
+
+.sidebar-link-hint {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 1px 6px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.sidebar-account {
+  margin-top: auto;
+  padding-top: var(--space-2);
+}
+
+/* Der Abmelden-Eintrag ist ein <button>, sieht aber aus wie ein
+   Navigationslink - deshalb nur die Browser-Standards zurücksetzen. */
+.sidebar-link--action {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.sidebar-link--action:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.employee-home {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 900px;
+}
+
+.employee-home-header h1 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-2xl);
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+
+.employee-home-header p {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--muted);
+  font-size: var(--font-size-md);
+  line-height: 1.55;
+}
+
+.employee-home-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.employee-home-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5);
+}
+
+.employee-home-card h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 660;
+}
+
+.employee-home-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.employee-home-badge {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 2px 8px;
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+  font-weight: 620;
+}
+
+.employee-home-note {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+}

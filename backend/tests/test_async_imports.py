@@ -48,6 +48,9 @@ def test_health_responds_quickly_during_slow_pdf_import(tmp_path, monkeypatch):
     dass ein paralleler /api/health-Request währenddessen zeitnah antwortet -
     der Beweis, dass upload_pdf den Event-Loop nicht mehr blockiert."""
     _init_db(tmp_path, monkeypatch, "responsiveness.db")
+    # Auth-Sprint: der Gemini-Key kommt nur noch aus der Umgebung -
+    # der frühere Query-Parameter ?api_key= wurde entfernt.
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
 
     def slow_extract(content, api_key=None):
         time.sleep(0.4)
@@ -67,7 +70,6 @@ def test_health_responds_quickly_during_slow_pdf_import(tmp_path, monkeypatch):
             start = time.perf_counter()
             resp = client.post(
                 "/api/upload/pdf",
-                params={"api_key": "test-key"},
                 files={"file": ("plan.pdf", b"%PDF-1.4 fake", "application/pdf")},
             )
             results["import_status"] = resp.status_code
@@ -150,6 +152,9 @@ def test_health_responds_quickly_during_slow_xlsx_upload(tmp_path, monkeypatch):
 
 def test_pdf_import_success_returns_mocked_extraction(tmp_path, monkeypatch):
     _init_db(tmp_path, monkeypatch, "pdf-success.db")
+    # Auth-Sprint: der Gemini-Key kommt nur noch aus der Umgebung -
+    # der frühere Query-Parameter ?api_key= wurde entfernt.
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     expected = {
         "kw": 32, "start_date": "2026-08-03", "end_date": "2026-08-09",
         "assignments": [
@@ -162,7 +167,7 @@ def test_pdf_import_success_returns_mocked_extraction(tmp_path, monkeypatch):
 
     with TestClient(api.app) as client:
         resp = client.post(
-            "/api/upload/pdf", params={"api_key": "test-key"},
+            "/api/upload/pdf",
             files={"file": ("plan.pdf", b"%PDF-1.4 fake", "application/pdf")},
         )
     assert resp.status_code == 200
@@ -184,6 +189,9 @@ def test_pdf_import_missing_api_key_returns_400(tmp_path, monkeypatch):
 
 def test_pdf_import_extraction_error_returns_500(tmp_path, monkeypatch):
     _init_db(tmp_path, monkeypatch, "pdf-error.db")
+    # Auth-Sprint: der Gemini-Key kommt nur noch aus der Umgebung -
+    # der frühere Query-Parameter ?api_key= wurde entfernt.
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
 
     def raising_extract(content, api_key=None):
         raise RuntimeError("Gemini nicht erreichbar")
@@ -192,7 +200,7 @@ def test_pdf_import_extraction_error_returns_500(tmp_path, monkeypatch):
 
     with TestClient(api.app) as client:
         resp = client.post(
-            "/api/upload/pdf", params={"api_key": "test-key"},
+            "/api/upload/pdf",
             files={"file": ("plan.pdf", b"%PDF-1.4 fake", "application/pdf")},
         )
     assert resp.status_code == 500

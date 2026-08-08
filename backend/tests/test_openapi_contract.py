@@ -17,6 +17,24 @@ keine Datenbankdatei und kein `PRAGMA integrity_check` mehr). Genau diese
 Ausnahme lässt der Sprint zu ("Ausnahme nur für bewusst dokumentierte
 technische Health-/Diagnoseinformation"); die Feldnamen und Typen der
 Antworten sind unverändert.
+
+Auth-Sprint (nachgelagert): dieser Snapshot bleibt die Referenz, bekommt aber
+eine zweite, ebenfalls bewusst dokumentierte Ausnahmemenge. Die Einführung von
+Authentifizierung ändert den API-Vertrag an genau drei Stellen, und nur an
+diesen:
+
+  1. drei NEUE Endpunkte (ACCEPTED_NEW_PATHS) - kein bestehender ist
+     verschwunden oder umbenannt,
+  2. der Query-Parameter `api_key` an POST /api/upload/pdf ist ERSATZLOS
+     ENTFALLEN (ACCEPTED_PARAMETER_CHANGES) - ein Secret gehört nicht in eine
+     URL, siehe docs/auth/AUTH_ARCHITECTURE.md,
+  3. jede Operation ausser GET /api/health trägt jetzt das Security-Schema
+     `SupabaseAccessToken`.
+
+Alles andere - Pfade, Methoden, Request Bodies, Response-Formen, Parameter,
+Komponenten - muss weiterhin bitgleich sein. Genau das prüfen die Tests unten,
+und Punkt 3 wird zusätzlich in test_auth_endpoint_matrix.py vollständig
+abgesichert.
 """
 from __future__ import annotations
 
@@ -46,13 +64,50 @@ ACCEPTED_PROSE_CHANGES: dict[str, str] = {
         "`integrity_check` meldet stattdessen Erreichbarkeit + Migrationsstand. "
         "Antwortstruktur unverändert."
     ),
+    "/api/upload/pdf": (
+        "Auth-Sprint: der Docstring erklärt jetzt, dass der Query-Parameter "
+        "`api_key` entfallen ist und der Gemini-Key ausschliesslich aus der "
+        "Server-Umgebung kommt. Request Body und Antwort unverändert."
+    ),
 }
+
+#: Auth-Sprint: bewusst NEU hinzugekommene Endpunkte. Rein additiv - kein
+#: bestehender Endpunkt wurde entfernt, umbenannt oder in seiner Form geändert.
+ACCEPTED_NEW_PATHS: dict[str, str] = {
+    "/api/auth/me": "Liefert Rolle und Personenzuordnung des angemeldeten Benutzers.",
+    "/api/admin/app-users": "Minimale Kontenverwaltung (ADMIN): auflisten und freischalten.",
+    "/api/admin/app-users/{user_id}": "Minimale Kontenverwaltung (ADMIN): ändern und entfernen.",
+}
+
+#: Die Request-Modelle der neuen Admin-Endpunkte.
+ACCEPTED_NEW_SCHEMAS = {"AppUserCreate", "AppUserUpdate"}
+
+#: Auth-Sprint: die einzige bewusste Vertragsänderung an einem BESTEHENDEN
+#: Endpunkt. Ein Secret im Query-String landet in Browser-Historie,
+#: Referer-Headern und Access-Logs - dagegen hilft keine Rollenprüfung.
+ACCEPTED_PARAMETER_CHANGES: dict[str, str] = {
+    "/api/upload/pdf": (
+        "Query-Parameter `api_key` ersatzlos entfernt; der Gemini-Key kommt "
+        "nur noch aus der serverseitigen Umgebungsvariable GEMINI_API_KEY."
+    ),
+}
+
+
+#: Felder, die vom Strukturvergleich ausgenommen sind: `description` ist reine
+#: Prosa (separat geprüft), `security` ist die dokumentierte, rein additive
+#: Ergänzung des Auth-Sprints (vollständig geprüft in
+#: test_auth_endpoint_matrix.py).
+_IGNORED_OPERATION_KEYS = ("description", "security")
 
 
 def _without_prose(operations: dict) -> dict:
     """Entfernt reine Dokumentationstexte, behält alles Vertragsrelevante."""
     return {
-        method: {key: value for key, value in operation.items() if key != "description"}
+        method: {
+            key: value
+            for key, value in operation.items()
+            if key not in _IGNORED_OPERATION_KEYS
+        }
         for method, operation in operations.items()
     }
 
@@ -71,7 +126,7 @@ def after() -> dict:
 
 def test_paths_are_unchanged(before, after):
     missing = sorted(set(before["paths"]) - set(after["paths"]))
-    added = sorted(set(after["paths"]) - set(before["paths"]))
+    added = sorted(set(after["paths"]) - set(before["paths"]) - set(ACCEPTED_NEW_PATHS))
     assert missing == [], f"Endpunkte sind verschwunden: {missing}"
     assert added == [], f"Unerwartete neue Endpunkte: {added}"
 
@@ -112,6 +167,8 @@ def test_parameters_are_unchanged(before, after):
     differences = []
     for path, operations in before["paths"].items():
         for method, operation in operations.items():
+            if path in ACCEPTED_PARAMETER_CHANGES:
+                continue
             expected = operation.get("parameters", [])
             actual = after["paths"][path][method].get("parameters", [])
             if expected != actual:
@@ -124,7 +181,7 @@ def test_component_schemas_are_unchanged(before, after):
     after_schemas = after.get("components", {}).get("schemas", {})
 
     missing = sorted(set(before_schemas) - set(after_schemas))
-    added = sorted(set(after_schemas) - set(before_schemas))
+    added = sorted(set(after_schemas) - set(before_schemas) - ACCEPTED_NEW_SCHEMAS)
     assert missing == [], f"Schemas sind verschwunden: {missing}"
     assert added == [], f"Unerwartete neue Schemas: {added}"
 
@@ -138,8 +195,16 @@ def test_everything_except_documented_prose_is_bit_identical(before, after):
     Fängt auch Änderungen ab, die die Einzeltests oben nicht adressieren
     (operationId, tags, summary, ...). Hier darf es keinerlei Abweichung geben.
     """
-    stripped_before = {p: _without_prose(ops) for p, ops in before["paths"].items()}
-    stripped_after = {p: _without_prose(ops) for p, ops in after["paths"].items()}
+    stripped_before = {
+        p: _without_prose(ops)
+        for p, ops in before["paths"].items()
+        if p not in ACCEPTED_PARAMETER_CHANGES
+    }
+    stripped_after = {
+        p: _without_prose(ops)
+        for p, ops in after["paths"].items()
+        if p not in ACCEPTED_NEW_PATHS and p not in ACCEPTED_PARAMETER_CHANGES
+    }
     assert stripped_before == stripped_after
 
 

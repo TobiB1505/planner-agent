@@ -1,4 +1,12 @@
-"""AP11 - Settings-Endpunkte (Move-Only aus backend/api.py, unverändert)."""
+"""AP11 - Settings-Endpunkte (Move-Only aus backend/api.py, unverändert).
+
+Auth-Sprint: ADMIN - für beide Richtungen. Das ist ein generischer
+Schlüssel/Wert-Speicher: der Aufrufer bestimmt den Schlüssel, nicht der
+Server. Ein Leserecht "nur für harmlose Schlüssel" gibt es hier technisch
+nicht, und in der Tabelle stehen unter anderem Vorlagenpfade
+(template_*_source_path, siehe backend/plan_templates.py). Der einzige
+Aufrufer im Frontend ist die Systemseite, die ohnehin ADMIN ist.
+"""
 from __future__ import annotations
 
 
@@ -6,8 +14,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from .. import db
+from ..auth import require_admin
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 @router.get("/api/settings/{key}")

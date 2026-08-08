@@ -30,6 +30,8 @@ from pathlib import Path
 
 import pytest
 
+from . import auth_helpers
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -66,6 +68,10 @@ def running_backend(tmp_path):
     env["PLANNER_DATA_DIR"] = str(tmp_path)
     env["BACKEND_HOST"] = "127.0.0.1"
     env["BACKEND_PORT"] = str(port)
+    # Auth-Sprint: der Prozess prüft echte Tokens (HS256). Der Test spricht
+    # /api/people/active an, das PLANNER verlangt - deshalb bekommt der
+    # Prozess eine echte Auth-Konfiguration statt einer Ausnahme.
+    auth_helpers.apply_auth_env(env)
 
     # Log-Ausgabe geht in eine echte Datei, NICHT in eine subprocess.PIPE: unter
     # dem Bug hier produziert jeder fehlgeschlagene Request einen vollen
@@ -98,6 +104,9 @@ def running_backend(tmp_path):
         log_file.close()
         raise RuntimeError(f"Backend-Start fehlgeschlagen:\n{log_path.read_text()}")
 
+    # Erst jetzt existiert das Schema (der Prozess legt es beim Start an).
+    auth_helpers.seed_app_user(auth_helpers.PLANNER_UUID, "planner")
+
     yield base_url
 
     proc.terminate()
@@ -110,8 +119,10 @@ def running_backend(tmp_path):
 
 
 def _get(url: str) -> tuple[int, str]:
+    token = auth_helpers.make_token(auth_helpers.PLANNER_UUID)
+    request = urllib.request.Request(url, headers=auth_helpers.bearer(token))
     try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
+        with urllib.request.urlopen(request, timeout=10) as resp:
             return resp.status, resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read().decode("utf-8", errors="replace")

@@ -31,6 +31,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from . import auth_helpers
+
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -68,6 +70,8 @@ def _start_backend(data_dir: Path, log_path: Path, port: int) -> subprocess.Pope
     env["BACKEND_HOST"] = "127.0.0.1"
     env["BACKEND_PORT"] = str(port)
     env.pop("PORT", None)
+    # Auth-Sprint: /api/team ist PLANNER - der Prozess prüft echte Tokens.
+    auth_helpers.apply_auth_env(env)
 
     log_file = open(log_path, "a")
     proc = subprocess.Popen(
@@ -89,15 +93,21 @@ def _stop_backend(proc: subprocess.Popen) -> None:
         proc.wait(timeout=5)
 
 
+def _auth_headers() -> dict:
+    return auth_helpers.bearer(auth_helpers.make_token(auth_helpers.PLANNER_UUID))
+
+
 def _post_json(url: str, payload: dict) -> dict:
     body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+    headers = {"Content-Type": "application/json", **_auth_headers()}
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     with urllib.request.urlopen(req, timeout=5) as resp:
         return json.loads(resp.read())
 
 
 def _get_json(url: str) -> object:
-    with urllib.request.urlopen(url, timeout=5) as resp:
+    req = urllib.request.Request(url, headers=_auth_headers())
+    with urllib.request.urlopen(req, timeout=5) as resp:
         return json.loads(resp.read())
 
 
@@ -117,6 +127,8 @@ def test_synthetic_person_survives_a_backend_restart_with_a_fresh_data_dir(tmp_p
     base_url_a = f"http://127.0.0.1:{port_a}"
     try:
         _wait_until_healthy(base_url_a, proc, log_path)
+        # Erst nach dem Start existiert das Schema in der Preview-DB.
+        auth_helpers.seed_app_user(auth_helpers.PLANNER_UUID, "planner")
 
         # Preview-DB ist leer.
         assert _get_json(f"{base_url_a}/api/team") == []
@@ -177,6 +189,7 @@ def test_no_database_file_is_written_and_export_tempfiles_do_not_linger(tmp_path
     base_url = f"http://127.0.0.1:{port}"
     try:
         _wait_until_healthy(base_url, proc, log_path)
+        auth_helpers.seed_app_user(auth_helpers.PLANNER_UUID, "planner")
         _post_json(f"{base_url}/api/team", {"name": "Backup Testperson", "department": "QA"})
     finally:
         _stop_backend(proc)

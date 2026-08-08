@@ -934,6 +934,11 @@ def delete_rehearsal_plan(conn, rehearsal_plan_id: int):
 #: Reihenfolge, in der Tabellen befüllt bzw. geleert werden können, ohne
 #: Fremdschlüssel zu verletzen (Eltern vor Kindern). Wird vom Migrationstool
 #: und von der Testinfrastruktur genutzt - eine einzige Quelle der Wahrheit.
+#:
+#: Bewusst OHNE app_users (Auth-Sprint): diese Tabelle hat in SQLite nie
+#: existiert, das einmalige Übernahmetool kann sie also nicht kopieren. Beim
+#: Leeren verschwindet sie trotzdem zuverlässig - TRUNCATE ... CASCADE erfasst
+#: jede Tabelle, die auf eine der hier genannten verweist.
 TABLES_IN_DEPENDENCY_ORDER: tuple[str, ...] = (
     "settings",
     "people",
@@ -967,3 +972,118 @@ def truncate_all_tables(conn) -> None:
         )
     )
     conn.execute(statement)
+
+# --- Auth-Sprint: app_users (Supabase-Auth-Benutzer -> Rolle + Person) ---------
+#
+# Reine Datenzugriffsschicht: keine Rollenlogik, keine Berechtigungsprüfung.
+# Wer was darf, entscheidet ausschliesslich backend/auth/dependencies.py.
+# Hier wird auch nichts automatisch angelegt - ein unbekannter Auth-Benutzer
+# bleibt unbekannt, bis ihn ein Admin bewusst einträgt (siehe
+# backend/scripts/create_admin.py und docs/auth/ADMIN_BOOTSTRAP.md).
+
+
+def normalize_user_id(user_id) -> str:
+    """Kanonische Textform einer Supabase-Auth-UUID.
+
+    Kleinbuchstaben mit Bindestrichen - dieselbe Form, die PostgreSQL beim
+    Ausgeben einer uuid-Spalte liefert. Damit findet ein Lookup dieselbe
+    Zeile, egal ob die UUID aus dem JWT, aus dem Supabase-Dashboard
+    (Grossbuchstaben) oder aus einem Skript kommt.
+    """
+    return str(user_id).strip().lower()
+
+
+def get_app_user(conn, user_id):
+    """Genau die Zeile zu einer Auth-UUID - oder None."""
+    return conn.execute(
+        "SELECT user_id, person_id, role, is_active, created_at, updated_at "
+        "FROM app_users WHERE user_id = %s",
+        (normalize_user_id(user_id),),
+    ).fetchone()
+
+
+def list_app_users(conn):
+    """Alle Zuordnungen inkl. Personennamen - für die Admin-Verwaltung."""
+    return conn.execute(
+        "SELECT a.user_id, a.person_id, a.role, a.is_active, a.created_at, a.updated_at, "
+        "       p.name AS person_name "
+        "FROM app_users a LEFT JOIN people p ON p.id = a.person_id "
+        "ORDER BY a.role, a.created_at"
+    ).fetchall()
+
+
+def get_app_user_detail(conn, user_id):
+    """Wie get_app_user(), zusätzlich mit dem Personennamen - für Antworten
+    der Admin-Verwaltung, damit die UI nicht pro Zeile nachladen muss."""
+    return conn.execute(
+        "SELECT a.user_id, a.person_id, a.role, a.is_active, a.created_at, a.updated_at, "
+        "       p.name AS person_name "
+        "FROM app_users a LEFT JOIN people p ON p.id = a.person_id "
+        "WHERE a.user_id = %s",
+        (normalize_user_id(user_id),),
+    ).fetchone()
+
+
+def count_app_users(conn, role: str | None = None) -> int:
+    if role is None:
+        row = conn.execute("SELECT COUNT(*) AS n FROM app_users").fetchone()
+    else:
+        row = conn.execute("SELECT COUNT(*) AS n FROM app_users WHERE role = %s", (role,)).fetchone()
+    return int(row["n"])
+
+
+def create_app_user(conn, user_id, role: str, person_id: int | None = None, is_active: bool = True) -> None:
+    """Legt eine neue Zuordnung an. Schlägt fehl, wenn sie bereits existiert -
+    bewusst kein stilles Überschreiben einer bestehenden Rolle."""
+    conn.execute(
+        "INSERT INTO app_users (user_id, person_id, role, is_active) VALUES (%s, %s, %s, %s)",
+        (normalize_user_id(user_id), person_id, role, 1 if is_active else 0),
+    )
+
+
+def update_app_user(
+    conn,
+    user_id,
+    role: str | None = None,
+    person_id: int | None = None,
+    is_active: bool | None = None,
+    clear_person: bool = False,
+) -> bool:
+    """Aktualisiert einzelne Felder einer bestehenden Zuordnung.
+
+    `clear_person=True` setzt person_id ausdrücklich auf NULL - nötig, weil
+    person_id=None sonst nicht von "nicht mitgeschickt" unterscheidbar wäre.
+    Gibt False zurück, wenn es die Zuordnung nicht gibt.
+    """
+    fields = []
+    values: list = []
+    if role is not None:
+        fields.append("role = %s")
+        values.append(role)
+    if clear_person:
+        fields.append("person_id = NULL")
+    elif person_id is not None:
+        fields.append("person_id = %s")
+        values.append(person_id)
+    if is_active is not None:
+        fields.append("is_active = %s")
+        values.append(1 if is_active else 0)
+    if not fields:
+        return get_app_user(conn, user_id) is not None
+
+    fields.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(normalize_user_id(user_id))
+    cursor = conn.execute(
+        f"UPDATE app_users SET {', '.join(fields)} WHERE user_id = %s",
+        values,
+    )
+    return cursor.rowcount > 0
+
+
+def delete_app_user(conn, user_id) -> bool:
+    """Entfernt nur die Planner-Zuordnung. Der Supabase-Auth-Benutzer selbst
+    bleibt unberührt - der wird in Supabase verwaltet, nicht hier."""
+    cursor = conn.execute(
+        "DELETE FROM app_users WHERE user_id = %s", (normalize_user_id(user_id),)
+    )
+    return cursor.rowcount > 0

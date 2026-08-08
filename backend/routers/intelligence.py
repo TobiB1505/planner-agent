@@ -1,4 +1,12 @@
-"""AP11 - Planner-Intelligence-Endpunkte (Move-Only aus backend/api.py, unverändert)."""
+"""AP11 - Planner-Intelligence-Endpunkte (Move-Only aus backend/api.py, unverändert).
+
+Auth-Sprint: durchgehend PLANNER (Router-Dependency). Empfehlungen,
+Planqualität, Mitarbeiterprofile, Skills und das Audit-Log sind
+Planungswerkzeuge; Employee darf laut Rollenmodell Empfehlungen weder sehen
+noch beeinflussen. Das Audit-Log bleibt ebenfalls Planner-Sache - es
+protokolliert Planungsentscheidungen, keine Systemsicherheit (dafür wäre
+ADMIN richtig, siehe docs/auth/ROLE_MATRIX.md).
+"""
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -10,11 +18,12 @@ from .. import db
 from .. import grid
 from .. import memory
 from .. import stats
+from ..auth import require_planner
 from ..intelligence import audit as intelligence_audit
 from ..intelligence import employee_stats, memory_engine, plan_quality, recommendation_engine, team_overview
 from .shared import _grid_df_from_rows, _week_dates, clean
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_planner)])
 
 
 class EmployeeSkillUpdate(BaseModel):

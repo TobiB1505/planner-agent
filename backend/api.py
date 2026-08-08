@@ -15,7 +15,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import db
-from .routers import dashboard, imports, intelligence, memory, people, plans, settings, system
+from .auth.config import load_auth_settings
+from .routers import (
+    admin_users,
+    auth,
+    dashboard,
+    imports,
+    intelligence,
+    memory,
+    people,
+    plans,
+    settings,
+    system,
+)
 from .routers.shared import _cors_origins
 
 load_dotenv()
@@ -40,14 +52,41 @@ async def lifespan(app: FastAPI):
     seine Verbindungen zu Supabase auch wirklich freigibt (Supabase hat harte
     Verbindungslimits)."""
     db.initialize_database()
+    _warn_if_auth_unconfigured()
     try:
         yield
     finally:
         db.close_pool()
 
 
+def _warn_if_auth_unconfigured() -> None:
+    """Auth-Sprint: macht eine fehlende Supabase-Konfiguration beim Start
+    sichtbar - ohne den Start abzubrechen und ohne die Prüfung abzuschalten.
+
+    Das Verhalten ist fail-closed: ohne JWKS-URL bzw. JWT-Secret lässt sich
+    kein Token verifizieren, also antwortet jeder geschützte Endpunkt mit
+    401. Ein leises "dann eben ohne Auth" gibt es bewusst nicht. Der Log
+    enthält nur die Namen der fehlenden Variablen, nie deren Werte.
+    """
+    auth_settings = load_auth_settings()
+    if not auth_settings.is_configured:
+        logger.warning(
+            "Supabase-Auth ist nicht konfiguriert (SUPABASE_URL bzw. "
+            "SUPABASE_JWT_ISSUER fehlen). Alle geschützten Endpunkte "
+            "antworten mit 401, /api/health bleibt erreichbar. Siehe "
+            "docs/auth/SUPABASE_AUTH_SETUP.md."
+        )
+
+
 app = FastAPI(title="Planner-Agent API", lifespan=lifespan)
 
+# allow_credentials bleibt bewusst aus (Standard: False): der Browser spricht
+# im Normalbetrieb ausschliesslich same-origin über den Next.js-Rewrite, und
+# das Access Token reist als Authorization-Header, nicht als Cookie. Damit
+# gibt es keinen Grund, Cross-Origin-Credentials zu erlauben - und die
+# Kombination "allow_credentials=True mit weiten Origins" kann gar nicht erst
+# entstehen. _cors_origins() listet weiterhin nur die konkret konfigurierten
+# Entwicklungs-Origins, nie "*".
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
@@ -55,6 +94,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(admin_users.router)
 app.include_router(people.router)
 app.include_router(plans.router)
 app.include_router(imports.router)

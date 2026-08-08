@@ -4,6 +4,12 @@ planning_rule_list und dashboard_insights standen im Original direkt im
 "Dashboard"-Abschnitt der Datei (vor dem MA-Gedächtnis-Abschnitt) bzw. tragen
 den /api/dashboard/-Pfadpräfix - beide bleiben deshalb hier statt in einem
 eigenen Intelligence-Topf, um die bereits bestehende Gruppierung zu erhalten.
+
+Auth-Sprint: durchgehend PLANNER (Router-Dependency, gilt für jeden Endpunkt
+dieser Datei). Das Dashboard aggregiert die Auslastung des gesamten Teams -
+Einsatzzahlen pro Person, Abteilungsverteilung, Fairness-Warnungen. Das sind
+Planungsdaten über andere Mitarbeitende und gehören nicht in eine
+Employee-Ansicht, obwohl sie nur gelesen werden.
 """
 from __future__ import annotations
 
@@ -13,10 +19,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from .. import db
 from .. import planning_rules
 from .. import stats
+from ..auth import require_planner
 from ..intelligence import dashboard as intelligence_dashboard
 from .shared import clean, records
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_planner)])
 
 
 @router.get("/api/dashboard/overview")

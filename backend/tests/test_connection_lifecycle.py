@@ -104,7 +104,7 @@ def test_create_connection_does_not_create_schema(monkeypatch):
     # angewendet, deshalb hier gezielt der Nachweis über den Runner selbst.
     check = db.create_connection()
     try:
-        assert db_migrations.current_version(check) == "001"
+        assert db_migrations.current_version(check) == db_migrations.discover_migrations()[-1].version
     finally:
         check.close()
 
