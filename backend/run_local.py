@@ -16,7 +16,15 @@ from __future__ import annotations
 import os
 import sys
 
+from dotenv import load_dotenv
+
 from .config import paths
+
+# Muss vor den Vorprüfungen laufen: check_database() liest DATABASE_URL aus
+# der Umgebung, bevor backend.api (das sonst load_dotenv() aufruft) jemals
+# importiert wird. Ohne diesen Aufruf bleibt eine korrekt gefüllte .env für
+# die Vorprüfung unsichtbar, obwohl der eigentliche Serverstart sie sieht.
+load_dotenv()
 
 _relative = paths.relative_to_project
 
