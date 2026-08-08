@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import AppShell from "@/components/AppShell";
 import InternalNavigationGuard from "@/components/InternalNavigationGuard";
 import { AuthProvider } from "@/components/auth/AuthProvider";
@@ -114,6 +115,7 @@ export default async function RootLayout({
             <AppShell>{children}</AppShell>
           </ToastProvider>
         </AuthProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
